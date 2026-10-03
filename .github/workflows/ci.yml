@@ -1,0 +1,39 @@
+name: FluxAgentCore CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install ripgrep (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Install ripgrep (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ripgrep -y --no-progress
+      - name: Install ripgrep (macOS)
+        if: runner.os == 'macOS'
+        run: brew list ripgrep || brew install ripgrep
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run build
+      - run: npm run type-check
+      - run: npm test --ignore-scripts
+      - run: npm run pack:core

@@ -1,0 +1,37 @@
+{
+  "name": "fluxagentcore",
+  "version": "1.0.1",
+  "private": true,
+  "description": "FluxAgentCore — open-source agent execution infrastructure",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "node scripts/build-packages.mjs",
+    "build:packages": "node scripts/build-packages.mjs",
+    "type-check": "tsc --noEmit",
+    "verify": "node scripts/verify-core.mjs",
+    "pretest": "npm run build",
+    "test": "vitest run",
+    "pack:core": "npm run verify && npm run build && npm pack --dry-run --workspaces --include-workspace-root=false --ignore-scripts"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.7",
+    "@types/node": "^20.10.0",
+    "tsx": "^4.22.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MengShengbo/FluxAgentCore.git"
+  },
+  "author": "孟圣博",
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}
