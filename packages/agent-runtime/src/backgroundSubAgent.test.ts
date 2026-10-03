@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAgentRuntime } from './runtime/agentRuntime'
-import { registerAgent, runSubAgent } from './subAgent'
+import { registerAgent } from './subAgentRegistry'
 import type { ToolResultData } from '@fluxagentcore/contracts/toolResultData'
 
 function registerTestAgent(id: string): void {

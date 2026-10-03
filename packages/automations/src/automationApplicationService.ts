@@ -54,7 +54,7 @@ export interface AutomationValidationReport {
 
 export interface AutomationDefinitionDetail {
   definition: AutomationDefinition
-  compatibility: AutomationRecord
+  record: AutomationRecord
   revisions: AutomationDefinitionRevision[]
   validation: AutomationValidationReport
   recentRuns: AutomationRun[]
@@ -170,8 +170,8 @@ export class AutomationApplicationService {
   getDefinition(id: string): AutomationDefinitionDetail {
     this.coordinator.syncDefinitions()
     const definition = this.repository.getDefinition(id)
-    const compatibility = this.service.get(id)
-    if (!definition || !compatibility) throw new Error(`Automation definition not found: ${id}`)
+    const record = this.service.get(id)
+    if (!definition || !record) throw new Error(`Automation definition not found: ${id}`)
     const revisions: AutomationDefinitionRevision[] = []
     for (let revision = definition.revision; revision >= Math.max(1, definition.revision - 19); revision -= 1) {
       const item = this.repository.getRevision(id, revision)
@@ -179,7 +179,7 @@ export class AutomationApplicationService {
     }
     return {
       definition,
-      compatibility,
+      record,
       revisions,
       validation: this.validateDefinition(id, false),
       recentRuns: this.repository.listRuns({ definitionId: id, limit: 20 }),

@@ -305,8 +305,6 @@ export interface AgentConfig {
   capabilityProfile?: CapabilityProfile
   temperature: number
   maxTokens: number
-  /** @deprecated Main-agent runs are user-controlled and do not enforce a turn budget. */
-  maxTurns?: number
   /** Emergency breaker for successful tool loops that never produce a final response. */
   maxToolRounds?: number
   /** Upper bound for concurrently executing safe tools in one batch. */

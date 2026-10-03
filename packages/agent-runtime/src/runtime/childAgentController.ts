@@ -8,7 +8,7 @@ import { AGENT_COLORS, normalizeChildName, type ChildAgentSnapshot, type ChildAg
 import type { AgentTurn, AgentConfig, CapabilityProfile, NativeReasoningConfig } from '@fluxagentcore/contracts/agentTypes'
 import type { APIConfig, ContextSegment, ContextReservoirEntry } from '@fluxagentcore/contracts/stateTypes'
 import type { AgentEventType, AgentEngine } from '../agentEngine'
-import type { SubAgentResult } from '../subAgent'
+import type { SubAgentResult } from '@fluxagentcore/contracts/subAgentTypes'
 import { childMessageBatch, enqueueChildMessage, messageReceipt, reconcileChildMessages, type ChildMessageOptions, type StoredChildMessage } from './childAgentMailbox'
 import type { ChildAgentMessageReceipt } from '@fluxagentcore/contracts/childAgentTypes'
 

@@ -179,7 +179,7 @@ function shouldRemoveLock(lockPath: string, now: number): boolean {
     const raw = JSON.parse(readFileSync(lockPath, 'utf-8')) as { pid?: unknown }
     const pid = typeof raw.pid === 'number' ? raw.pid : Number(raw.pid)
     // A live owner may legitimately hold a lock longer than the stale age
-    // (for example while a synchronous migration is blocked on a slow disk).
+    // (for example while a synchronous write is blocked on a slow disk).
     // Never steal a live lock solely because its mtime is old.
     if (processIsAlive(pid)) return false
     if (age < LOCK_OWNER_GRACE_MS) return false

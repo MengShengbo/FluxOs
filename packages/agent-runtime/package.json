@@ -119,10 +119,6 @@
       "types": "./dist/runtime/toolExecutionResult.d.ts",
       "import": "./dist/runtime/toolExecutionResult.js"
     },
-    "./subAgent": {
-      "types": "./dist/subAgent.d.ts",
-      "import": "./dist/subAgent.js"
-    },
     "./agentJoinCoordinator": {
       "types": "./dist/agentJoinCoordinator.d.ts",
       "import": "./dist/agentJoinCoordinator.js"

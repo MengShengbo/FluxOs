@@ -7,7 +7,7 @@ import type { ToolExecutor } from '@fluxagentcore/contracts/toolExecutor'
 import type { AgentOrchestrator } from './agentOrchestrator'
 import { AgentEngine } from './agentEngine'
 import { DefaultAgentStateProvider } from './runtime/stateProvider'
-import { registerAgent, syncAgentSkills, runSubAgent } from './subAgent'
+import { registerAgent, syncAgentSkills } from './subAgentRegistry'
 import { SkillRuntime } from '@fluxagentcore/extensions/skills/runtime'
 
 it('offers built-in delegation in each workspace without leaking project definitions', () => {

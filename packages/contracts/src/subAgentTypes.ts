@@ -87,10 +87,10 @@ export interface SubAgentInvocation {
 
 export interface SubAgentResult {
   ok: boolean
-  finalText: string
-  evidence: SubAgentEvidence[]
+  finalText?: string
+  evidence?: SubAgentEvidence[]
   turns: number
   elapsedMs: number
-  truncated: boolean
+  truncated?: boolean
   error?: string
 }

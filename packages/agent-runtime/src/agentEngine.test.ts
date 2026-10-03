@@ -488,7 +488,6 @@ describe('AgentEngine MCP dispatch', () => {
       approvalPolicy: 'full',
       temperature: 0,
       maxTokens: 4096,
-      maxTurns: 2,
       workspacePath: workspace,
       conversationId: 'conversation-1',
     }, new NodeToolExecutor(workspace), stateProvider)
@@ -807,7 +806,6 @@ describe('AgentEngine structured patch dispatch', () => {
       approvalPolicy: 'full',
       temperature: 0,
       maxTokens: 4096,
-      maxTurns: 2,
       workspacePath: workspace,
     }, new NodeToolExecutor(workspace), stateProvider)
     const dispatchTool = (engine as unknown as {
@@ -1171,7 +1169,7 @@ describe('AgentEngine user-controlled run length', () => {
     }
   })
 
-  it('ignores legacy maxTurns values and continues until the model finishes', async () => {
+  it('continues the main-agent run until the model finishes', async () => {
     const workspace = process.cwd()
     const stateProvider = new DefaultAgentStateProvider({
       provider: 'custom',
@@ -1186,7 +1184,6 @@ describe('AgentEngine user-controlled run length', () => {
       approvalPolicy: 'full',
       temperature: 0,
       maxTokens: 4096,
-      maxTurns: 2,
       workspacePath: workspace,
     }, new NodeToolExecutor(workspace), stateProvider)
     let modelTurn = 0
@@ -2466,7 +2463,6 @@ describe('AgentEngine interrupted streams', () => {
       approvalPolicy: 'full',
       temperature: 0,
       maxTokens: 4096,
-      maxTurns: 2,
       workspacePath: workspace,
     }, executor, stateProvider)
     ;(engine as unknown as { abortController: AbortController }).abortController = new AbortController()
@@ -2947,7 +2943,6 @@ describe('AgentEngine interrupted streams', () => {
       approvalPolicy: 'full',
       temperature: 0,
       maxTokens: 4096,
-      maxTurns: 2,
       workspacePath: workspace,
     }, executor, stateProvider)
 
@@ -2998,7 +2993,6 @@ describe('AgentEngine model protocol compatibility', () => {
       approvalPolicy: 'full',
       temperature: 0,
       maxTokens: 4096,
-      maxTurns: 2,
       workspacePath: workspace,
     }, executor, stateProvider)
     engine.restoreFromTurns([{

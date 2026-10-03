@@ -8,7 +8,7 @@ import type { SubAgentDefinition, SubAgentEvent, SubAgentEvidence } from '@fluxa
 import { childCapabilityProfile, normalizeChildName, type ChildCapabilityMode } from '@fluxagentcore/contracts/childAgentTypes'
 import type { AgentEventType } from './agentEngine'
 import { getSubAgentDefinition, getAvailableAgentTypes, type SubAgentRegistry } from './subAgentRegistry'
-import type { SubAgentResult } from './subAgent'
+import type { SubAgentResult } from '@fluxagentcore/contracts/subAgentTypes'
 import { SubAgentBudget, type SubAgentBudgetConfig, type SubAgentBudgetTaskView } from './subAgentBudget'
 import { AgentJoinCoordinator } from './agentJoinCoordinator'
 import { effectiveRequiredChildren } from './subAgentStepCoordinator'

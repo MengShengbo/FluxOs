@@ -168,7 +168,7 @@ describe('AutomationApplicationService', () => {
     expect(testing.definition).toMatchObject({ revision: 2, status: 'testing' })
     const published = application.publishDefinition(testing.definition.id, testing.definition.revision)
     expect(published.definition).toMatchObject({ revision: 3, status: 'active' })
-    expect(published.compatibility).toMatchObject({ enabled: true, lifecycleStatus: 'active' })
+    expect(published.record).toMatchObject({ enabled: true, lifecycleStatus: 'active' })
     expect(published.revisions.map(revision => revision.revision)).toEqual([3, 2, 1])
   })
 
@@ -192,7 +192,7 @@ describe('AutomationApplicationService', () => {
       name: original.definition.name,
       objective: { originalPrompt: original.definition.objective.originalPrompt },
     })
-    expect(rolledBack.compatibility).toMatchObject({ enabled: false, lifecycleStatus: 'draft' })
+    expect(rolledBack.record).toMatchObject({ enabled: false, lifecycleStatus: 'draft' })
     expect(repository.getRevision(rolledBack.definition.id, rolledBack.definition.revision)).toMatchObject({
       source: 'rollback',
       parentRevision: published.definition.revision,
@@ -220,7 +220,7 @@ describe('AutomationApplicationService', () => {
       context: { mode: 'continuation' },
     })
     expect(rotated.definition.context.continuationConversationId).toBeUndefined()
-    expect(rotated.compatibility).toMatchObject({ conversationId: undefined })
+    expect(rotated.record).toMatchObject({ conversationId: undefined })
     expect(repository.getContextSnapshot(`context-${historicalRun.automationRunId}`)).toMatchObject({
       conversationId: 'conversation-original',
     })
@@ -265,7 +265,7 @@ describe('AutomationApplicationService', () => {
       'invalid_network_domain',
       'network_domain_overlap',
     ]))
-    expect(draft.compatibility.capabilityPolicy.allowBackgroundComputerUse).toBe(false)
+    expect(draft.record.capabilityPolicy.allowBackgroundComputerUse).toBe(false)
     expect(() => application.publishDefinition(draft.definition.id, draft.definition.revision)).toThrow('validation errors')
     expect(() => application.saveDraft({ ...draftInput(root), id: draft.definition.id, expectedRevision: 99 })).toThrow('revision conflict')
   })
