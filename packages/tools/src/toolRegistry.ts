@@ -320,7 +320,7 @@ const tools: EnhancedToolDef[] = [
   },
   {
     name: 'git_commit',
-    description: 'Create a Git commit. When paths are provided, FluxAgentCore uses an isolated temporary index and refuses paths with pre-existing staged changes. Without paths, commits the current index.',
+    description: 'Create a Git commit. When paths are provided, FluxAgent uses an isolated temporary index and refuses paths with pre-existing staged changes. Without paths, commits the current index.',
     category: 'manage',
     parameters: [
       { name: 'message', type: 'string', description: 'Commit message', required: true },
@@ -425,7 +425,6 @@ const tools: EnhancedToolDef[] = [
       { name: 'cwd', type: 'string', description: 'Working directory', required: false },
       { name: 'timeout', type: 'number', description: 'Timeout in milliseconds (foreground only). Default 30000.', required: false, default: 30000 },
       { name: 'env', type: 'object', description: 'Additional environment variables', required: false, schema: { type: 'object', additionalProperties: { type: 'string' } } },
-      { name: 'approved', type: 'boolean', description: 'Legacy field; permission gates are enforced by the runtime.', required: false, default: false },
       { name: 'run_in_background', type: 'boolean', description: 'When true, spawn one dedicated command session and return immediately. Long-running commands are selected automatically when omitted. Set false explicitly to force foreground execution.', required: false, default: false },
     ],
     isReadOnly: false,
@@ -644,7 +643,7 @@ const tools: EnhancedToolDef[] = [
 
 Available types:
 - default, worker, explorer, research: built-in roles using the shared agent runtime. Each child needs its own name independent of its role.
-- custom agents: Project-specific agents loaded from .turboflux/agents/.
+- custom agents: Project-specific agents loaded from .fluxagent/agents/.
 
 When NOT to use spawn_agent:
 - If you know the exact file to read, use read_file directly.

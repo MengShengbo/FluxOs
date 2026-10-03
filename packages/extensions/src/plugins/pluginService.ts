@@ -185,7 +185,7 @@ export class PluginService {
     entry: BundledPlugin,
     enabled: boolean,
   ): Promise<PluginSnapshot> {
-    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'turboflux-plugin-'))
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'fluxagent-plugin-'))
     try {
       await writeFile(join(temporaryDirectory, 'plugin.json'), `${JSON.stringify(entry.manifest, null, 2)}\n`, { mode: 0o600 })
       for (const [path, content] of Object.entries(entry.promptFiles || {})) {
@@ -446,7 +446,7 @@ export class PluginService {
   private async projectSkills(manifest: PluginManifest, pluginPath: string): Promise<void> {
     const skills = manifest.contributes?.skills || []
     if (skills.length === 0) return
-    const skillsRoot = join(this.workspacePath, '.turboflux', 'skills')
+    const skillsRoot = join(this.workspacePath, '.fluxagent', 'skills')
     await mkdir(skillsRoot, { recursive: true, mode: 0o700 })
     for (const skill of skills) {
       const body = skill.promptPath
@@ -462,7 +462,7 @@ export class PluginService {
   }
 
   private async removeProjectedSkills(pluginId: string): Promise<void> {
-    const skillsRoot = join(this.workspacePath, '.turboflux', 'skills')
+    const skillsRoot = join(this.workspacePath, '.fluxagent', 'skills')
     const prefix = `plugin-${createHash('sha256').update(pluginId).digest('hex').slice(0, 10)}-`
     let entries: string[] = []
     try { entries = await readdir(skillsRoot) } catch { return }
@@ -472,7 +472,7 @@ export class PluginService {
   private async projectAgents(manifest: PluginManifest): Promise<void> {
     const agents = manifest.contributes?.agents || []
     if (agents.length === 0) return
-    const agentsRoot = join(this.workspacePath, '.turboflux', 'agents')
+    const agentsRoot = join(this.workspacePath, '.fluxagent', 'agents')
     await mkdir(agentsRoot, { recursive: true, mode: 0o700 })
     const prefix = `plugin-${createHash('sha256').update(manifest.id).digest('hex').slice(0, 10)}-`
     for (const agent of agents) {
@@ -498,7 +498,7 @@ export class PluginService {
   }
 
   private async removeProjectedAgents(pluginId: string): Promise<void> {
-    const agentsRoot = join(this.workspacePath, '.turboflux', 'agents')
+    const agentsRoot = join(this.workspacePath, '.fluxagent', 'agents')
     const prefix = `plugin-${createHash('sha256').update(pluginId).digest('hex').slice(0, 10)}-`
     let entries: string[] = []
     try { entries = await readdir(agentsRoot) } catch { return }

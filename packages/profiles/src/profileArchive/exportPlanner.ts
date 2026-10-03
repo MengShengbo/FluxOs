@@ -34,7 +34,7 @@ export interface PreparedProfileExportPlan {
 export interface ExportPlannerOptions {
   profile: LocalProfileRecord
   layout: ProfileStorageLayout
-  conversationDataVersion: 1 | 2
+  conversationDataVersion: 2
   appVersion: string
   coreVersion: string
   platform?: string
@@ -140,7 +140,7 @@ export class ProfileExportPlanner {
         profileStorageVersion: this.options.profile.storageVersion,
       },
       profile: { sourceProfileId: this.options.profile.id, displayName: this.options.profile.displayName },
-      conversationDataVersion: conversationSnapshot?.descriptor.schemaVersion === 2 ? 2 : 1,
+      conversationDataVersion: conversationSnapshot ? 2 : undefined,
       conversationData: conversationSnapshot?.conversationData,
       components: snapshots.map(snapshot => snapshot.descriptor),
       workspaces: workspaces.map(workspace => ({

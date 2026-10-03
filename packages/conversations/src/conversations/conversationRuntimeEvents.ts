@@ -18,7 +18,7 @@ import {
   stableConversationV2Id,
 } from './conversationV2Ids'
 
-export interface ConversationV2MigrationPlan {
+export interface ConversationRuntimeEventPlan {
   schemaVersion: 1
   sourceConversationId: string
   workspaceId: string
@@ -42,7 +42,7 @@ export interface ConversationV2MigrationPlan {
   warnings: string[]
 }
 
-export function legacyWorkspaceId(workspacePath: string): string {
+export function workspaceIdForPath(workspacePath: string): string {
   return stableConversationV2Id('workspace', resolve(workspacePath).replaceAll('\\', '/').toLowerCase())
 }
 
@@ -140,7 +140,7 @@ function toolResultItem(conversation: PersistedConversation, workspaceId: string
   }
 }
 
-function migratedRunStatus(status: WorkRunStatus): 'pending' | 'running' | 'waiting' | 'completed' | 'partial' | 'failed' | 'cancelled' {
+function projectRunStatus(status: WorkRunStatus): 'pending' | 'running' | 'waiting' | 'completed' | 'partial' | 'failed' | 'cancelled' {
   if (status === 'waiting' || status === 'paused') return 'waiting'
   return status
 }
@@ -208,18 +208,18 @@ export interface ConversationV2PlanOptions {
   provenance?: ConversationV2Provenance
 }
 
-export function planConversationV2Migration(
+export function planConversationRuntimeEvents(
   profileId: string,
   conversation: PersistedConversation,
   options: ConversationV2PlanOptions = {},
-): ConversationV2MigrationPlan {
+): ConversationRuntimeEventPlan {
   const ids = conversationV2IdFactory(conversation.id)
   const stableId = ids.stable
   const normalizeConversationV2Id = ids.normalize
   const scopedConversationV2Id = ids.scoped
-  const workspaceId = options.workspaceId ?? legacyWorkspaceId(conversation.workspacePath)
-  const source = options.source ?? 'migration'
-  const provenance = options.provenance ?? 'migrated'
+  const workspaceId = options.workspaceId ?? workspaceIdForPath(conversation.workspacePath)
+  const source = options.source ?? 'runtime'
+  const provenance = options.provenance ?? 'live'
   const record: ConversationRecordV2 = {
     schemaVersion: 2,
     id: conversation.id,
@@ -239,7 +239,7 @@ export function planConversationV2Migration(
     tags: [],
   }
   const events: AnyAppendConversationEventV2Input[] = [{
-    eventId: stableId('migration', conversation.id, 'created'),
+    eventId: stableId('projection', conversation.id, 'created'),
     profileId,
     conversationId: conversation.id,
     workspaceId,
@@ -265,7 +265,7 @@ export function planConversationV2Migration(
     const runId = turn.metadata?.workRunId ? normalizeConversationV2Id('run', turn.metadata.workRunId) : undefined
     const turnId = normalizeConversationV2Id('turn', turn.id)
     events.push({
-      eventId: stableId('migration', conversation.id, turn.id, 'start'),
+      eventId: stableId('projection', conversation.id, turn.id, 'start'),
       profileId,
       conversationId: conversation.id,
       workspaceId,
@@ -281,7 +281,7 @@ export function planConversationV2Migration(
       const item = messageItem(conversation, turn)
       item.runId = runId
       events.push({
-        eventId: stableId('migration', conversation.id, item.id, 'created'),
+        eventId: stableId('projection', conversation.id, item.id, 'created'),
         profileId,
         conversationId: conversation.id,
         workspaceId,
@@ -309,14 +309,14 @@ export function planConversationV2Migration(
         updatedAt: turn.timestamp,
         payload: { text: turn.metadata.thinking.content, omitted: false },
       }
-      events.push({ eventId: stableId('migration', conversation.id, item.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: item.id, source, provenance, type: 'item.created', at: item.createdAt, payload: { item } })
+      events.push({ eventId: stableId('projection', conversation.id, item.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: item.id, source, provenance, type: 'item.created', at: item.createdAt, payload: { item } })
       activityIds.add(item.id)
     }
     for (const toolCall of turn.toolCalls ?? []) {
       const item = toolCallItem(conversation, workspaceId, turn, toolCall)
       item.runId = runId
       events.push({
-        eventId: stableId('migration', conversation.id, item.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: item.id,
+        eventId: stableId('projection', conversation.id, item.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: item.id,
         source, provenance, type: 'item.created', at: turn.timestamp, payload: { item },
       })
       let semantic: ConversationItemV2 | null = null
@@ -327,7 +327,7 @@ export function planConversationV2Migration(
         if (command && /(?:command|shell|terminal|exec|bash)/iu.test(toolCall.name)) semantic = { schemaVersion: 1, id: stableId('item', conversation.id, turn.id, 'command', toolCall.id), conversationId: conversation.id, runId, turnId, kind: 'command_execution', status: 'completed', createdAt: turn.timestamp, updatedAt: turn.timestamp, payload: { command, cwd: portablePathRefsForToolValue(conversation.workspacePath, workspaceId, { cwd: toolCall.arguments.cwd })[0], requiresReview: true } }
       }
       if (semantic) {
-        events.push({ eventId: stableId('migration', conversation.id, semantic.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: semantic.id, source, provenance, type: 'item.created', at: turn.timestamp, payload: { item: semantic } })
+        events.push({ eventId: stableId('projection', conversation.id, semantic.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: semantic.id, source, provenance, type: 'item.created', at: turn.timestamp, payload: { item: semantic } })
         activityIds.add(semantic.id)
       }
       toolCalls += 1
@@ -336,28 +336,28 @@ export function planConversationV2Migration(
       const item = toolResultItem(conversation, workspaceId, turn, result)
       item.runId = runId
       events.push({
-        eventId: stableId('migration', conversation.id, item.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: item.id,
+        eventId: stableId('projection', conversation.id, item.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: item.id,
         source, provenance, type: 'item.created', at: turn.timestamp, payload: { item },
       })
       if (result.changeSummary) {
         const path = pathRef(conversation.workspacePath, workspaceId, result.changeSummary.path)
         if (path) {
           const change: ConversationItemV2 = { schemaVersion: 1, id: stableId('item', conversation.id, turn.id, 'file-change', result.toolCallId), conversationId: conversation.id, runId, turnId, kind: 'file_change', status: result.isError ? 'failed' : 'completed', createdAt: turn.timestamp, updatedAt: turn.timestamp, payload: { path, change: result.changeSummary.operation === 'write' ? 'created' : result.changeSummary.operation === 'edit' ? 'modified' : 'deleted' } }
-          events.push({ eventId: stableId('migration', conversation.id, change.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: change.id, source, provenance, type: 'item.created', at: turn.timestamp, payload: { item: change } })
+          events.push({ eventId: stableId('projection', conversation.id, change.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: change.id, source, provenance, type: 'item.created', at: turn.timestamp, payload: { item: change } })
           activityIds.add(change.id)
         }
       }
       for (const attachment of result.attachments ?? []) {
         const artifactId = normalizeConversationV2Id('artifact', attachment.id)
         const artifact: ConversationItemV2 = { schemaVersion: 1, id: stableId('item', conversation.id, turn.id, 'artifact', attachment.id), conversationId: conversation.id, runId, turnId, kind: 'artifact', status: 'completed', createdAt: turn.timestamp, updatedAt: turn.timestamp, payload: { artifactId, name: attachment.filename, mime: attachment.mime, path: pathRef(conversation.workspacePath, workspaceId, attachment.path), size: attachment.size } }
-        events.push({ eventId: stableId('migration', conversation.id, artifact.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: artifact.id, source, provenance, type: 'item.created', at: turn.timestamp, payload: { item: artifact } })
-        events.push({ eventId: stableId('migration', conversation.id, artifact.id, 'registered'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: artifact.id, source, provenance, type: 'artifact.registered', at: turn.timestamp, payload: { artifactId, itemId: artifact.id } })
+        events.push({ eventId: stableId('projection', conversation.id, artifact.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: artifact.id, source, provenance, type: 'item.created', at: turn.timestamp, payload: { item: artifact } })
+        events.push({ eventId: stableId('projection', conversation.id, artifact.id, 'registered'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: artifact.id, source, provenance, type: 'artifact.registered', at: turn.timestamp, payload: { artifactId, itemId: artifact.id } })
         artifactIds.add(artifactId)
       }
       toolResults += 1
     }
     events.push({
-      eventId: stableId('migration', conversation.id, turn.id, 'complete'),
+      eventId: stableId('projection', conversation.id, turn.id, 'complete'),
       profileId,
       conversationId: conversation.id,
       workspaceId,
@@ -377,7 +377,7 @@ export function planConversationV2Migration(
   for (const request of conversation.modelRequests ?? []) {
     if (!isModelRequestRecord(request)) continue
     events.push({
-      eventId: stableId('migration-request', conversation.id, request.id, request.updatedAt, JSON.stringify(request)),
+      eventId: stableId('runtime-request', conversation.id, request.id, request.updatedAt, JSON.stringify(request)),
       profileId, conversationId: conversation.id, workspaceId,
       runId: request.runId ? normalizeConversationV2Id('run', request.runId) : undefined,
       source, provenance, type: 'model.request_updated', at: request.updatedAt,
@@ -385,11 +385,11 @@ export function planConversationV2Migration(
     })
   }
 
-  for (const legacy of conversation.canonicalEvents ?? []) {
+  for (const event of conversation.canonicalEvents ?? []) {
     canonicalEvents += 1
-    const runId = legacy.runId ? normalizeConversationV2Id('run', legacy.runId) : undefined
-    const turnId = legacy.turnId ? normalizeConversationV2Id('turn', legacy.turnId) : undefined
-    const itemId = legacy.itemId ? normalizeConversationV2Id('item', legacy.itemId) : undefined
+    const runId = event.runId ? normalizeConversationV2Id('run', event.runId) : undefined
+    const turnId = event.turnId ? normalizeConversationV2Id('turn', event.turnId) : undefined
+    const itemId = event.itemId ? normalizeConversationV2Id('item', event.itemId) : undefined
     const common = {
       profileId,
       conversationId: conversation.id,
@@ -399,58 +399,57 @@ export function planConversationV2Migration(
       itemId,
       source,
       provenance,
-      legacyEventId: legacy.eventId,
-      at: legacy.at,
+      at: event.at,
     }
-    const migratedEventId = (suffix = legacy.type) => stableId('migration', conversation.id, 'canonical', legacy.eventId, suffix)
-    if (legacy.type === 'model.request_updated') {
-      events.push({ ...common, eventId: migratedEventId(), type: 'model.request_updated', payload: { request: { ...structuredClone(legacy.payload.request), runId } } })
-    } else if (legacy.type === 'run.started' && runId) {
+    const projectionEventId = (suffix = event.type) => stableId('projection', conversation.id, 'canonical', event.eventId, suffix)
+    if (event.type === 'model.request_updated') {
+      events.push({ ...common, eventId: projectionEventId(), type: 'model.request_updated', payload: { request: { ...structuredClone(event.payload.request), runId } } })
+    } else if (event.type === 'run.started' && runId) {
       runIds.add(runId)
-      events.push({ ...common, eventId: migratedEventId(), type: 'run.started', payload: { run: { id: runId, conversationId: conversation.id, workspaceId, objective: legacy.payload.objective ?? conversation.title, status: 'running', provider: conversation.provider, model: conversation.model, startedAt: legacy.at, updatedAt: legacy.at } } })
-    } else if (legacy.type === 'run.state_changed' && runId) {
-      events.push({ ...common, eventId: migratedEventId(), type: 'run.state_changed', payload: { status: canonicalRunStatus(legacy), updatedAt: legacy.payload.state.updatedAt, outcome: legacy.payload.state.detail } })
-    } else if (legacy.type === 'run.completed' && runId) {
-      events.push({ ...common, eventId: migratedEventId(), type: 'run.completed', payload: { status: legacy.payload.outcome, completedAt: legacy.at, outcome: legacy.payload.error } })
-    } else if (legacy.type === 'approval.requested') {
-      approvalIds.add(legacy.payload.requestId)
-      events.push({ ...common, eventId: migratedEventId(), type: 'approval.requested', payload: { requestId: normalizeConversationV2Id('approval', legacy.payload.requestId), requestKind: legacy.payload.kind, question: legacy.payload.question } })
-    } else if (legacy.type === 'approval.resolved') {
-      approvalIds.add(legacy.payload.requestId)
-      events.push({ ...common, eventId: migratedEventId(), type: 'approval.resolved', payload: { requestId: normalizeConversationV2Id('approval', legacy.payload.requestId), decision: legacy.payload.decision } })
-    } else if (legacy.type === 'approval.cancelled') {
-      approvalIds.add(legacy.payload.requestId)
-      events.push({ ...common, eventId: migratedEventId(), type: 'approval.cancelled', payload: { requestId: normalizeConversationV2Id('approval', legacy.payload.requestId), reason: legacy.payload.reason ?? 'Legacy approval cancelled during migration.' } })
-    } else if (legacy.type === 'input.state_changed') {
-      const inputId = normalizeConversationV2Id('input', legacy.payload.inputId)
-      if (legacy.payload.state === 'accepted') events.push({ ...common, eventId: migratedEventId(), type: 'input.queued', payload: { inputId, text: legacy.payload.text ?? '' } })
-      else if (legacy.payload.state === 'committed') events.push({ ...common, eventId: migratedEventId(), type: 'input.committed', payload: { inputId } })
-      else events.push({ ...common, eventId: migratedEventId(), type: 'input.removed', payload: { inputId, reason: legacy.payload.reason ?? 'Legacy input removed during migration.' } })
-    } else if (legacy.type === 'context.compaction') {
-      const state = legacy.payload.state
+      events.push({ ...common, eventId: projectionEventId(), type: 'run.started', payload: { run: { id: runId, conversationId: conversation.id, workspaceId, objective: event.payload.objective ?? conversation.title, status: 'running', provider: conversation.provider, model: conversation.model, startedAt: event.at, updatedAt: event.at } } })
+    } else if (event.type === 'run.state_changed' && runId) {
+      events.push({ ...common, eventId: projectionEventId(), type: 'run.state_changed', payload: { status: canonicalRunStatus(event), updatedAt: event.payload.state.updatedAt, outcome: event.payload.state.detail } })
+    } else if (event.type === 'run.completed' && runId) {
+      events.push({ ...common, eventId: projectionEventId(), type: 'run.completed', payload: { status: event.payload.outcome, completedAt: event.at, outcome: event.payload.error } })
+    } else if (event.type === 'approval.requested') {
+      approvalIds.add(event.payload.requestId)
+      events.push({ ...common, eventId: projectionEventId(), type: 'approval.requested', payload: { requestId: normalizeConversationV2Id('approval', event.payload.requestId), requestKind: event.payload.kind, question: event.payload.question } })
+    } else if (event.type === 'approval.resolved') {
+      approvalIds.add(event.payload.requestId)
+      events.push({ ...common, eventId: projectionEventId(), type: 'approval.resolved', payload: { requestId: normalizeConversationV2Id('approval', event.payload.requestId), decision: event.payload.decision } })
+    } else if (event.type === 'approval.cancelled') {
+      approvalIds.add(event.payload.requestId)
+      events.push({ ...common, eventId: projectionEventId(), type: 'approval.cancelled', payload: { requestId: normalizeConversationV2Id('approval', event.payload.requestId), reason: event.payload.reason ?? 'Approval cancelled.' } })
+    } else if (event.type === 'input.state_changed') {
+      const inputId = normalizeConversationV2Id('input', event.payload.inputId)
+      if (event.payload.state === 'accepted') events.push({ ...common, eventId: projectionEventId(), type: 'input.queued', payload: { inputId, text: event.payload.text ?? '' } })
+      else if (event.payload.state === 'committed') events.push({ ...common, eventId: projectionEventId(), type: 'input.committed', payload: { inputId } })
+      else events.push({ ...common, eventId: projectionEventId(), type: 'input.removed', payload: { inputId, reason: event.payload.reason ?? 'Input removed.' } })
+    } else if (event.type === 'context.compaction') {
+      const state = event.payload.state
       compactionIds.add(state.id)
       const compactionId = normalizeConversationV2Id('compaction', state.id)
       const sourceItemIds = [state.startMessageId, state.endMessageId].filter((value): value is string => Boolean(value))
-      if (state.phase === 'started') events.push({ ...common, eventId: migratedEventId(), type: 'context.compaction_started', payload: { compactionId, sourceItemIds } })
+      if (state.phase === 'started') events.push({ ...common, eventId: projectionEventId(), type: 'context.compaction_started', payload: { compactionId, sourceItemIds } })
       else if (state.phase === 'completed') {
         const segment = conversation.contextSegments?.find(candidate => (!state.startMessageId || candidate.startMessageId === state.startMessageId) && (!state.endMessageId || candidate.endMessageId === state.endMessageId))
-        events.push({ ...common, eventId: migratedEventId(), type: 'context.compaction_committed', payload: { compactionId, itemId: scopedConversationV2Id('compaction', state.id), summary: segment?.summary, model: segment?.isModelGenerated ? conversation.model : undefined } })
-      } else if (state.phase === 'failed' || state.phase === 'interrupted') events.push({ ...common, eventId: migratedEventId(), type: 'context.compaction_failed', payload: { compactionId, error: state.error ?? state.detail ?? state.phase } })
-    } else if (legacy.type === 'notification.raised') {
-      const item: ConversationItemV2 = { schemaVersion: 1, id: stableId('item', conversation.id, 'notification', legacy.eventId), conversationId: conversation.id, runId, kind: 'notification', status: 'completed', createdAt: legacy.at, updatedAt: legacy.at, payload: legacy.payload }
-      events.push({ ...common, eventId: migratedEventId(), itemId: item.id, type: 'item.created', payload: { item } })
+        events.push({ ...common, eventId: projectionEventId(), type: 'context.compaction_committed', payload: { compactionId, itemId: scopedConversationV2Id('compaction', state.id), summary: segment?.summary, model: segment?.isModelGenerated ? conversation.model : undefined } })
+      } else if (state.phase === 'failed' || state.phase === 'interrupted') events.push({ ...common, eventId: projectionEventId(), type: 'context.compaction_failed', payload: { compactionId, error: state.error ?? state.detail ?? state.phase } })
+    } else if (event.type === 'notification.raised') {
+      const item: ConversationItemV2 = { schemaVersion: 1, id: stableId('item', conversation.id, 'notification', event.eventId), conversationId: conversation.id, runId, kind: 'notification', status: 'completed', createdAt: event.at, updatedAt: event.at, payload: event.payload }
+      events.push({ ...common, eventId: projectionEventId(), itemId: item.id, type: 'item.created', payload: { item } })
       activityIds.add(item.id)
-    } else if (legacy.type === 'runtime.event') {
-      const payload = legacy.payload.payload && typeof legacy.payload.payload === 'object' && !Array.isArray(legacy.payload.payload) ? legacy.payload.payload as Record<string, unknown> : undefined
-      if (legacy.payload.kind === 'subagent:start' && payload) {
+    } else if (event.type === 'runtime.event') {
+      const payload = event.payload.payload && typeof event.payload.payload === 'object' && !Array.isArray(event.payload.payload) ? event.payload.payload as Record<string, unknown> : undefined
+      if (event.payload.kind === 'subagent:start' && payload) {
         const sourceAgentId = String(payload.agentId)
         const agentId = normalizeConversationV2Id('agent', sourceAgentId)
-        const item: ConversationItemV2 = { schemaVersion: 1, id: scopedConversationV2Id('subagent', sourceAgentId), conversationId: conversation.id, runId, kind: 'subagent', status: 'running', createdAt: legacy.at, updatedAt: legacy.at, payload: { agentId, task: String(payload.objective ?? payload.label ?? 'Subagent task') } }
-        events.push({ ...common, eventId: migratedEventId(), itemId: item.id, type: 'item.created', payload: { item } })
+        const item: ConversationItemV2 = { schemaVersion: 1, id: scopedConversationV2Id('subagent', sourceAgentId), conversationId: conversation.id, runId, kind: 'subagent', status: 'running', createdAt: event.at, updatedAt: event.at, payload: { agentId, task: String(payload.objective ?? payload.label ?? 'Subagent task') } }
+        events.push({ ...common, eventId: projectionEventId(), itemId: item.id, type: 'item.created', payload: { item } })
         activityIds.add(item.id)
-      } else if (legacy.payload.kind === 'subagent:end' && payload) {
+      } else if (event.payload.kind === 'subagent:end' && payload) {
         const itemId = scopedConversationV2Id('subagent', String(payload.agentId))
-        events.push({ ...common, eventId: migratedEventId(), itemId, type: 'item.completed', payload: { status: payload.ok === true ? 'completed' : 'failed', completedAt: legacy.at } })
+        events.push({ ...common, eventId: projectionEventId(), itemId, type: 'item.completed', payload: { status: payload.ok === true ? 'completed' : 'failed', completedAt: event.at } })
         activityIds.add(itemId)
       }
     }
@@ -460,14 +459,14 @@ export function planConversationV2Migration(
   for (const run of workExecution?.runs ?? []) {
     const runId = normalizeConversationV2Id('run', run.id)
     runIds.add(runId)
-    const runStatus = migratedRunStatus(run.status)
+    const runStatus = projectRunStatus(run.status)
     events.push({
-      eventId: stableId('migration', conversation.id, 'work-run', run.id, 'started'), profileId, conversationId: conversation.id, workspaceId, runId,
+      eventId: stableId('projection', conversation.id, 'work-run', run.id, 'started'), profileId, conversationId: conversation.id, workspaceId, runId,
       source, provenance, type: 'run.started', at: run.startedAt,
       payload: { run: { id: runId, conversationId: conversation.id, workspaceId, objective: run.objective, status: runStatus, provider: conversation.provider, model: conversation.model, startedAt: run.startedAt, updatedAt: run.updatedAt, completedAt: run.completedAt, outcome: run.outcome ?? run.error, recoveredFromPersistence: run.recoveredFromPersistence, responseMode: run.responseMode, executionSegments: run.executionSegments } },
     })
     if (runStatus === 'completed' || runStatus === 'partial' || runStatus === 'failed' || runStatus === 'cancelled') {
-      events.push({ eventId: stableId('migration', conversation.id, 'work-run', run.id, 'completed'), profileId, conversationId: conversation.id, workspaceId, runId, source, provenance, type: 'run.completed', at: run.completedAt ?? run.updatedAt, payload: { status: runStatus, completedAt: run.completedAt ?? run.updatedAt, outcome: run.outcome ?? run.error } })
+      events.push({ eventId: stableId('projection', conversation.id, 'work-run', run.id, 'completed'), profileId, conversationId: conversation.id, workspaceId, runId, source, provenance, type: 'run.completed', at: run.completedAt ?? run.updatedAt, payload: { status: runStatus, completedAt: run.completedAt ?? run.updatedAt, outcome: run.outcome ?? run.error } })
     }
     const plan: ConversationItemV2 = {
       schemaVersion: 1,
@@ -480,15 +479,15 @@ export function planConversationV2Migration(
       updatedAt: run.updatedAt,
       payload: { steps: Object.values(run.steps).map(step => ({ id: normalizeConversationV2Id('step', step.id), title: step.title, status: step.status })) },
     }
-    events.push({ eventId: stableId('migration', conversation.id, plan.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, itemId: plan.id, source, provenance, type: 'item.created', at: plan.createdAt, payload: { item: plan } })
+    events.push({ eventId: stableId('projection', conversation.id, plan.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, itemId: plan.id, source, provenance, type: 'item.created', at: plan.createdAt, payload: { item: plan } })
     planIds.add(plan.id)
     for (const activity of Object.values(run.activities)) {
       const item = activityItem(conversation, workspaceId, runId, activity)
-      events.push({ eventId: stableId('migration', conversation.id, item.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, itemId: item.id, source, provenance, type: 'item.created', at: item.createdAt, payload: { item } })
+      events.push({ eventId: stableId('projection', conversation.id, item.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, itemId: item.id, source, provenance, type: 'item.created', at: item.createdAt, payload: { item } })
       activityIds.add(item.id)
       if (item.kind === 'artifact') {
         artifactIds.add(item.payload.artifactId)
-        events.push({ eventId: stableId('migration', conversation.id, item.id, 'registered'), profileId, conversationId: conversation.id, workspaceId, runId, itemId: item.id, source, provenance, type: 'artifact.registered', at: item.updatedAt, payload: { artifactId: item.payload.artifactId, itemId: item.id } })
+        events.push({ eventId: stableId('projection', conversation.id, item.id, 'registered'), profileId, conversationId: conversation.id, workspaceId, runId, itemId: item.id, source, provenance, type: 'artifact.registered', at: item.updatedAt, payload: { artifactId: item.payload.artifactId, itemId: item.id } })
       }
     }
   }
@@ -498,24 +497,24 @@ export function planConversationV2Migration(
     compactionIds.add(compaction.id)
     const compactionId = normalizeConversationV2Id('compaction', compaction.id)
     const sourceItemIds = [compaction.startMessageId, compaction.endMessageId].filter((value): value is string => Boolean(value))
-    events.push({ eventId: stableId('migration', conversation.id, 'compaction', compaction.id, 'started'), profileId, conversationId: conversation.id, workspaceId, source, provenance, type: 'context.compaction_started', at: compaction.startedAt, payload: { compactionId, sourceItemIds } })
+    events.push({ eventId: stableId('projection', conversation.id, 'compaction', compaction.id, 'started'), profileId, conversationId: conversation.id, workspaceId, source, provenance, type: 'context.compaction_started', at: compaction.startedAt, payload: { compactionId, sourceItemIds } })
     if (compaction.phase === 'completed') {
       const segment = conversation.contextSegments?.find(candidate => (!compaction.startMessageId || candidate.startMessageId === compaction.startMessageId) && (!compaction.endMessageId || candidate.endMessageId === compaction.endMessageId))
-      events.push({ eventId: stableId('migration', conversation.id, 'compaction', compaction.id, 'committed'), profileId, conversationId: conversation.id, workspaceId, source, provenance, type: 'context.compaction_committed', at: compaction.updatedAt, payload: { compactionId, itemId: scopedConversationV2Id('compaction', compaction.id), summary: segment?.summary, model: segment?.isModelGenerated ? conversation.model : undefined } })
-    } else if (compaction.phase === 'failed' || compaction.phase === 'interrupted') events.push({ eventId: stableId('migration', conversation.id, 'compaction', compaction.id, 'failed'), profileId, conversationId: conversation.id, workspaceId, source, provenance, type: 'context.compaction_failed', at: compaction.updatedAt, payload: { compactionId, error: compaction.error ?? compaction.detail ?? compaction.phase } })
+      events.push({ eventId: stableId('projection', conversation.id, 'compaction', compaction.id, 'committed'), profileId, conversationId: conversation.id, workspaceId, source, provenance, type: 'context.compaction_committed', at: compaction.updatedAt, payload: { compactionId, itemId: scopedConversationV2Id('compaction', compaction.id), summary: segment?.summary, model: segment?.isModelGenerated ? conversation.model : undefined } })
+    } else if (compaction.phase === 'failed' || compaction.phase === 'interrupted') events.push({ eventId: stableId('projection', conversation.id, 'compaction', compaction.id, 'failed'), profileId, conversationId: conversation.id, workspaceId, source, provenance, type: 'context.compaction_failed', at: compaction.updatedAt, payload: { compactionId, error: compaction.error ?? compaction.detail ?? compaction.phase } })
   }
 
   for (const approval of conversation.interactionState?.pendingApprovals ?? []) {
     approvalIds.add(approval.requestId)
     const requestId = normalizeConversationV2Id('approval', approval.requestId)
-    events.push({ eventId: stableId('migration', conversation.id, 'approval', approval.requestId, 'requested'), profileId, conversationId: conversation.id, workspaceId, source, provenance, type: 'approval.requested', at: conversation.updatedAt, payload: { requestId, requestKind: approval.requestKind, question: approval.question } })
-    events.push({ eventId: stableId('migration', conversation.id, 'approval', approval.requestId, 'cancelled'), profileId, conversationId: conversation.id, workspaceId, source, provenance, type: 'approval.cancelled', at: conversation.updatedAt, payload: { requestId, reason: 'Pending approval was cancelled during Conversation V2 migration.' } })
+    events.push({ eventId: stableId('projection', conversation.id, 'approval', approval.requestId, 'requested'), profileId, conversationId: conversation.id, workspaceId, source, provenance, type: 'approval.requested', at: conversation.updatedAt, payload: { requestId, requestKind: approval.requestKind, question: approval.question } })
+    events.push({ eventId: stableId('projection', conversation.id, 'approval', approval.requestId, 'cancelled'), profileId, conversationId: conversation.id, workspaceId, source, provenance, type: 'approval.cancelled', at: conversation.updatedAt, payload: { requestId, reason: 'Pending approval was cancelled during runtime event projection.' } })
   }
 
   if (conversation.recovery && (conversation.recovery.interrupted || conversation.recovery.truncatedJournal || conversation.recovery.unresolvedToolCalls > 0)) {
-    const reason = conversation.recovery.truncatedJournal ? 'Legacy journal was truncated.' : conversation.recovery.interrupted ? 'Legacy run was interrupted.' : 'Legacy tool calls were unresolved.'
-    events.push({ eventId: stableId('migration', conversation.id, 'recovery', 'detected'), profileId, conversationId: conversation.id, workspaceId, source: 'recovery', provenance, type: 'recovery.detected', at: conversation.updatedAt, payload: { reason, throughSeq: conversation.canonicalEvents?.at(-1)?.seq ?? 0 } })
-    events.push({ eventId: stableId('migration', conversation.id, 'recovery', 'applied'), profileId, conversationId: conversation.id, workspaceId, source: 'recovery', provenance, type: 'recovery.applied', at: conversation.updatedAt, payload: { reason, throughSeq: conversation.canonicalEvents?.at(-1)?.seq ?? 0 } })
+    const reason = conversation.recovery.truncatedJournal ? 'Journal was truncated.' : conversation.recovery.interrupted ? 'Run was interrupted.' : 'Tool calls were unresolved.'
+    events.push({ eventId: stableId('projection', conversation.id, 'recovery', 'detected'), profileId, conversationId: conversation.id, workspaceId, source: 'recovery', provenance, type: 'recovery.detected', at: conversation.updatedAt, payload: { reason, throughSeq: conversation.canonicalEvents?.at(-1)?.seq ?? 0 } })
+    events.push({ eventId: stableId('projection', conversation.id, 'recovery', 'applied'), profileId, conversationId: conversation.id, workspaceId, source: 'recovery', provenance, type: 'recovery.applied', at: conversation.updatedAt, payload: { reason, throughSeq: conversation.canonicalEvents?.at(-1)?.seq ?? 0 } })
     recoveries = 1
   }
   return {

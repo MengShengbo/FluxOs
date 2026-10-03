@@ -17,7 +17,7 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-function fixture(workspace = mkdtempSync(join(tmpdir(), 'turboflux-orchestration-'))) {
+function fixture(workspace = mkdtempSync(join(tmpdir(), 'fluxagent-orchestration-'))) {
   const runtime = createAgentRuntime({
     workspacePath: workspace, workspaceName: 'orchestration', conversationId: 'session',
     connectMcp: false, approvalPolicy: 'full',

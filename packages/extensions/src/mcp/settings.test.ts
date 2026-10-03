@@ -12,9 +12,9 @@ afterEach(() => {
 
 describe('project MCP settings', () => {
   it('updates MCP servers without discarding unrelated project settings', () => {
-    const workspacePath = mkdtempSync(join(tmpdir(), 'turboflux-mcp-settings-'))
+    const workspacePath = mkdtempSync(join(tmpdir(), 'fluxagent-mcp-settings-'))
     directories.push(workspacePath)
-    const settingsDirectory = join(workspacePath, '.turboflux')
+    const settingsDirectory = join(workspacePath, '.fluxagent')
     mkdirSync(settingsDirectory)
     writeFileSync(join(settingsDirectory, 'settings.json'), JSON.stringify({ theme: 'dark', custom: { retained: true } }))
 

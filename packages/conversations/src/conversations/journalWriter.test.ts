@@ -8,13 +8,13 @@ describe.sequential('ConversationJournalWriter', () => {
   let directory: string
 
   beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), 'turboflux-journal-writer-'))
-    process.env.TURBOFLUX_CONVERSATIONS_DIR = directory
+    directory = mkdtempSync(join(tmpdir(), 'fluxagent-journal-writer-'))
+    process.env.FLUXAGENT_CONVERSATIONS_DIR = directory
   })
 
   afterEach(() => {
     vi.useRealTimers()
-    delete process.env.TURBOFLUX_CONVERSATIONS_DIR
+    delete process.env.FLUXAGENT_CONVERSATIONS_DIR
     rmSync(directory, { recursive: true, force: true })
   })
 

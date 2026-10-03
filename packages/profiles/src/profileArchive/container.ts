@@ -257,7 +257,7 @@ async function readEnvelope(path: string, limits: ProfileArchiveReadLimits): Pro
     if ((await handle.read(preludeBytes, 0, PRELUDE_SIZE, 0)).bytesRead !== PRELUDE_SIZE) throw new Error('Archive prelude is truncated')
     if (preludeBytes.subarray(0, 16).toString('ascii') !== PROFILE_ARCHIVE_MAGIC) throw new Error('Archive magic is invalid')
     if (preludeBytes.readUInt16BE(16) !== PROFILE_ARCHIVE_CONTAINER_VERSION) {
-      throw new ProfileArchiveError('ARCHIVE_UNSUPPORTED_VERSION', '该资料包版本无法由当前 FluxAgentCore 打开。', '请升级 FluxAgentCore 后重试。')
+      throw new ProfileArchiveError('ARCHIVE_UNSUPPORTED_VERSION', '该资料包版本无法由当前 FluxAgent 打开。', '请升级 FluxAgent 后重试。')
     }
     const flags = preludeBytes.readUInt16BE(18)
     if ((flags & ~FLAG_ENCRYPTED) !== 0) throw new Error('Archive flags are invalid')

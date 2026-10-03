@@ -23,7 +23,7 @@ describe('plugin code host availability', () => {
 
 describe.skipIf(process.platform !== 'darwin')('PluginHostProcess', () => {
   it('invokes a code plugin through the sandbox host', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-host-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-host-'))
     directories.push(root)
     const pluginDirectory = join(root, 'plugin')
     const workspacePath = join(root, 'workspace')
@@ -61,7 +61,7 @@ describe.skipIf(process.platform !== 'darwin')('PluginHostProcess', () => {
   })
 
   it('contains a crashing plugin without terminating the parent', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-host-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-host-'))
     directories.push(root)
     const pluginDirectory = join(root, 'plugin')
     const workspacePath = join(root, 'workspace')
@@ -84,7 +84,7 @@ describe.skipIf(process.platform !== 'darwin')('PluginHostProcess', () => {
   })
 
   it('blocks filesystem access through workspace symlinks', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-host-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-host-'))
     directories.push(root)
     const pluginDirectory = join(root, 'plugin')
     const workspacePath = join(root, 'workspace')

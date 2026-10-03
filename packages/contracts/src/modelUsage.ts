@@ -20,7 +20,7 @@ export function isModelRequestRecord(value: unknown): value is ModelRequestRecor
   if (Object.keys(item).some(key => !requestFields.has(key))) return false
   if (typeof item.id !== 'string' || !item.id || typeof item.requestId !== 'string' || !item.requestId) return false
   if (!['running', 'completed', 'failed', 'interrupted'].includes(String(item.status))) return false
-  if (!['turn', 'compaction', 'legacy'].includes(String(item.purpose))) return false
+  if (!['turn', 'compaction'].includes(String(item.purpose))) return false
   if (!Number.isFinite(item.startedAt) || !Number.isFinite(item.updatedAt) || typeof item.usageFinal !== 'boolean') return false
   if (!isTokenUsage(item.usage)) return false
   if (item.usageFinal && (item.status === 'running' || item.usage.source !== 'provider')) return false

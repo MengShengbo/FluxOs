@@ -4,11 +4,11 @@ import { BUNDLED_PLUGINS } from './bundledPlugins'
 describe('bundled plugins', () => {
   it('ships the local office suite as a declarative bundled plugin', () => {
     expect(BUNDLED_PLUGINS).toHaveLength(2)
-    const office = BUNDLED_PLUGINS.find(entry => entry.manifest.id === 'turboflux.office-workagent')
+    const office = BUNDLED_PLUGINS.find(entry => entry.manifest.id === 'fluxagent.office-workagent')
     expect(office).toMatchObject({
       enabledByDefault: true,
       manifest: {
-        id: 'turboflux.office-workagent',
+        id: 'fluxagent.office-workagent',
         name: '全能办公工作代理',
         permissions: [],
       },
@@ -19,11 +19,11 @@ describe('bundled plugins', () => {
   })
 
   it('includes Design Atlas locally without enabling its workflows by default', () => {
-    const atlas = BUNDLED_PLUGINS.find(entry => entry.manifest.id === 'turboflux.design-atlas')
+    const atlas = BUNDLED_PLUGINS.find(entry => entry.manifest.id === 'fluxagent.design-atlas')
     expect(atlas).toMatchObject({
       enabledByDefault: false,
       manifest: {
-        id: 'turboflux.design-atlas',
+        id: 'fluxagent.design-atlas',
         name: '设计图谱',
         permissions: [],
       },

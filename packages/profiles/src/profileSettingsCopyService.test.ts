@@ -20,7 +20,7 @@ describe('profile settings copy', () => {
   })
 
   it('copies only config and persona documents to a blank profile', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-profile-copy-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-profile-copy-'))
     roots.push(root)
     const registry = new InstallationProfileRegistry(root, { createId: (() => { const ids = ['profile-source-0001', 'profile-target-0002']; return () => ids.shift()! })() })
     registry.initialize()

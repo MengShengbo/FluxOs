@@ -8,7 +8,7 @@ export interface TimingSummary {
 }
 
 export function streamTimingTraceEnabled(): boolean {
-  return (process.env.FLUXAGENT_STREAM_TRACE ?? process.env.TURBOFLUX_STREAM_TRACE) === '1'
+  return process.env.FLUXAGENT_STREAM_TRACE === '1'
 }
 
 export function summarizeTimings(samples: readonly number[]): TimingSummary {

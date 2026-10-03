@@ -43,34 +43,18 @@ describe.sequential('conversation journal store', () => {
   let directory: string
 
   beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), 'turboflux-conversations-'))
-    process.env.TURBOFLUX_CONVERSATIONS_DIR = directory
+    directory = mkdtempSync(join(tmpdir(), 'fluxagent-conversations-'))
+    process.env.FLUXAGENT_CONVERSATIONS_DIR = directory
   })
 
   afterEach(() => {
-    delete process.env.TURBOFLUX_CONVERSATIONS_DIR
+    delete process.env.FLUXAGENT_CONVERSATIONS_DIR
     rmSync(directory, { recursive: true, force: true })
   })
 
   it('matches equivalent paths and rejects different workspaces', () => {
     expect(sameWorkspacePath('.', process.cwd())).toBe(true)
     expect(sameWorkspacePath(process.cwd(), `${process.cwd()}-other`)).toBe(false)
-  })
-
-  it('keeps legacy JSON conversations readable', () => {
-    const conversation: PersistedConversation = {
-      ...meta('legacy-1'),
-      turnCount: 2,
-      turns: [
-        turn('user-1', 'user', 'hello', 100),
-        turn('assistant-1', 'assistant', 'hi', 101),
-      ],
-    }
-    mkdirSync(getConversationsDir(), { recursive: true })
-    writeFileSync(join(getConversationsDir(), 'legacy-1.json'), JSON.stringify(conversation), 'utf-8')
-
-    expect(loadConversation('legacy-1')).toMatchObject({ id: 'legacy-1', turnCount: 2 })
-    expect(listConversations(process.cwd()).map(item => item.id)).toEqual(['legacy-1'])
   })
 
   it('never treats the conversation catalog or malformed JSON as a conversation', async () => {
@@ -557,20 +541,6 @@ describe.sequential('conversation journal store', () => {
     expect(recovered?.turns.map(item => item.content)).toEqual(['try it'])
     expect(recovered?.workExecution?.runs[0]?.error).toBe('你配置的模型 API 拒绝了请求，请检查该连接的服务状态。\n上游返回：Insufficient Balance')
     expect(recovered?.recovery?.interrupted).toBe(false)
-  })
-
-  it('removes assistant placeholders created by older recovery versions', () => {
-    const conversation: PersistedConversation = {
-      ...meta('legacy-placeholder'),
-      turnCount: 2,
-      turns: [
-        turn('user-1', 'user', 'keep me', 100),
-        turn('recovered-assistant-101', 'assistant', 'Interrupted: assistant response was not recorded before restart.', 101),
-      ],
-    }
-    saveConversation(conversation)
-
-    expect(loadConversation('legacy-placeholder')?.turns.map(item => item.content)).toEqual(['keep me'])
   })
 
   it('restores the interrupted marker stripped from a recovered assistant snapshot', () => {

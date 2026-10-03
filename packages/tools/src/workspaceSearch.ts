@@ -9,7 +9,7 @@ import type { Result, SearchContentOptions, SearchContentPage, SearchFilesOption
 const execFileAsync = promisify(execFile)
 const MAX_CAPTURE_BYTES = 8 * 1024 * 1024
 const MAX_PAGE_CHARS = 24_000
-const INTERNAL_DIRECTORIES = ['.git', '.hg', '.svn', '.turboflux']
+const INTERNAL_DIRECTORIES = ['.git', '.hg', '.svn', '.fluxagent']
 const ENV_TEMPLATES = new Set(['.env.example', '.env.sample', '.env.template', '.env.defaults'])
 
 function searchable(path: string): boolean {
@@ -131,7 +131,7 @@ export async function searchWorkspaceContent(
     if (options.fixedStrings) args.push('--fixed-strings')
     if (options.multiline) args.push('--multiline', '--multiline-dotall')
     if (options.fileType) args.push('--type', options.fileType)
-    else if (filePattern && !filePattern.includes('/')) args.push('--type-add', `turboflux:${filePattern}`, '--type', 'turboflux')
+    else if (filePattern && !filePattern.includes('/')) args.push('--type-add', `fluxagent:${filePattern}`, '--type', 'fluxagent')
     if (outputMode === 'content') args.push('-B', String(before), '-A', String(after))
     args.push('--', pattern, target)
     const captured = await capture(args, cwd, options.signal)

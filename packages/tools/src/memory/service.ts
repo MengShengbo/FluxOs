@@ -1,7 +1,7 @@
 /**
  * Workspace memory service.
  *
- * Loads project rule files plus `.turboflux/memory/facts.jsonl`, exposes
+ * Loads project rule files plus `.fluxagent/memory/facts.jsonl`, exposes
  * simple query/write/delete/update operations, and renders a compact memory
  * block for prompt injection.
  */
@@ -33,8 +33,8 @@ const MEMORY_INJECTION_TOKEN_BUDGET = 2000
 const MEMORY_QUERY_TOKEN_BUDGET = 1000
 
 const FINGERPRINT_PATHS = [
-  '.turboflux/memory/rules.md',
-  '.turboflux/memory/facts.jsonl',
+  '.fluxagent/memory/rules.md',
+  '.fluxagent/memory/facts.jsonl',
   'CLAUDE.md',
   'claude.md',
   '.claude/CLAUDE.md',
@@ -58,7 +58,7 @@ interface CacheEntry {
 
 function computeFingerprint(workspacePath: string, privateMemoryRoot?: string): string {
   const parts: string[] = []
-  const sharedFingerprintPaths = FINGERPRINT_PATHS.filter(rel => !rel.startsWith('.turboflux/memory/'))
+  const sharedFingerprintPaths = FINGERPRINT_PATHS.filter(rel => !rel.startsWith('.fluxagent/memory/'))
   for (const rel of sharedFingerprintPaths) {
     const abs = path.join(workspacePath, rel)
     try {
@@ -68,7 +68,7 @@ function computeFingerprint(workspacePath: string, privateMemoryRoot?: string): 
       parts.push(`${rel}:absent`)
     }
   }
-  const memoryRoot = privateMemoryRoot ?? path.join(workspacePath, '.turboflux', 'memory')
+  const memoryRoot = privateMemoryRoot ?? path.join(workspacePath, '.fluxagent', 'memory')
   for (const name of ['rules.md', 'facts.jsonl']) {
     try {
       const stat = fs.statSync(path.join(memoryRoot, name))

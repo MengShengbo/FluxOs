@@ -3,21 +3,21 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const originalConfigDir = process.env.TURBOFLUX_CONFIG_DIR
+const originalConfigDir = process.env.FLUXAGENT_CONFIG_DIR
 const directories: string[] = []
 
 afterEach(() => {
-  if (originalConfigDir === undefined) delete process.env.TURBOFLUX_CONFIG_DIR
-  else process.env.TURBOFLUX_CONFIG_DIR = originalConfigDir
+  if (originalConfigDir === undefined) delete process.env.FLUXAGENT_CONFIG_DIR
+  else process.env.FLUXAGENT_CONFIG_DIR = originalConfigDir
   vi.restoreAllMocks()
   vi.resetModules()
   while (directories.length > 0) rmSync(directories.pop()!, { recursive: true, force: true })
 })
 
 function temporaryConfigDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'turboflux-profile-'))
+  const directory = mkdtempSync(join(tmpdir(), 'fluxagent-profile-'))
   directories.push(directory)
-  process.env.TURBOFLUX_CONFIG_DIR = directory
+  process.env.FLUXAGENT_CONFIG_DIR = directory
   vi.resetModules()
   return directory
 }

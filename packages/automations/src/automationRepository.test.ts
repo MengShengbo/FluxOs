@@ -25,7 +25,7 @@ afterEach(() => {
 })
 
 function createRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-v3-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-v3-'))
   directories.push(root)
   return root
 }

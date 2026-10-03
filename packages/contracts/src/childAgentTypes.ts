@@ -18,7 +18,6 @@ export interface ChildAgentIdentity {
 }
 
 export interface ChildAgentSnapshot extends ChildAgentIdentity {
-  legacy?: boolean
   state: 'idle' | 'running' | 'closed'
   lastOutcome?: 'completed' | 'partial' | 'failed' | 'interrupted'
   executionId?: string
@@ -50,7 +49,6 @@ export interface ChildAgentMessageReceipt {
   messageId: string
   intent: 'message' | 'followup'
   state: 'queued' | 'committed'
-  /** Absent for migrated records whose original arrival time was not recorded. */
   createdAt?: number
   sourceWorkRunId?: string
   committedAt?: number

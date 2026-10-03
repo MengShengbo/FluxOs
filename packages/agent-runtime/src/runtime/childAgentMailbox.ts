@@ -79,11 +79,3 @@ export function reconcileChildMessages(messages: readonly StoredChildMessage[], 
   const retained = new Set(receipts.map(message => message.messageId))
   return committed.filter(message => message.state === 'queued' || retained.has(message.messageId))
 }
-
-/** v1 has no arrival timestamp or origin run. Preserve its text and identity without inventing either. */
-export function migrateChildInbox(inbox: Array<{ id: string; message: string }>): StoredChildMessage[] {
-  return inbox.map(({ id, message }) => ({
-    messageId: id, message, intent: 'message', state: 'queued',
-    contentHash: createHash('sha256').update(message).digest('hex'),
-  }))
-}

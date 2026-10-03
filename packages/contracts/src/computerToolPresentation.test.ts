@@ -72,7 +72,7 @@ describe('computer tool product presentation', () => {
     })).toEqual({
       title: '需要你接管',
       question: '请在 Safari 中接管并完成这一步。',
-      reason: 'FluxAgentCore 不会代为输入密码、验证码或其他认证信息。',
+      reason: 'FluxAgent 不会代为输入密码、验证码或其他认证信息。',
       runningDetail: '正在等待你接管 · Safari',
       approvalLevel: 'deny',
     })
@@ -93,7 +93,7 @@ describe('computer tool product presentation', () => {
   it('creates natural app-aware approval copy without implementation details', () => {
     expect(describeComputerPermission('computer__focus_app', { app_name: 'Keynote' })).toEqual({
       title: '切换应用',
-      question: '允许 FluxAgentCore 切换到 Keynote 吗？',
+      question: '允许 FluxAgent 切换到 Keynote 吗？',
       reason: '这会把目标应用带到前台，并改变当前键盘焦点。',
       runningDetail: '正在切换应用 · Keynote',
       approvalLevel: 'policy',
@@ -105,7 +105,7 @@ describe('computer tool product presentation', () => {
       safety_class: 'external',
     })).toEqual({
       title: '操作应用',
-      question: '允许 FluxAgentCore 在 Safari 中点击内容吗？',
+      question: '允许 FluxAgent 在 Safari 中点击内容吗？',
       reason: '这可能对外发送、发布或提交信息，需要你逐次确认。',
       runningDetail: '正在点击应用内容 · Safari',
       approvalLevel: 'always',
@@ -126,7 +126,7 @@ describe('computer tool product presentation', () => {
     expect(describeComputerPermission('computer__raw_script', { script: 'dangerous()' })).toEqual({
       title: '电脑操作已阻止',
       question: '此电脑操作不能执行。',
-      reason: 'FluxAgentCore 只允许已注册并经过安全分级的电脑操作。',
+      reason: 'FluxAgent 只允许已注册并经过安全分级的电脑操作。',
       runningDetail: '该电脑操作不可用',
       approvalLevel: 'deny',
     })

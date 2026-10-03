@@ -137,7 +137,7 @@ export class McpClient {
     if (existing) await this.disconnect(name)
 
     const client = new PaginatedMcpSdkClient(
-      { name: 'turboflux', version: '1.0.1' },
+      { name: 'fluxagent', version: '1.0.1' },
       { capabilities: {} },
     )
     const conn: McpConnection = {

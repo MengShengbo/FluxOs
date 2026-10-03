@@ -207,7 +207,7 @@ export class SubAgentTaskManager {
     this.ownerSessionId = options.ownerSessionId
     this.storageDir = options.storageDir === false
       ? null
-      : options.storageDir || path.join(options.workspacePath, '.turboflux', 'runtime-agents')
+      : options.storageDir || path.join(options.workspacePath, '.fluxagent', 'runtime-agents')
     this.now = options.now || Date.now
     this.maxTranscriptEventBytes = Math.max(1024, Math.floor(options.maxTranscriptEventBytes || DEFAULT_MAX_TRANSCRIPT_EVENT_BYTES))
     this.maxRetainedTasks = Number.isFinite(options.maxRetainedTasks)
@@ -255,7 +255,7 @@ export class SubAgentTaskManager {
     this.ownerSessionId = ownerSessionId
     this.storageDir = storageDir === false
       ? null
-      : storageDir || path.join(this.options.workspacePath, '.turboflux', 'runtime-agents')
+      : storageDir || path.join(this.options.workspacePath, '.fluxagent', 'runtime-agents')
     this.descriptors.clear()
     this.results.clear()
     this.taskStats.clear()

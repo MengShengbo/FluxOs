@@ -45,7 +45,7 @@ export function loadCredentialSnapshot(): CredentialSnapshot {
     console.warn(`FluxAgentCore preserved an invalid credentials file at ${backupPath}: ${error instanceof Error ? error.message : String(error)}`)
     return {}
   }
-  if (typeof raw.payload !== 'string') return parseSnapshot(raw)
+  if (raw.schemaVersion !== 2 || typeof raw.payload !== 'string' || typeof raw.protected !== 'boolean') throw new Error('Unsupported credential schema')
   try {
     const encoded = Buffer.from(raw.payload, 'base64url')
     if (raw.protected === true) {
@@ -87,33 +87,6 @@ function serializeCredentialSnapshotWithProtection(
   } finally {
     plaintext.fill(0)
   }
-}
-
-export function reprotectCredentialDocument(document: Buffer): Buffer {
-  const raw = JSON.parse(document.toString('utf8')) as Record<string, unknown>
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Credentials must be a JSON object')
-  let snapshot: CredentialSnapshot
-  if (typeof raw.payload !== 'string') {
-    snapshot = parseSnapshot(raw)
-  } else {
-    const encoded = Buffer.from(raw.payload, 'base64url')
-    let plaintext: Buffer | undefined
-    try {
-      if (raw.protected === true) {
-        if (!credentialProtection) throw new Error('Protected credentials cannot be migrated without the platform key store')
-        plaintext = credentialProtection.unprotect(encoded)
-      } else {
-        plaintext = Buffer.from(encoded)
-      }
-      const parsed: unknown = JSON.parse(plaintext.toString('utf8'))
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Credential payload must be a JSON object')
-      snapshot = parseSnapshot(parsed as Record<string, unknown>)
-    } finally {
-      encoded.fill(0)
-      plaintext?.fill(0)
-    }
-  }
-  return Buffer.from(serializeCredentialSnapshotWithProtection(snapshot, credentialProtection), 'utf8')
 }
 
 export function saveCredentialSnapshot(snapshot: CredentialSnapshot): void {

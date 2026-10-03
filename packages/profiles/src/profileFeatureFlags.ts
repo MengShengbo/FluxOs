@@ -11,15 +11,9 @@ export const STABLE_PROFILE_FEATURE_FLAGS: ProfileFeatureFlags = {
 }
 
 const ENVIRONMENT_KEYS: Record<keyof ProfileFeatureFlags, string> = {
-  conversationDataV2: 'TURBOFLUX_CONVERSATION_DATA_V2',
-  profileCenterV2: 'TURBOFLUX_PROFILE_CENTER_V2',
-  profileArchiveV2: 'TURBOFLUX_PROFILE_ARCHIVE_V2',
-}
-
-const LEGACY_ENVIRONMENT_KEYS: Partial<Record<keyof ProfileFeatureFlags, string[]>> = {
-  conversationDataV2: ['TURBOFLUX_PROFILE_STORAGE_V1'],
-  profileCenterV2: ['TURBOFLUX_LOCAL_PROFILES_UI_V1'],
-  profileArchiveV2: ['TURBOFLUX_PROFILE_ARCHIVE_EXPORT_V1', 'TURBOFLUX_PROFILE_ARCHIVE_IMPORT_V1'],
+  conversationDataV2: 'FLUXAGENT_CONVERSATION_DATA_V2',
+  profileCenterV2: 'FLUXAGENT_PROFILE_CENTER_V2',
+  profileArchiveV2: 'FLUXAGENT_PROFILE_ARCHIVE_V2',
 }
 
 function parseFlag(value: string | undefined, fallback: boolean, name: string): boolean {
@@ -40,10 +34,7 @@ export function resolveProfileFeatureFlags(
       if (environment[primaryName]?.trim()) {
         return [key, parseFlag(environment[primaryName], defaults[key], primaryName)]
       }
-      const legacyValues = (LEGACY_ENVIRONMENT_KEYS[key] ?? [])
-        .filter(name => environment[name]?.trim())
-        .map(name => parseFlag(environment[name], defaults[key], name))
-      return [key, legacyValues.length > 0 ? legacyValues.every(Boolean) : defaults[key]]
+      return [key, defaults[key]]
     }),
   ) as unknown as ProfileFeatureFlags
 }

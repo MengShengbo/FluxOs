@@ -12,7 +12,7 @@ const roots: string[] = []
 const sha256 = (value: Uint8Array) => createHash('sha256').update(value).digest()
 
 function rawArchive(entries: Array<{ path: string | Uint8Array; data: Uint8Array; digest?: Uint8Array; declaredSize?: number }>): string {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-malicious-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-malicious-'))
   roots.push(root)
   const frames: Buffer[] = []
   for (const entry of entries) {
@@ -32,7 +32,7 @@ function rawArchive(entries: Array<{ path: string | Uint8Array; data: Uint8Array
   prelude.writeUInt16BE(PROFILE_ARCHIVE_CONTAINER_VERSION, 16)
   prelude.writeUInt32BE(header.length, 20)
   prelude.writeBigUInt64BE(BigInt(payload.length), 24)
-  const path = join(root, 'fixture.turboflux-profile')
+  const path = join(root, 'fixture.fluxagent-profile')
   writeFileSync(path, Buffer.concat([prelude, header, payload, sha256(payload)]))
   return path
 }

@@ -16,7 +16,7 @@ import { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
 import { RuntimeTaskManager } from '@fluxagentcore/tools/runtimeTaskManager'
 import { SubAgentTaskManager } from './subAgentTaskManager'
 import { ChildAgentController, type ChildLaunch } from './childAgentController'
-import { AGENT_CONTROL_TOOLS, type LegacySubAgentRunner } from '../agentOrchestrator'
+import { AGENT_CONTROL_TOOLS } from '../agentOrchestrator'
 import type { SubAgentBudgetConfig } from '../subAgentBudget'
 import { DefaultAgentStateProvider, type AgentRuntimeConfig } from './stateProvider'
 import { buildProfileSystemPromptSection, loadProfile, type FluxAgentProfile } from '@fluxagentcore/models/profile'
@@ -45,8 +45,6 @@ export interface CreateAgentRuntimeOptions {
   /** Internal child authority, already intersected with the parent. */
   childCapabilityProfile?: CapabilityProfile
   delegationEnabled?: boolean
-  /** Migration-only adapter for callers deliberately using the old read-only runner. */
-  legacySubAgentRunner?: LegacySubAgentRunner
   registerChildSystemPlugins?: (client: McpClient, context: { conversationId: string; ownerConversationId: string }) => void | (() => void)
 }
 
@@ -136,7 +134,7 @@ function childRuntimeConfig(launch: ChildLaunch, inherited: AgentRuntimeConfig):
 export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRuntime {
   let destroyPromise: Promise<void> | null = null
   const conversationId = options.conversationId || createSessionId(options.conversationPrefix || 'agent')
-  const runtimeStorageRoot = options.runtimeStoragePath || join(options.workspacePath, '.turboflux')
+  const runtimeStorageRoot = options.runtimeStoragePath || join(options.workspacePath, '.fluxagent')
   const initialStorage = conversationRuntimeStorage(runtimeStorageRoot, conversationId)
   const engineConfig = toEngineConfig(options, conversationId)
   const sessionRegistry = new SessionRegistry(conversationId)
@@ -173,7 +171,6 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
     stateProvider,
     subAgentTaskManager,
   )
-  if (options.legacySubAgentRunner) engine.setLegacySubAgentRunner(options.legacySubAgentRunner)
   if (options.subAgentBudget) engine.setSubAgentBudget(options.subAgentBudget)
   const unsubscribeRuntimeTasks = runtimeTaskManager.subscribe(event => {
     engine.publishRuntimeTaskEvent(event)
@@ -216,7 +213,7 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
       const child = createAgentRuntime({
         ...options, config: childRuntimeConfig(launch, currentRuntimeConfig),
         conversationId: launch.agentId, runtimeStoragePath: join(runtimeStorageRoot, 'children', launch.agentId),
-        childCapabilityProfile: launch.capabilityProfile, delegationEnabled: false, legacySubAgentRunner: undefined,
+        childCapabilityProfile: launch.capabilityProfile, delegationEnabled: false,
         approvalPolicy: launch.parentConfig.approvalPolicy, connectMcp: false,
         surfaceSystemPrompt: [options.surfaceSystemPrompt, 'You are the named child agent ' + launch.name + '.', launch.instructions].filter(Boolean).join('\n\n'),
       })

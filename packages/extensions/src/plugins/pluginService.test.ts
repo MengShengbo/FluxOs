@@ -23,7 +23,7 @@ function fixture(root: string, manifest: Record<string, unknown>, files: Record<
 
 describe('PluginService', () => {
   it('installs, enables, projects Skills, disables, and persists metadata', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-'))
     directories.push(root)
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
@@ -47,8 +47,8 @@ describe('PluginService', () => {
     const projected = service.list().plugins[0]
     expect(projected.state).toBe('enabled')
     const pluginHash = await import('node:crypto').then(({ createHash }) => createHash('sha256').update('example.workflow').digest('hex').slice(0, 10))
-    const skillPath = join(workspace, '.turboflux', 'skills', `plugin-${pluginHash}-review`, 'SKILL.md')
-    const agentPath = join(workspace, '.turboflux', 'agents', `plugin-${pluginHash}-example_plugin_researcher.md`)
+    const skillPath = join(workspace, '.fluxagent', 'skills', `plugin-${pluginHash}-review`, 'SKILL.md')
+    const agentPath = join(workspace, '.fluxagent', 'agents', `plugin-${pluginHash}-example_plugin_researcher.md`)
     expect(readFileSync(skillPath, 'utf8')).toContain('name: review')
     expect(readFileSync(agentPath, 'utf8')).toContain('tools: ["web_search","web_fetch","write_research_report"]')
     expect(readFileSync(agentPath, 'utf8')).toContain('requestTimeoutMs: 300000')
@@ -71,7 +71,7 @@ describe('PluginService', () => {
   })
 
   it('rejects traversal entries and unapproved permissions', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-'))
     directories.push(root)
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
@@ -85,7 +85,7 @@ describe('PluginService', () => {
   })
 
   it('rejects duplicate contribution ids across installed plugins', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-conflict-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-conflict-'))
     directories.push(root)
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
@@ -107,7 +107,7 @@ describe('PluginService', () => {
   })
 
   it.skipIf(process.platform !== 'darwin')('recreates a crashed code host when the plugin is enabled again', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-crash-recovery-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-crash-recovery-'))
     directories.push(root)
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
@@ -135,7 +135,7 @@ describe('PluginService', () => {
   })
 
   it.skipIf(process.platform !== 'darwin')('isolates code host state and storage by conversation', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-conversation-isolation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-conversation-isolation-'))
     directories.push(root)
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
@@ -176,22 +176,22 @@ describe('PluginService', () => {
   })
 
   it('installs and enables the bundled local office plugin on first initialization', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-'))
     directories.push(root)
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
     const service = new PluginService(join(root, 'plugins.json'), join(root, 'plugins'), workspace)
     await service.initialize(new McpClient())
 
-    const plugin = service.list().plugins.find(candidate => candidate.id === 'turboflux.office-workagent')
+    const plugin = service.list().plugins.find(candidate => candidate.id === 'fluxagent.office-workagent')
     expect(plugin).toMatchObject({ source: 'bundled', enabled: true, state: 'enabled' })
     expect(plugin?.manifest.contributes?.skills).toHaveLength(7)
-    expect(readFileSync(join(workspace, '.turboflux', 'skills', 'plugin-20b9f19062-office-workagent', 'SKILL.md'), 'utf8')).toContain('办公任务总控')
-    await expect(service.uninstall('turboflux.office-workagent')).rejects.toThrow('Bundled plugins cannot be uninstalled')
+    expect(readFileSync(join(workspace, '.fluxagent', 'skills', 'plugin-43eff68c1b-office-workagent', 'SKILL.md'), 'utf8')).toContain('办公任务总控')
+    await expect(service.uninstall('fluxagent.office-workagent')).rejects.toThrow('Bundled plugins cannot be uninstalled')
   })
 
   it('adopts an existing office installation without overriding its disabled state', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-'))
     directories.push(root)
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
@@ -199,12 +199,12 @@ describe('PluginService', () => {
     const pluginsRoot = join(root, 'plugins')
     const service = new PluginService(store, pluginsRoot, workspace)
     await service.initialize(new McpClient())
-    await service.setEnabled('turboflux.office-workagent', false)
+    await service.setEnabled('fluxagent.office-workagent', false)
 
     const restored = new PluginService(store, pluginsRoot, workspace)
     await restored.initialize(new McpClient())
 
-    expect(restored.list().plugins.find(candidate => candidate.id === 'turboflux.office-workagent')).toMatchObject({
+    expect(restored.list().plugins.find(candidate => candidate.id === 'fluxagent.office-workagent')).toMatchObject({
       source: 'bundled',
       enabled: false,
       state: 'disabled',
@@ -212,26 +212,26 @@ describe('PluginService', () => {
   })
 
   it('keeps earlier imported plugins locally without replacing their files or enabled state', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-migration-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-migration-'))
     directories.push(root)
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
-    const path = fixture(root, { id: 'turboflux.design-atlas', name: 'Customized Atlas', description: 'Local copy', version: '0.9.0', author: { name: 'User' } })
+    const path = fixture(root, { id: 'fluxagent.design-atlas', name: 'Customized Atlas', description: 'Local copy', version: '0.9.0', author: { name: 'User' } })
     const store = join(root, 'plugins.json')
     writeFileSync(store, JSON.stringify({ schemaVersion: 1, plugins: [{
-      id: 'turboflux.design-atlas', path, source: 'marketplace', enabled: false,
+      id: 'fluxagent.design-atlas', path, source: 'marketplace', enabled: false,
       approvedPermissions: [], installedAt: 10, updatedAt: 10,
     }] }))
     const service = new PluginService(store, join(root, 'plugins'), workspace)
     await service.initialize(new McpClient())
-    expect(service.list().plugins.find(plugin => plugin.id === 'turboflux.design-atlas')).toMatchObject({
+    expect(service.list().plugins.find(plugin => plugin.id === 'fluxagent.design-atlas')).toMatchObject({
       source: 'local', enabled: false, manifest: { name: 'Customized Atlas', version: '0.9.0' },
     })
     expect(JSON.parse(readFileSync(join(path, 'plugin.json'), 'utf8')).version).toBe('0.9.0')
   })
 
   it('detaches destroyed conversation MCP clients from future plugin registrations', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-client-lifecycle-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-client-lifecycle-'))
     directories.push(root)
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
@@ -245,18 +245,18 @@ describe('PluginService', () => {
   })
 
   it('keeps the optional design plugin disabled until explicitly enabled', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-plugin-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-'))
     directories.push(root)
     const workspace = join(root, 'workspace')
     mkdirSync(workspace)
     const service = new PluginService(join(root, 'plugins.json'), join(root, 'plugins'), workspace)
     await service.initialize(new McpClient())
-    expect(service.list().plugins.find(plugin => plugin.id === 'turboflux.design-atlas')).toMatchObject({ enabled: false, source: 'bundled' })
-    await service.setEnabled('turboflux.design-atlas', true)
+    expect(service.list().plugins.find(plugin => plugin.id === 'fluxagent.design-atlas')).toMatchObject({ enabled: false, source: 'bundled' })
+    await service.setEnabled('fluxagent.design-atlas', true)
 
     const updated = service.list()
-    const atlas = updated.plugins.find(plugin => plugin.id === 'turboflux.design-atlas')
+    const atlas = updated.plugins.find(plugin => plugin.id === 'fluxagent.design-atlas')
     expect(atlas).toMatchObject({ enabled: true, state: 'enabled', source: 'bundled', manifest: { version: '1.3.2' } })
-    expect(readFileSync(join(workspace, '.turboflux', 'skills', 'plugin-17c2c4276b-design-atlas', 'SKILL.md'), 'utf8')).toContain('宿主不会替插件自动弹出入口')
+    expect(readFileSync(join(workspace, '.fluxagent', 'skills', 'plugin-d77d31db1f-design-atlas', 'SKILL.md'), 'utf8')).toContain('宿主不会替插件自动弹出入口')
   })
 })

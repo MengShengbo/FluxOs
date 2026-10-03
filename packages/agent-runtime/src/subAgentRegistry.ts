@@ -33,7 +33,7 @@ export class SubAgentRegistry {
   }
 }
 /**
- * 从 .turboflux/agents/ 加载独立的工作区注册表。
+ * 从 .fluxagent/agents/ 加载独立的工作区注册表。
  */
 export function loadDynamicAgents(workspacePath: string): SubAgentRegistry {
   const registry = new SubAgentRegistry()

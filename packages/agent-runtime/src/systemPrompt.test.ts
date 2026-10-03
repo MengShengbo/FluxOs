@@ -2,12 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { buildSystemPrompt } from './systemPrompt'
 
 describe('buildSystemPrompt', () => {
-  it('injects the FluxAgentCore profile section when provided', () => {
+  it('identifies the assistant as FluxAgent and distinguishes its kernel', () => {
+    const prompt = buildSystemPrompt('vibe')
+    expect(prompt).toContain('You are FluxAgent, an AI agent')
+    expect(prompt).toContain('When asked who you are or what you are called, identify yourself as FluxAgent.')
+    expect(prompt).not.toContain('You are FluxAgentCore,')
+  })
+
+  it('injects the FluxAgent profile section when provided', () => {
     const prompt = buildSystemPrompt('vibe', {
-      profileSystemPrompt: '<turboflux_profile>profile rules</turboflux_profile>',
+      profileSystemPrompt: '<fluxagent_profile>profile rules</fluxagent_profile>',
     })
 
-    expect(prompt).toContain('<turboflux_profile>profile rules</turboflux_profile>')
+    expect(prompt).toContain('<fluxagent_profile>profile rules</fluxagent_profile>')
     expect(prompt).toContain('<identity>')
   })
 
@@ -63,7 +70,7 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('instead of silently substituting a GitHub repository')
   })
 
-  it('does not project FluxAgentCore product positioning onto open-ended ideas', () => {
+  it('does not project FluxAgent product positioning onto open-ended ideas', () => {
     const prompt = buildSystemPrompt('vibe')
 
     expect(prompt).not.toContain('workbench assistant')

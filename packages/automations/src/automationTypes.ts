@@ -196,7 +196,7 @@ export interface AutomationDefinitionRevision {
   definitionId: string
   revision: number
   specDigest: string
-  source: 'user' | 'import' | 'migration' | 'rollback'
+  source: 'user' | 'import' | 'runtime' | 'rollback'
   changeSummary: string
   parentRevision?: number
   validationIssues: AutomationValidationIssue[]
@@ -432,11 +432,6 @@ export interface AutomationRun {
       classification: AutomationToolSideEffectClass
       targetSummary?: string
     }
-  }
-  migration?: {
-    schemaVersion: 2
-    legacyRunId: string
-    legacyInputId?: string
   }
 }
 

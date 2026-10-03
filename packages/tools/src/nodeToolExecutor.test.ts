@@ -22,8 +22,8 @@ function makeTempDir(prefix: string): string {
 }
 
 async function withWorkspace<T>(fn: (paths: { workspace: string; outside: string }) => Promise<T> | T): Promise<T> {
-  const workspace = makeTempDir('turboflux-executor-workspace-')
-  const outside = makeTempDir('turboflux-executor-outside-')
+  const workspace = makeTempDir('fluxagent-executor-workspace-')
+  const outside = makeTempDir('fluxagent-executor-outside-')
   try {
     return await fn({ workspace, outside })
   } finally {
@@ -375,10 +375,10 @@ describe('NodeToolExecutor file and process lifecycle', () => {
   }))
 
   it('passes the parent environment and explicit overrides to child commands', async () => withWorkspace(async ({ workspace }) => {
-    process.env.TURBOFLUX_TEST_SECRET = 'inherited'
+    process.env.FLUXAGENT_TEST_SECRET = 'inherited'
     try {
       const executor = new NodeToolExecutor(workspace)
-      const inherited = await executor.runProcess(process.execPath, ['-e', 'process.stdout.write(process.env.TURBOFLUX_TEST_SECRET || "missing")'], workspace)
+      const inherited = await executor.runProcess(process.execPath, ['-e', 'process.stdout.write(process.env.FLUXAGENT_TEST_SECRET || "missing")'], workspace)
       const explicit = await executor.runProcess(process.execPath, ['-e', 'process.stdout.write(process.env.EXPLICIT_VALUE || "missing")'], workspace, { EXPLICIT_VALUE: 'allowed' })
       const sensitive = await executor.runProcess(process.execPath, ['-e', 'process.stdout.write(process.env.SERVICE_API_KEY || "missing")'], workspace, { SERVICE_API_KEY: 'allowed' })
 
@@ -386,7 +386,7 @@ describe('NodeToolExecutor file and process lifecycle', () => {
       expect(explicit.data?.stdout).toBe('allowed')
       expect(sensitive.data?.stdout).toBe('allowed')
     } finally {
-      delete process.env.TURBOFLUX_TEST_SECRET
+      delete process.env.FLUXAGENT_TEST_SECRET
     }
   }))
 

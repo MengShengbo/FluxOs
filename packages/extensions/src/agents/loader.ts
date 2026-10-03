@@ -245,10 +245,10 @@ function loadAgentFromFile(filePath: string, source: 'project' | 'builtin'): Loa
 }
 
 /**
- * 从 .turboflux/agents/ 目录加载所有自定义代理定义
+ * 从 .fluxagent/agents/ 目录加载所有自定义代理定义
  */
 export function loadAgentsFromDir(workspacePath: string): LoadedAgent[] {
-  const agentsDir = join(workspacePath, '.turboflux', 'agents')
+  const agentsDir = join(workspacePath, '.fluxagent', 'agents')
   if (existsSync(agentsDir) === false) return []
 
   let entries: string[]

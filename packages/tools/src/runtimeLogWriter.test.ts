@@ -6,7 +6,7 @@ import { RuntimeLogWriter } from './runtimeLogWriter'
 
 describe('RuntimeLogWriter', () => {
   it('flushes JSONL asynchronously and rotates bounded log files', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-runtime-log-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-runtime-log-'))
     const logPath = join(root, 'task.jsonl')
     try {
       const writer = new RuntimeLogWriter(logPath, {
@@ -30,7 +30,7 @@ describe('RuntimeLogWriter', () => {
   })
 
   it('releases backpressure when durable logging fails', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-runtime-log-error-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-runtime-log-error-'))
     try {
       const errors: Error[] = []
       let drained = 0

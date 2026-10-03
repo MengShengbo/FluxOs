@@ -45,7 +45,7 @@ function configLockFile(): string {
 
 function hydrateCredentials(raw: Partial<FluxAgentConfig>): Partial<FluxAgentConfig> {
   const stored = loadCredentialSnapshot()
-  const envApiKey = (process.env.FLUXAGENT_API_KEY ?? process.env.TURBOFLUX_API_KEY)?.trim()
+  const envApiKey = process.env.FLUXAGENT_API_KEY?.trim()
   const activeId = typeof raw.activeApiConfigId === 'string'
     ? raw.activeApiConfigId
     : Array.isArray(raw.apiConfigs) ? raw.apiConfigs[0]?.id : undefined
@@ -54,24 +54,13 @@ function hydrateCredentials(raw: Partial<FluxAgentConfig>): Partial<FluxAgentCon
         ...profile,
         apiKey: envApiKey && profile.id === activeId
           ? envApiKey
-          : stored.apiConfigs?.[profile.id] || profile.apiKey || '',
+          : stored.apiConfigs?.[profile.id] || '',
       }))
     : raw.apiConfigs
   return {
     ...raw,
-    apiKey: envApiKey || stored.apiKey || raw.apiKey || '',
+    apiKey: envApiKey || stored.apiKey || '',
     apiConfigs: profiles,
-  }
-}
-
-function legacyCredentialSnapshot(raw: Partial<FluxAgentConfig>): CredentialSnapshot {
-  return {
-    apiKey: typeof raw.apiKey === 'string' && raw.apiKey ? raw.apiKey : undefined,
-    apiConfigs: Object.fromEntries(
-      (Array.isArray(raw.apiConfigs) ? raw.apiConfigs : [])
-        .filter(profile => typeof profile?.id === 'string' && typeof profile.apiKey === 'string' && profile.apiKey)
-        .map(profile => [profile.id, profile.apiKey]),
-    ),
   }
 }
 
@@ -90,7 +79,7 @@ function writeConfigDocument(config: FluxAgentConfig): void {
 export const DEFAULT_FREE_MODEL = ''
 export const DEFAULT_CONTEXT_WINDOW = 200_000
 export const DEFAULT_MAX_TOKENS = 16_384
-export const TURBOFLUX_PROVIDERS: FluxAgentProvider[] = ['openai', 'anthropic', 'deepseek', 'kimi', 'glm', 'openrouter', 'custom']
+export const FLUXAGENT_PROVIDERS: FluxAgentProvider[] = ['openai', 'anthropic', 'deepseek', 'kimi', 'glm', 'openrouter', 'custom']
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
@@ -203,36 +192,13 @@ export function providerForModel(model: string, fallback: FluxAgentProvider = 'c
   return provider === 'deepseek' ? 'deepseek' : provider
 }
 
-function looksLikeLegacyBundledDefault(config: Partial<FluxAgentConfig>): boolean {
-  const baseUrl = config.baseUrl?.replace(/\/+$/, '')
-  const model = config.model ?? DEFAULT_FREE_MODEL
-  return config.provider === 'openai'
-    && (baseUrl === 'https://api.deepseek.com' || baseUrl === 'https://api.deepseek.com/v1')
-    && (model === DEFAULT_FREE_MODEL || model === 'deepseek-v4-pro')
-    && typeof config.apiKey === 'string'
-    && config.apiKey.startsWith('sk-')
-}
-
-function looksLikeLegacyLocalProxyDefault(config: Partial<FluxAgentConfig>): boolean {
-  const rawBaseUrl = typeof config.baseUrl === 'string' ? config.baseUrl.trim() : ''
-  let isRetiredLocalEndpoint = false
-  try {
-    const parsed = new URL(rawBaseUrl)
-    isRetiredLocalEndpoint = ['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname) && parsed.port === '8787'
-  } catch {}
-  return (config.provider === 'custom' || config.provider === undefined)
-    && isRetiredLocalEndpoint
-    && (config.apiKey === 'turboflux-local' || config.apiKey === undefined || config.apiKey === '')
-    && (!config.model || config.model === 'gpt-5.5' || config.model === 'deepseek-v4-pro')
-}
-
 function positiveInteger(value: unknown, fallback: number): number {
   const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
 function normalizeProvider(value: unknown, fallback: FluxAgentProvider): FluxAgentProvider {
-  return typeof value === 'string' && TURBOFLUX_PROVIDERS.includes(value as FluxAgentProvider)
+  return typeof value === 'string' && FLUXAGENT_PROVIDERS.includes(value as FluxAgentProvider)
     ? value as FluxAgentProvider
     : fallback
 }
@@ -257,7 +223,7 @@ function normalizeConfig(raw: Partial<FluxAgentConfig>): FluxAgentConfig {
   const now = Date.now()
   let nextProfiles = profiles
   if (!activeProfile && hasCurrentConfig) {
-    const migrated = buildApiConfigProfile({
+    const profile = buildApiConfigProfile({
       id: activeApiConfigId || 'main',
       name: 'Main',
       provider,
@@ -273,8 +239,8 @@ function normalizeConfig(raw: Partial<FluxAgentConfig>): FluxAgentConfig {
       createdAt: now,
       updatedAt: now,
     })
-    nextProfiles = upsertApiConfigProfile(profiles, migrated)
-    activeApiConfigId = migrated.id
+    nextProfiles = upsertApiConfigProfile(profiles, profile)
+    activeApiConfigId = profile.id
   } else if (!activeProfile) {
     activeApiConfigId = nextProfiles[0]?.id
   }
@@ -451,8 +417,8 @@ export function setConfigValue(config: FluxAgentConfig, key: string, value: stri
   const updateActive = (next: FluxAgentConfig): FluxAgentConfig => syncActiveProfile(next)
   switch (key) {
     case 'provider': {
-      if (!TURBOFLUX_PROVIDERS.includes(value as FluxAgentProvider)) {
-        throw new Error(`Invalid provider. Use one of: ${TURBOFLUX_PROVIDERS.join(', ')}`)
+      if (!FLUXAGENT_PROVIDERS.includes(value as FluxAgentProvider)) {
+        throw new Error(`Invalid provider. Use one of: ${FLUXAGENT_PROVIDERS.join(', ')}`)
       }
       return updateActive({ ...config, provider: value as FluxAgentProvider })
     }
@@ -567,7 +533,7 @@ function applyKnownModelMetadata(config: FluxAgentConfig, presets: ModelPreset[]
 export function ensureDirectories(workspacePath?: string): void {
   const dirs = [configDirectory(), getActiveProfilePaths().conversationsRoot]
   if (workspacePath) {
-    dirs.push(join(workspacePath, '.turboflux', 'memory'))
+    dirs.push(join(workspacePath, '.fluxagent', 'memory'))
   }
   for (const dir of dirs) {
     if (!existsSync(dir)) {
@@ -578,7 +544,7 @@ export function ensureDirectories(workspacePath?: string): void {
 
 function credentialSnapshotForSave(config: FluxAgentConfig, fallback: CredentialSnapshot = {}): CredentialSnapshot {
   const stored = loadCredentialSnapshot()
-  const envApiKey = (process.env.FLUXAGENT_API_KEY ?? process.env.TURBOFLUX_API_KEY)?.trim()
+  const envApiKey = process.env.FLUXAGENT_API_KEY?.trim()
   const activeId = config.activeApiConfigId
   const persistentActiveKey = activeId
     ? stored.apiConfigs?.[activeId] ?? fallback.apiConfigs?.[activeId] ?? stored.apiKey ?? fallback.apiKey
@@ -637,24 +603,10 @@ export async function loadConfig(): Promise<FluxAgentConfig> {
       return recovered
     }
 
-    const legacyCredentials = legacyCredentialSnapshot(userConfig)
     const merged = normalizeConfig(hydrateCredentials({ ...DEFAULT_CONFIG, ...userConfig }))
-    if (looksLikeLegacyLocalProxyDefault(userConfig) || looksLikeLegacyBundledDefault(userConfig)) {
-      return persistConfig(emptyConfigWithProfiles())
-    }
     const withBackendMetadata = applyKnownModelMetadata(merged, MODEL_PRESETS)
-    const hasLegacyCredentials = Boolean(userConfig.apiKey)
-      || (Array.isArray(userConfig.apiConfigs) && userConfig.apiConfigs.some(profile => Boolean(profile.apiKey)))
-    const needsFullAccessMigration = withBackendMetadata.approvalPolicy === 'full'
-      && userConfig.capabilityProfile !== 'danger-full-access'
-    if (
-      withBackendMetadata.contextWindow !== merged.contextWindow ||
-      withBackendMetadata.maxTokens !== merged.maxTokens ||
-      withBackendMetadata.model !== merged.model ||
-      hasLegacyCredentials ||
-      needsFullAccessMigration
-    ) {
-      return persistConfig(withBackendMetadata, legacyCredentials)
+    if (withBackendMetadata.contextWindow !== merged.contextWindow || withBackendMetadata.maxTokens !== merged.maxTokens || withBackendMetadata.model !== merged.model) {
+      return persistConfig(withBackendMetadata)
     }
     return syncActiveProfile(withBackendMetadata, false)
   })

@@ -41,7 +41,7 @@ const CONTROL_TOKEN_PATTERNS: RegExp[] = [
   // OpenAI tool-call envelope leaks.
   /<\|tool_call_(start|end)\|>/gi,
 
-  // Turboflux-internal envelope tags. These should never appear inside a
+  // FluxAgent-internal envelope tags. These should never appear inside a
   // memory body; if they do, something else upstream is broken — strip
   // to be safe.
   /<workspace_memory[^>]*>/gi,

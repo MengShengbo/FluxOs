@@ -12,12 +12,12 @@ import { WorkspaceBindingService } from './workspaceBindingService'
 const directories: string[] = []
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-rebind-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-rebind-'))
   directories.push(root)
   const layout = createProfileStorageLayout(join(root, 'data'), join(root, 'device'), 'profile-imported')
   ensureProfileStorageLayout(layout)
   const workspaceId = 'workspace-12345678'
-  const marker = `turboflux-unbound:${workspaceId}`
+  const marker = `fluxagent-unbound:${workspaceId}`
   new WorkspaceBindingService(layout, () => 10).addUnbound({
     id: workspaceId,
     displayName: 'Source Workspace',
@@ -50,7 +50,7 @@ describe('ProfileWorkspaceRebindService', () => {
     const result = new ProfileWorkspaceRebindService(layout).rebind({ workspaceId, localPath })
     expect(result.requiresMismatchConfirmation).toBe(true)
     expect(result.updated).toEqual({ conversations: 0, projects: 0, artifacts: 0, automations: 0 })
-    expect(new ConversationStore(layout.conversationsRoot).load('conversation-1')?.workspacePath).toBe(`turboflux-unbound:${workspaceId}`)
+    expect(new ConversationStore(layout.conversationsRoot).load('conversation-1')?.workspacePath).toBe(`fluxagent-unbound:${workspaceId}`)
   })
 
   it('rebinds imported references while keeping automations disabled and is idempotent', () => {

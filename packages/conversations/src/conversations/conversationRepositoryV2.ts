@@ -135,7 +135,7 @@ export interface ConversationSearchQueryV2 {
 }
 
 export interface ConversationSearchRepositoryV2 {
-  search(query: string | ConversationSearchQueryV2, legacyLimit?: number): ConversationSearchResultV2[]
+  search(query: ConversationSearchQueryV2): ConversationSearchResultV2[]
 }
 
 export interface ConversationRepositoryRecoveryReceiptV2 {
@@ -548,8 +548,7 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
     return { conversations: records.length, events: eventCount, searchEntries: searchEntries.length }
   }
 
-  search(query: string | ConversationSearchQueryV2, legacyLimit = 50): ConversationSearchResultV2[] {
-    const request = typeof query === 'string' ? { query, limit: legacyLimit } : query
+  search(request: ConversationSearchQueryV2): ConversationSearchResultV2[] {
     const needle = request.query.trim().toLocaleLowerCase()
     if (!needle) return []
     if (request.from !== undefined && !Number.isFinite(request.from)) throw new Error('Invalid Conversation search start time')

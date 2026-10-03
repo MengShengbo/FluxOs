@@ -1,3 +1,5 @@
+import { ConversationRuntimeRepositoryV2, persistedConversationFromProjectionV2 } from '@fluxagentcore/conversations/conversations/conversationRuntimeRepositoryV2'
+import { ConversationRepositoryV2 } from '@fluxagentcore/conversations/conversations/conversationRepositoryV2'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -27,7 +29,7 @@ async function sourceArchive(root: string, encrypted = false, includeExecutable 
   ensureProfileStorageLayout(layout)
   const workspacePath = join(root, 'source-workspace')
   mkdirSync(workspacePath, { recursive: true })
-  new WorkspaceBindingService(layout, () => 10, () => 'workspace-12345678').ensureBound(workspacePath, 'Source Workspace')
+  const binding = new WorkspaceBindingService(layout, () => 10, () => 'workspace-12345678').ensureBound(workspacePath, 'Source Workspace')
   writeFileSync(layout.configPath, JSON.stringify({ provider: 'custom', model: 'model-a', baseUrl: 'https://example.test/v1', approvalPolicy: 'ask', capabilityProfile: 'workspace-write', gitEnabled: true, apiConfigs: [] }))
   writeFileSync(layout.projectsPath, JSON.stringify({ schemaVersion: 1, projects: [{ id: 'project-1', name: 'Source', path: workspacePath, pinned: true, tags: ['demo'], createdAt: 1, updatedAt: 2, lastOpenedAt: 2, available: true }] }))
   writeFileSync(layout.automationsPath, JSON.stringify({ schemaVersion: 2, automations: [{ id: 'automation-1', name: 'Never auto-run', enabled: true, status: 'active', workspacePath, activeRunId: 'run-1', pendingRunAt: 28, nextRunAt: 30, activeRuns: ['run-1'], history: [] }], approvals: [{ id: 'approval-1' }] }))
@@ -54,9 +56,9 @@ async function sourceArchive(root: string, encrypted = false, includeExecutable 
       { id: 'turn-2', role: 'assistant', content: 'in the same order', timestamp: 17 },
     ],
   }
-  new ConversationStore(layout.conversationsRoot).save(conversation, { compact: true })
+  new ConversationRuntimeRepositoryV2(layout.conversationsV2Root, profile.id, binding.id, workspacePath).persist(conversation)
   const planner = new ProfileExportPlanner({
-    profile, layout, conversationDataVersion: 1, appVersion: '1', coreVersion: '1', now: () => 100, createId: () => 'source-archive',
+    profile, layout, conversationDataVersion: 2, appVersion: '1', coreVersion: '1', now: () => 100, createId: () => 'source-archive',
     credentialReader: () => ({ apiKey: 'source-secret' }),
   })
   const components = [
@@ -70,7 +72,7 @@ async function sourceArchive(root: string, encrypted = false, includeExecutable 
     ...(includeExecutable ? ['skills.user', 'plugins.packages', 'mcp.configurations'] as const : []),
   ] as const
   const plan = await planner.prepare({ profileId: profile.id, components: [...components], encrypted })
-  const path = join(root, encrypted ? 'source-encrypted.turboflux-profile' : 'source.turboflux-profile')
+  const path = join(root, encrypted ? 'source-encrypted.fluxagent-profile' : 'source.fluxagent-profile')
   const password = encrypted ? 'import source password' : undefined
   await writeProfileArchive({ targetPath: path, entries: plan.entries, password, verifyDocument: true })
   return { path, password, profile, layout }
@@ -98,7 +100,7 @@ afterEach(() => {
 
 describe('profile archive transactional importer', () => {
   it('round trips Conversation V2 events while rebasing profile identity and requiring workspace binding', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-import-conversation-v2-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-conversation-v2-'))
     directories.push(root)
     const profile: LocalProfileRecord = {
       schemaVersion: 1, id: 'profile-v2-source', displayName: 'V2 Source', createdAt: 1, updatedAt: 1,
@@ -170,7 +172,6 @@ describe('profile archive transactional importer', () => {
         eventCount: 7,
       },
       projections: { included: false, rebuildRequired: true },
-      migrationSources: [],
     })
     const interactionEntry = exportPlan.entries.find(entry => entry.path === 'components/conversations/interactions/conversation-v2.json')
     expect(interactionEntry).toBeDefined()
@@ -189,7 +190,7 @@ describe('profile archive transactional importer', () => {
     expect(JSON.stringify(exportedInteraction)).not.toContain('pendingApprovals')
     expect(JSON.stringify(exportedInteraction)).not.toContain('"files"')
     expect(JSON.stringify(exportedInteraction)).not.toContain(workspacePath)
-    const archivePath = join(root, 'v2.turboflux-profile')
+    const archivePath = join(root, 'v2.fluxagent-profile')
     await writeProfileArchive({ targetPath: archivePath, entries: exportPlan.entries, verifyDocument: true })
 
     const registry = targetRegistry(root)
@@ -234,7 +235,6 @@ describe('profile archive transactional importer', () => {
     })
     expect(new WorkspaceBindingService(targetLayout).get('workspace-12345678')).toMatchObject({ state: 'unbound' })
     expect(JSON.parse(readFileSync(imported.receiptPath, 'utf8'))).toMatchObject({
-      migrations: [],
       conversationData: {
         sourceVersion: 2,
         eventSegments: { segmentCount: 1, eventCount: 7 },
@@ -243,42 +243,8 @@ describe('profile archive transactional importer', () => {
     })
   })
 
-  it('turns missing legacy Workspace references into a visible rebindable UUID', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-import-unassociated-workspace-'))
-    directories.push(root)
-    const profile: LocalProfileRecord = {
-      schemaVersion: 1, id: 'profile-legacy-source', displayName: 'Legacy Source', createdAt: 1, updatedAt: 1,
-      state: 'ready', lock: { kind: 'none' }, storageVersion: 1,
-    }
-    const sourceLayout = createProfileStorageLayout(join(root, 'source-data'), join(root, 'source-device'), profile.id)
-    ensureProfileStorageLayout(sourceLayout)
-    new ConversationStore(sourceLayout.conversationsRoot).save({
-      id: 'legacy-unassociated', title: 'Legacy history', workspacePath: join(root, 'missing-workspace'), createdAt: 1, updatedAt: 2,
-      mode: 'vibe', model: 'test', provider: 'openai', turnCount: 1,
-      turns: [{ id: 'turn-legacy', role: 'user', content: 'Keep this history', timestamp: 2 }],
-    }, { compact: true })
-    const exportPlan = await new ProfileExportPlanner({
-      profile, layout: sourceLayout, conversationDataVersion: 1, appVersion: '1', coreVersion: '1', createId: ids('archive-unassociated', 'plan-unassociated'),
-    }).prepare({ profileId: profile.id, components: ['conversations'], encrypted: false })
-    const archivePath = join(root, 'unassociated.turboflux-profile')
-    await writeProfileArchive({ targetPath: archivePath, entries: exportPlan.entries, verifyDocument: true })
-
-    const registry = targetRegistry(root)
-    const importer = new ProfileArchiveImporter({ registry, createId: ids('inspect-plan', 'transaction-unassociated', 'profile-unassociated') })
-    const preview = await importer.inspect(archivePath)
-    expect(preview.workspaces).toEqual([expect.objectContaining({ displayName: '未关联工作区' })])
-    expect(isConversationV2Uuid(preview.workspaces[0]!.id)).toBe(true)
-    const plan = importer.plan(archivePath, preview, { archiveId: preview.archiveId, displayName: 'Imported Legacy', selectedComponents: ['conversations'] })
-    expect(plan.unboundWorkspaceCount).toBe(1)
-    const imported = await importer.execute({ plan })
-    const layout = registry.context(imported.profile.id).storage
-    const workspace = new WorkspaceBindingService(layout).list().workspaces[0]!
-    expect(workspace).toMatchObject({ id: preview.workspaces[0]!.id, displayName: '未关联工作区', state: 'unbound' })
-    expect(new ConversationStore(layout.conversationsRoot).load('legacy-unassociated')?.workspacePath).toBe(`turboflux-unbound:${workspace.id}`)
-  })
-
   it('rejects an import selection that omits a declared component dependency', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-import-dependency-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-dependency-'))
     directories.push(root)
     const archive = await sourceArchive(root)
     const registry = targetRegistry(root)
@@ -296,7 +262,7 @@ describe('profile archive transactional importer', () => {
   })
 
   it('imports into a new inactive profile with unbound workspaces and disabled execution', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-import-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-'))
     directories.push(root)
     const archive = await sourceArchive(root)
     const registry = targetRegistry(root)
@@ -319,14 +285,14 @@ describe('profile archive transactional importer', () => {
     const importedWorkspace = new WorkspaceBindingService(layout).list().workspaces[0]
     expect(importedWorkspace).toMatchObject({ id: 'workspace-12345678', state: 'unbound' })
     expect(importedWorkspace).not.toHaveProperty('localPath')
-    expect(new ConversationStore(layout.conversationsRoot).load('conversation-import')).toMatchObject({
+    expect(persistedConversationFromProjectionV2(new ConversationRepositoryV2(layout.conversationsV2Root).projection('conversation-import'), 'fluxagent-unbound:workspace-12345678')).toMatchObject({
       title: 'Imported conversation',
       createdAt: 11,
       updatedAt: 29,
-      workspacePath: 'turboflux-unbound:workspace-12345678',
+      workspacePath: 'fluxagent-unbound:workspace-12345678',
       turns: [
-        { id: 'turn-1', content: 'history survives', timestamp: 13 },
-        { id: 'turn-2', content: 'in the same order', timestamp: 17 },
+        { id: normalizeConversationV2Id('turn', 'turn-1'), content: 'history survives', timestamp: 13 },
+        { id: normalizeConversationV2Id('turn', 'turn-2'), content: 'in the same order', timestamp: 17 },
       ],
     })
     const automations = JSON.parse(readFileSync(layout.automationsPath, 'utf8')) as { automations: Array<{ enabled: boolean; status: string }>; approvals: unknown[] }
@@ -341,7 +307,7 @@ describe('profile archive transactional importer', () => {
   })
 
   it.each(['scan', 'extraction'] as const)('does not commit and removes staging when authentication fails during %s', async phase => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-import-authentication-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-authentication-'))
     directories.push(root)
     const archive = await sourceArchive(root, true)
     const registry = targetRegistry(root)
@@ -366,7 +332,7 @@ describe('profile archive transactional importer', () => {
   })
 
   it.each(['staging', 'committing'] as const)('rolls back when cancelled during %s', async phase => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-import-cancellation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-cancellation-'))
     directories.push(root)
     const archive = await sourceArchive(root, true)
     const registry = targetRegistry(root)
@@ -387,7 +353,7 @@ describe('profile archive transactional importer', () => {
   })
 
   it('reprotects credentials for the target device without preserving source ciphertext', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-import-secret-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-secret-'))
     directories.push(root)
     const archive = await sourceArchive(root, true)
     const registry = targetRegistry(root)
@@ -410,7 +376,7 @@ describe('profile archive transactional importer', () => {
   })
 
   it('never materializes plaintext credential JSON in a recoverable staging transaction', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-import-secret-staging-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-secret-staging-'))
     directories.push(root)
     const archive = await sourceArchive(root, true)
     const registry = targetRegistry(root)
@@ -431,7 +397,7 @@ describe('profile archive transactional importer', () => {
   })
 
   it('preserves stable workspace references when an unbound import is exported again', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-import-reexport-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-reexport-'))
     directories.push(root)
     const archive = await sourceArchive(root)
     const registry = targetRegistry(root)
@@ -448,14 +414,15 @@ describe('profile archive transactional importer', () => {
     const reexport = await new ProfileExportPlanner({
       profile: imported.profile,
       layout: context.storage,
-      conversationDataVersion: 1,
+      conversationDataVersion: 2,
       appVersion: '1',
       coreVersion: '1',
       now: () => 3_000,
       createId: () => 'reexported-archive',
     }).prepare({ profileId: imported.profile.id, components: [...selectedComponents], encrypted: false })
     const documents = new Map(reexport.entries.filter(entry => entry.data).map(entry => [entry.path, JSON.parse(Buffer.from(entry.data!).toString('utf8')) as Record<string, unknown>]))
-    const conversation = (documents.get('components/conversations/items/conversation-import.json')?.conversation ?? {}) as Record<string, unknown>
+    const events = documents.get('components/conversations/events/conversation-import.json')?.events as Array<{ type: string; payload: { record?: Record<string, unknown> } }>
+    const conversation = events.find(event => event.type === 'conversation.created')!.payload.record!
     const projects = documents.get('components/projects/projects.json')?.projects as Array<Record<string, unknown>>
     const automations = documents.get('components/automations/automations.json')?.automations as Array<Record<string, unknown>>
 
@@ -468,7 +435,7 @@ describe('profile archive transactional importer', () => {
   })
 
   it('quarantines imported Skills and keeps Plugin and MCP execution disabled', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-import-executable-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-executable-'))
     directories.push(root)
     const archive = await sourceArchive(root, false, true)
     const registry = targetRegistry(root)
@@ -499,7 +466,7 @@ describe('profile archive transactional importer', () => {
     ['directory_committed', 'committed'],
     ['registered', 'committed'],
   ] as const)('recovers an interruption after %s as %s', async (phase, expectedOutcome) => {
-    const root = mkdtempSync(join(tmpdir(), `turboflux-import-${phase}-`))
+    const root = mkdtempSync(join(tmpdir(), `fluxagent-import-${phase}-`))
     directories.push(root)
     const archive = await sourceArchive(root)
     const registry = targetRegistry(root)

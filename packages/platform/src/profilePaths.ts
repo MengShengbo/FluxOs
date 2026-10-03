@@ -11,14 +11,14 @@ export interface ActiveProfilePaths {
 let activeProfilePaths: ActiveProfilePaths | undefined
 
 function defaultConfigRoot(): string {
-  return resolve((process.env.FLUXAGENT_CONFIG_DIR ?? process.env.TURBOFLUX_CONFIG_DIR) || join(homedir(), '.turboflux'))
+  return resolve(process.env.FLUXAGENT_CONFIG_DIR || join(homedir(), '.fluxagent'))
 }
 
 export function defaultActiveProfilePaths(): ActiveProfilePaths {
   const configRoot = defaultConfigRoot()
   return {
     configRoot,
-    conversationsRoot: resolve((process.env.FLUXAGENT_CONVERSATIONS_DIR ?? process.env.TURBOFLUX_CONVERSATIONS_DIR) || join(configRoot, 'conversations')),
+    conversationsRoot: resolve(process.env.FLUXAGENT_CONVERSATIONS_DIR || join(configRoot, 'conversations')),
     userSkillsRoot: join(configRoot, 'skills'),
     globalMcpSettingsPath: join(configRoot, 'settings.json'),
   }

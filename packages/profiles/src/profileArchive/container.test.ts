@@ -10,7 +10,7 @@ const directories: string[] = []
 const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
 
 function directory(): string {
-  const path = mkdtempSync(join(tmpdir(), 'turboflux-archive-'))
+  const path = mkdtempSync(join(tmpdir(), 'fluxagent-archive-'))
   directories.push(path)
   return path
 }
@@ -20,7 +20,7 @@ afterEach(() => {
 })
 
 describe('profile archive streaming container', () => {
-  it.each(['turboflux-profile', 'fluxagent-profile'])('round trips legacy and new %s files without duplicate content buffering', async extension => {
+  it.each(['fluxagent-profile'])('round trips current %s files without duplicate content buffering', async extension => {
     const root = directory()
     const blobPath = join(root, 'blob.bin')
     const blob = randomBytes(2 * 1024 * 1024)
@@ -43,7 +43,7 @@ describe('profile archive streaming container', () => {
 
   it('authenticates encrypted archives and hides entry names from the fixed header', async () => {
     const root = directory()
-    const targetPath = join(root, 'private.turboflux-profile')
+    const targetPath = join(root, 'private.fluxagent-profile')
     await writeProfileArchive({
       targetPath,
       password: 'correct horse battery staple',
@@ -64,21 +64,21 @@ describe('profile archive streaming container', () => {
 
   it('rejects unsafe paths and never overwrites an existing target', async () => {
     const root = directory()
-    const targetPath = join(root, 'existing.turboflux-profile')
+    const targetPath = join(root, 'existing.fluxagent-profile')
     writeFileSync(targetPath, 'keep')
     await expect(writeProfileArchive({ targetPath, entries: [] })).rejects.toMatchObject({ code: 'ARCHIVE_TARGET_EXISTS' })
     await expect(writeProfileArchive({
-      targetPath: join(root, 'unsafe.turboflux-profile'),
+      targetPath: join(root, 'unsafe.fluxagent-profile'),
       entries: [{ path: '../escape', data: '', size: 0, digest: digest('') }],
     })).rejects.toBeInstanceOf(ProfileArchiveError)
     for (const unsafePath of ['C:/escape', '//server/share', 'items/%2e%2e/escape', 'items/CON.json', 'items/name.']) {
       await expect(writeProfileArchive({
-        targetPath: join(root, `${digest(unsafePath)}.turboflux-profile`),
+        targetPath: join(root, `${digest(unsafePath)}.fluxagent-profile`),
         entries: [{ path: unsafePath, data: '', size: 0, digest: digest('') }],
       })).rejects.toMatchObject({ code: 'ARCHIVE_UNSAFE_ENTRY' })
     }
     await expect(writeProfileArchive({
-      targetPath: join(root, 'case-collision.turboflux-profile'),
+      targetPath: join(root, 'case-collision.fluxagent-profile'),
       entries: [
         { path: 'Items/A.json', data: '', size: 0, digest: digest('') },
         { path: 'items/a.json', data: '', size: 0, digest: digest('') },
@@ -89,7 +89,7 @@ describe('profile archive streaming container', () => {
 
   it('fails before staging when available disk space is insufficient', async () => {
     const root = directory()
-    const targetPath = join(root, 'no-space.turboflux-profile')
+    const targetPath = join(root, 'no-space.fluxagent-profile')
     await expect(writeProfileArchive({
       targetPath,
       availableBytes: async () => 1,
@@ -104,7 +104,7 @@ describe('profile archive streaming container', () => {
     writeFileSync(sourcePath, 'before')
     const snapshot = statSync(sourcePath)
     writeFileSync(sourcePath, 'after!')
-    const targetPath = join(root, 'changed.turboflux-profile')
+    const targetPath = join(root, 'changed.fluxagent-profile')
     await expect(writeProfileArchive({
       targetPath,
       entries: [{ path: `blobs/sha256/${digest('before')}`, sourcePath, sourceMtimeMs: snapshot.mtimeMs, size: 6, digest: digest('before') }],
@@ -120,7 +120,7 @@ describe('profile archive streaming container', () => {
     const timer = setInterval(() => { ticks += 1 }, 5)
     try {
       await writeProfileArchive({
-        targetPath: join(root, 'large.turboflux-profile'),
+        targetPath: join(root, 'large.fluxagent-profile'),
         entries: [{ path: 'blobs/sha256/large', data, size: data.length, digest: digest(data) }],
       })
     } finally {

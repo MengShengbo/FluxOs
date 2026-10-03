@@ -31,10 +31,6 @@
       "types": "./dist/automationFailure.d.ts",
       "import": "./dist/automationFailure.js"
     },
-    "./automationMigration": {
-      "types": "./dist/automationMigration.d.ts",
-      "import": "./dist/automationMigration.js"
-    },
     "./automationRecovery": {
       "types": "./dist/automationRecovery.d.ts",
       "import": "./dist/automationRecovery.js"
@@ -62,6 +58,10 @@
     "./automationTypes": {
       "types": "./dist/automationTypes.d.ts",
       "import": "./dist/automationTypes.js"
+    },
+    "./automationDefinition": {
+      "types": "./dist/automationDefinition.d.ts",
+      "import": "./dist/automationDefinition.js"
     }
   },
   "scripts": {

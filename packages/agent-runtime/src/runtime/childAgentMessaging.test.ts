@@ -154,25 +154,6 @@ describe('durable child message delivery', () => {
     expect(readRecord(restored, id).turns.filter((turn: AgentTurn) => turn.id === 'crash-message')).toHaveLength(1)
   })
 
-  it('migrates v1 inboxes in place and rejects messages after shutdown', async () => {
-    const f = fixture(); stream()
-    const id = await spawn(f); await wait(f, id); await f.runtime.destroy()
-    const record = readRecord(f, id)
-    record.schemaVersion = 1
-    record.inbox = [{ id: 'old-message', message: 'PRESERVE_LEGACY_GUIDANCE' }]
-    delete record.messages
-    writeFileSync(recordFile(f, id), JSON.stringify(record))
-    const restored = fixture(f.path)
-    expect(restored.controller.read(id, 'root-session').messages![0]).toEqual({ messageId: 'old-message', intent: 'message', state: 'queued' })
-    await followup(restored, id, 'Use the original guidance')
-    const migrated = readRecord(restored, id)
-    expect(migrated).toMatchObject({ schemaVersion: 2, messages: [{ messageId: 'old-message', state: 'committed' }] })
-    expect(migrated).not.toHaveProperty('inbox')
-    expect(migrated.turns.some((turn: AgentTurn) => turn.id === 'old-message' && turn.content === 'PRESERVE_LEGACY_GUIDANCE')).toBe(true)
-    await restored.runtime.destroy()
-    expect(() => restored.controller.message(id, 'root-session', 'too late')).toThrow('shutting down')
-  })
-
   it('cancels a newly admitted follow-up by stable identity before the runtime updates its snapshot', async () => {
     const f = fixture(); const model = stream()
     const id = await spawn(f); await wait(f, id)

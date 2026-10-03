@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { CapabilityBoundary, CapabilityViolationError } from './capabilityBoundary'
 
 function withDirectories(run: (workspace: string, outside: string) => void): void {
-  const workspace = mkdtempSync(join(tmpdir(), 'turboflux-capability-workspace-'))
-  const outside = mkdtempSync(join(tmpdir(), 'turboflux-capability-outside-'))
+  const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-capability-workspace-'))
+  const outside = mkdtempSync(join(tmpdir(), 'fluxagent-capability-outside-'))
   try {
     run(workspace, outside)
   } finally {

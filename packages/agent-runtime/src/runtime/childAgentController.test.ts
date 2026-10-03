@@ -192,8 +192,8 @@ describe('named shared-runtime children', () => {
     expect(waited).toContain('- agentId: ' + id)
     expect(waited).toContain('executionId: ' + execution)
     const read = await f.engine.dispatchTool('read_agent', { agent_id: execution })
-    expect(read).toContain('Agent ID: ' + id)
-    expect(read).toContain('Execution ID: ' + execution)
+    expect(JSON.parse(String(read)).agent.agentId).toBe(id)
+    expect(JSON.parse(String(read)).agent.executionId).toBe(execution)
     const retry = f.engine.retrySubAgentTask(id)
     await f.runtime.subAgentTaskManager.waitForTasks({ agentIds: [retry.id], mode: 'all', timeoutMs: 3000 })
     const controller = f.engine.getChildAgentController()
@@ -240,16 +240,6 @@ describe('named shared-runtime children', () => {
     await f.runtime.subAgentTaskManager.waitForTasks({ agentIds: [execution], mode: 'all', timeoutMs: 3000 })
     expect(write).not.toHaveBeenCalled()
     expect(f.engine.getChildAgentController().get(id, 'root-session').effectiveCapabilityProfile).toBe('read-only')
-  })
-
-  it('keeps completed legacy tasks visible alongside reusable child sessions', async () => {
-    const f = fixture(); streamModel(() => ({ text: 'named result' }))
-    const legacy = f.runtime.subAgentTaskManager.startTask({ kind: 'agent', agentType: 'old-role', label: 'Old', objective: 'Legacy history', workspacePath: f.path, ownerSessionId: 'root-session', run: async () => ({ ok: true }) })
-    await legacy.promise
-    const id = await spawn(f, '今朝', 'full')
-    const listed = JSON.parse(await f.engine.dispatchTool('list_agents', {}))
-    expect(listed.map((entry: any) => entry.agentId)).toEqual(expect.arrayContaining([id, legacy.task.id]))
-    expect(listed.find((entry: any) => entry.agentId === legacy.task.id).legacy).toBe(true)
   })
   it('enforces custom role output and tool-round budgets in the shared engine', async () => {
     const f = fixture()

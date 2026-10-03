@@ -159,7 +159,7 @@ export interface AutomationClaim {
 export type AutomationBeforePersistClaims = (claims: AutomationClaim[]) => void
 
 interface AutomationStoreFile {
-  schemaVersion: 1 | 2
+  schemaVersion: 2
   automations: AutomationRecord[]
   approvals?: AutomationApprovalRequest[]
 }
@@ -209,9 +209,14 @@ function normalizeApprovalOptions(kind: AutomationApprovalRequest['kind'], optio
 function validStore(value: unknown): value is AutomationStoreFile {
   if (!value || typeof value !== 'object') return false
   const store = value as Partial<AutomationStoreFile>
-  return (store.schemaVersion === 1 || store.schemaVersion === 2)
+  return store.schemaVersion === 2
     && Array.isArray(store.automations)
-    && (store.approvals === undefined || Array.isArray(store.approvals))
+    && Array.isArray(store.approvals)
+    && store.automations.every(record => record && Number.isInteger(record.revision) && record.revision >= 1
+      && Array.isArray(record.history) && Array.isArray(record.triggers)
+      && record.objective && record.capabilityPolicy && record.contextPolicy && record.reliabilityPolicy
+      && record.routingPolicy && record.agentPolicy && record.deliveryPolicy?.eventPolicyVersion === 2
+      && record.history.every(run => run && Number.isInteger(run.definitionRevision) && run.permissionSnapshot && run.contextSnapshot))
 }
 
 function defaultTimezone(): string {
@@ -599,20 +604,20 @@ function normalizeContextPolicy(
 
 function normalizeReliabilityPolicy(
   value: Partial<AutomationReliabilityPolicy> | undefined,
-  legacy: {
+  record: {
     misfirePolicy?: AutomationMisfirePolicy
     overlapPolicy?: AutomationOverlapPolicy
     retryPolicy?: Partial<AutomationRetryPolicy>
     maxRuntimeMinutes?: number
   } = {},
 ): AutomationReliabilityPolicy {
-  const retry = normalizeRetryPolicy({ ...legacy.retryPolicy, ...value?.retry })
+  const retry = normalizeRetryPolicy({ ...record.retryPolicy, ...value?.retry })
   return {
-    misfirePolicy: normalizeMisfirePolicy(value?.misfirePolicy ?? legacy.misfirePolicy),
-    overlapPolicy: normalizeOverlapPolicy(value?.overlapPolicy ?? legacy.overlapPolicy),
+    misfirePolicy: normalizeMisfirePolicy(value?.misfirePolicy ?? record.misfirePolicy),
+    overlapPolicy: normalizeOverlapPolicy(value?.overlapPolicy ?? record.overlapPolicy),
     maxParallel: Math.max(1, Math.min(8, Math.floor(Number(value?.maxParallel ?? 1)))),
     maxQueuedRuns: Math.max(1, Math.min(100, Math.floor(Number(value?.maxQueuedRuns ?? 1)))),
-    maxRuntimeMinutes: normalizeMaxRuntime(value?.maxRuntimeMinutes ?? legacy.maxRuntimeMinutes),
+    maxRuntimeMinutes: normalizeMaxRuntime(value?.maxRuntimeMinutes ?? record.maxRuntimeMinutes),
     maxToolCalls: Math.max(1, Math.min(10_000, Math.floor(Number(value?.maxToolCalls ?? 100)))),
     maxInputTokens: value?.maxInputTokens === undefined ? undefined : Math.max(1, Math.floor(Number(value.maxInputTokens))),
     maxOutputTokens: value?.maxOutputTokens === undefined ? undefined : Math.max(1, Math.floor(Number(value.maxOutputTokens))),
@@ -677,17 +682,14 @@ function normalizeDeliveryPolicy(value?: Partial<AutomationDeliveryPolicy>): Aut
   const events = (candidate: unknown, fallback: AutomationDeliveryPolicy['desktop']) => Array.isArray(candidate)
     ? candidate.filter((item): item is AutomationDeliveryPolicy['desktop'][number] => validEvents.has(String(item))).slice(0, 9)
     : fallback
-  const migrateFailureEvents = (candidate: AutomationDeliveryPolicy['desktop']) => value?.eventPolicyVersion === 2 || !candidate.includes('failed')
-    ? candidate
-    : [...new Set([...candidate, 'timeout' as const, 'budget' as const, 'recovered' as const])]
   return {
     eventPolicyVersion: 2,
-    desktop: migrateFailureEvents(events(value?.desktop, ['failed', 'timeout', 'budget', 'approval', 'invalid', 'recovered'])),
-    remoteMobile: migrateFailureEvents(events(value?.remoteMobile, ['approval'])),
+    desktop: events(value?.desktop, ['failed', 'timeout', 'budget', 'approval', 'invalid', 'recovered']),
+    remoteMobile: events(value?.remoteMobile, ['approval']),
     digest: value?.digest === 'hourly' || value?.digest === 'daily' ? value.digest : 'immediate',
     failureCooldownMinutes: Math.max(0, Math.min(7 * 24 * 60, Math.floor(Number(value?.failureCooldownMinutes ?? 30)))),
     providerRefs: boundedStrings(value?.providerRefs, 50),
-    providerEvents: migrateFailureEvents(events(value?.providerEvents, ['success', 'no_change', 'partial', 'failed', 'timeout', 'budget', 'invalid', 'recovered'])),
+    providerEvents: events(value?.providerEvents, ['success', 'no_change', 'partial', 'failed', 'timeout', 'budget', 'invalid', 'recovered']),
     providerVersions: Object.fromEntries(Object.entries(value?.providerVersions ?? {}).slice(0, 50).map(([key, version]) => [
       key.trim().slice(0, 300),
       String(version).trim().slice(0, 120),
@@ -745,7 +747,7 @@ export class AutomationService {
     const loaded = this.store.load()
     this.data = loaded.value
     this.warnings = loaded.warnings
-    if (this.normalizeLoadedRecords()) this.persist()
+    if (this.recoverInterruptedRecords()) this.persist()
   }
 
   list(workspacePath?: string): AutomationSnapshot {
@@ -1542,179 +1544,31 @@ export class AutomationService {
     automation.history = automation.history.slice(0, HISTORY_LIMIT)
   }
 
-  private normalizeLoadedRecords(): boolean {
-    let changed = this.data.schemaVersion !== 2
-    this.data.schemaVersion = 2
+  private recoverInterruptedRecords(): boolean {
+    let changed = false
     const now = Date.now()
-    if (!Array.isArray(this.data.approvals)) {
-      this.data.approvals = []
+    for (const approval of this.data.approvals ?? []) {
+      if (approval.status !== 'pending') continue
+      approval.status = 'canceled'
+      approval.decision = 'cancelled'
+      approval.responseChannel = 'system'
+      approval.resolvedAt = now
       changed = true
     }
-    for (const approval of this.data.approvals) {
-      const automation = this.data.automations.find(item => item.id === approval.automationId)
-      const run = automation?.history.find(item => item.id === approval.runId)
-      if (!Number.isInteger(approval.definitionRevision) || approval.definitionRevision < 1) {
-        approval.definitionRevision = run?.definitionRevision ?? automation?.revision ?? 1
-        changed = true
-      }
-      if (!approval.permissionSnapshotId) {
-        approval.permissionSnapshotId = run?.permissionSnapshot.id ?? `permission-${approval.runId}`
-        changed = true
-      }
-      if (!['permission', 'filesystem', 'network', 'computer', 'secret', 'input'].includes(approval.riskCategory)) {
-        approval.riskCategory = approval.kind === 'input' ? 'input' : approval.path ? 'filesystem' : 'permission'
-        changed = true
-      }
-      if (automation && approval.automationName !== automation.name) {
-        approval.automationName = automation.name
-        changed = true
-      }
-      if (automation && approval.workspacePath !== automation.workspacePath) {
-        approval.workspacePath = automation.workspacePath
-        changed = true
-      }
-      if (approval.status === 'pending') {
-        approval.status = 'canceled'
-        approval.decision = 'cancelled'
-        approval.responseChannel = 'system'
-        approval.resolvedAt = now
-        changed = true
-      }
-    }
     for (const automation of this.data.automations) {
-      if (!Array.isArray(automation.history)) {
-        automation.history = []
-        changed = true
-      }
-      try {
-        automation.schedule = normalizeSchedule(automation.schedule)
-        automation.timezone = normalizeTimezone(automation.timezone)
-      } catch (error) {
-        automation.schedule = { kind: 'manual' }
-        automation.enabled = false
-        automation.nextRunAt = undefined
-        this.warnings.push(`Automation ${automation.name || automation.id} was disabled: ${error instanceof Error ? error.message : String(error)}`)
-        changed = true
-      }
-      automation.approvalPolicy = normalizeApprovalPolicy(automation.approvalPolicy)
-      if (!Number.isInteger(automation.revision) || automation.revision < 1) {
-        automation.revision = 1
-        changed = true
-      }
-      const mode = normalizeRunMode(automation.mode, 'continuation')
-      if (automation.mode !== mode) {
-        automation.mode = mode
-        changed = true
-      }
-      const lifecycleStatus = normalizeLifecycleStatus(automation.lifecycleStatus, automation.enabled ? 'active' : 'paused')
-      if (automation.lifecycleStatus !== lifecycleStatus) {
-        automation.lifecycleStatus = lifecycleStatus
-        changed = true
-      }
-      if (automation.lifecycleStatus !== 'active' && automation.enabled) {
-        automation.enabled = false
-        automation.nextRunAt = undefined
-        changed = true
-      }
-      if (!Array.isArray(automation.validationIssues)) {
-        automation.validationIssues = []
-        changed = true
-      }
-      if (!Array.isArray(automation.riskSummary)) {
-        automation.riskSummary = []
-        changed = true
-      }
-      if (!automation.objective) {
-        automation.objective = normalizeObjective(automation.prompt)
-        changed = true
-      } else {
-        automation.objective = normalizeObjective(automation.prompt, automation.objective)
-      }
-      if (!automation.capabilityPolicy) changed = true
-      automation.capabilityPolicy = normalizeCapabilityPolicy(
-        automation.workspacePath,
-        automation.approvalPolicy,
-        automation.capabilityPolicy,
-      )
-      automation.approvalPolicy = automation.capabilityPolicy.approvalPolicy
-      automation.misfirePolicy = normalizeMisfirePolicy(automation.misfirePolicy)
-      automation.overlapPolicy = normalizeOverlapPolicy(automation.overlapPolicy)
-      automation.retryPolicy = normalizeRetryPolicy(automation.retryPolicy)
-      automation.maxRuntimeMinutes = normalizeMaxRuntime(automation.maxRuntimeMinutes)
-      if (!automation.contextPolicy) changed = true
-      automation.contextPolicy = normalizeContextPolicy(automation.mode, automation.contextPolicy, automation.conversationId)
-      automation.mode = automation.contextPolicy.mode
-      if (!automation.reliabilityPolicy) changed = true
-      automation.reliabilityPolicy = normalizeReliabilityPolicy(automation.reliabilityPolicy, automation)
-      if (!automation.routingPolicy) changed = true
-      automation.routingPolicy = normalizeRoutingPolicy(automation.routingPolicy)
-      if (!automation.agentPolicy) changed = true
-      automation.agentPolicy = normalizeAgentPolicy(automation.agentPolicy)
-      automation.misfirePolicy = automation.reliabilityPolicy.misfirePolicy
-      automation.overlapPolicy = normalizeOverlapPolicy(automation.reliabilityPolicy.overlapPolicy)
-      automation.retryPolicy = {
-        maxRetries: automation.reliabilityPolicy.retry.maxRetries,
-        backoffMinutes: automation.reliabilityPolicy.retry.backoffMinutes,
-      }
-      automation.maxRuntimeMinutes = automation.reliabilityPolicy.maxRuntimeMinutes
-      const deliveryPolicyNeedsMigration = automation.deliveryPolicy?.eventPolicyVersion !== 2
-      if (!automation.deliveryPolicy) changed = true
-      automation.deliveryPolicy = normalizeDeliveryPolicy(automation.deliveryPolicy)
-      if (deliveryPolicyNeedsMigration) {
-        automation.revision += 1
-        automation.updatedAt = now
-        changed = true
-      }
-      if (!Array.isArray(automation.triggers)) changed = true
-      automation.triggers = normalizeTriggers(automation.triggers, automation.schedule, automation.timezone)
-      automation.workspacePath = resolve(automation.workspacePath)
-      if (automation.enabled && automation.nextRunAt === undefined) {
-        automation.nextRunAt = nextAutomationRunAt(automation.schedule, automation.timezone, now)
-        changed = true
-      }
       for (const run of automation.history) {
-        run.trigger = run.trigger || 'scheduled'
-        run.attempt = Math.max(1, run.attempt || 1)
-        if (!Number.isInteger(run.definitionRevision) || run.definitionRevision < 1) {
-          run.definitionRevision = 1
-          changed = true
-        }
-        if (!run.permissionSnapshot) {
-          run.permissionSnapshot = this.createPermissionSnapshot(automation, run.id, run.startedAt, run.dryRun === true)
-          run.permissionSnapshot.definitionRevision = run.definitionRevision
-          changed = true
-        }
-        if (!run.contextSnapshot) {
-          run.contextSnapshot = this.createContextSnapshot(automation, run.id, run.startedAt)
-          run.contextSnapshot.definitionRevision = run.definitionRevision
-          run.contextSnapshot.conversationId = run.conversationId
-          changed = true
-        }
-        if (run.status === 'completed' && !run.result) {
-          run.result = {
-            outcome: 'success',
-            summary: run.resultSummary || 'Automation completed without a saved summary.',
-            successCriteria: automation.objective.successCriteria.map(criterion => ({ criterion, status: 'unknown' })),
-            artifactIds: [],
-            sideEffectSummary: [],
-            durationMs: run.durationMs ?? Math.max(0, (run.completedAt ?? run.updatedAt) - run.startedAt),
-          }
-          changed = true
-        }
-        if (['queued', 'running', 'waiting_for_approval', 'waiting_for_workspace'].includes(run.status)) {
-          run.status = 'interrupted'
-          run.updatedAt = now
-          run.completedAt = now
-          run.durationMs = Math.max(0, now - run.startedAt)
-          run.error = 'FluxAgentCore exited before this run completed.'
-          automation.activeRunId = undefined
-          automation.lastStatus = 'interrupted'
-          automation.lastError = run.error
-          this.scheduleRetry(automation, run, now)
-          changed = true
-        }
+        if (!['queued', 'running', 'waiting_for_approval', 'waiting_for_workspace'].includes(run.status)) continue
+        run.status = 'interrupted'
+        run.updatedAt = now
+        run.completedAt = now
+        run.durationMs = Math.max(0, now - run.startedAt)
+        run.error = 'FluxAgentCore exited before this run completed.'
+        automation.activeRunId = undefined
+        automation.lastStatus = 'interrupted'
+        automation.lastError = run.error
+        this.scheduleRetry(automation, run, now)
+        changed = true
       }
-      automation.history = automation.history.slice(0, HISTORY_LIMIT)
     }
     return changed
   }

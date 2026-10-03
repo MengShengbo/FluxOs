@@ -25,7 +25,7 @@ function segment(params: Partial<ContextSegment> & { summary: string }): Context
 
 describe('ContextManager', () => {
   it('converts image attachments into OpenAI-compatible image_url content blocks', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'turboflux-image-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'fluxagent-image-test-'))
     try {
       const imagePath = join(dir, 'sample.png')
       writeFileSync(imagePath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=', 'base64'))
@@ -65,7 +65,7 @@ describe('ContextManager', () => {
   })
 
   it('converts image attachments into Anthropic image content blocks', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'turboflux-image-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'fluxagent-image-test-'))
     try {
       const imagePath = join(dir, 'sample.png')
       writeFileSync(imagePath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=', 'base64'))
@@ -108,7 +108,7 @@ describe('ContextManager', () => {
   it.each(['browser__visual_observe', 'computer__observe'])(
     'appends visual evidence after OpenAI %s outputs',
     toolName => {
-    const dir = mkdtempSync(join(tmpdir(), 'turboflux-tool-image-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'fluxagent-tool-image-test-'))
     try {
       const imagePath = join(dir, 'viewport.png')
       writeFileSync(imagePath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=', 'base64'))
@@ -151,7 +151,7 @@ describe('ContextManager', () => {
   })
 
   it('keeps only the newest visual evidence within the request image budget', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'turboflux-tool-image-budget-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'fluxagent-tool-image-budget-test-'))
     try {
       const manager = new ContextManager()
       const turns: AgentTurn[] = []
@@ -185,7 +185,7 @@ describe('ContextManager', () => {
   })
 
   it('keeps screenshots in history without sending image blocks to a text-only model', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'turboflux-text-only-image-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'fluxagent-text-only-image-test-'))
     try {
       const imagePath = join(dir, 'viewport.png')
       writeFileSync(imagePath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=', 'base64'))
@@ -213,7 +213,7 @@ describe('ContextManager', () => {
   })
 
   it('embeds browser tool images inside Anthropic tool results', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'turboflux-tool-image-test-'))
+    const dir = mkdtempSync(join(tmpdir(), 'fluxagent-tool-image-test-'))
     try {
       const imagePath = join(dir, 'viewport.png')
       writeFileSync(imagePath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=', 'base64'))

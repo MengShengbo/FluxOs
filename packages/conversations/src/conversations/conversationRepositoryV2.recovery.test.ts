@@ -15,7 +15,7 @@ vi.mock('node:fs', async importOriginal => {
 })
 
 const roots: string[] = []
-function root() { const path = mkdtempSync(join(tmpdir(), 'turboflux-projection-recovery-')); roots.push(path); return path }
+function root() { const path = mkdtempSync(join(tmpdir(), 'fluxagent-projection-recovery-')); roots.push(path); return path }
 afterEach(() => { vi.resetAllMocks(); for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }) })
 
 function created(id = 'conversation-1', title = 'Before crash'): AnyAppendConversationEventV2Input {
@@ -50,12 +50,12 @@ describe('projection recovery after journal commit', () => {
       if (recovery === 'retry') expect(restarted.append([renamed()])).toMatchObject({ appended: 0, lastSeq: 2 })
       if (recovery === 'projection') expect(restarted.projection('conversation-1').throughSeq).toBe(2)
       if (recovery === 'list') expect(restarted.list({ query: 'After crash' }).total).toBe(1)
-      if (recovery === 'search') expect(restarted.search('After crash')).toHaveLength(1)
+      if (recovery === 'search') expect(restarted.search({ query: 'After crash' })).toHaveLength(1)
       expect(restarted.projection('conversation-1')).toMatchObject({ throughSeq: 2, conversation: { title: 'After crash' } })
       expect(restarted.list({ query: 'After crash' }).total).toBe(1)
-      expect(restarted.search('After crash')).toHaveLength(1)
-      expect(restarted.search('Before crash')).toEqual([])
-      expect(restarted.search('Unaffected record')).toHaveLength(1)
+      expect(restarted.search({ query: 'After crash' })).toHaveLength(1)
+      expect(restarted.search({ query: 'Before crash' })).toEqual([])
+      expect(restarted.search({ query: 'Unaffected record' })).toHaveLength(1)
       expect(restarted.append([renamed()]).appended).toBe(0)
       expect(restarted.read('conversation-1').events).toHaveLength(2)
       expect(readdirSync(directory, { recursive: true }).some(path => String(path).endsWith('.tmp'))).toBe(false)
@@ -71,7 +71,7 @@ describe('projection recovery after journal commit', () => {
     journal.append([renamed()])
     expect(new ConversationRepositoryV2(directory).list().conversations[0]).toMatchObject({ title: 'After crash', lastEventSeq: 2 })
     journal.append([created('conversation-2', 'New external journal')])
-    expect(repository.search('New external journal')).toHaveLength(1)
+    expect(repository.search({ query: 'New external journal' })).toHaveLength(1)
   })
 
   it('rebuilds a missing or corrupt search index without losing other conversations', () => {
@@ -81,8 +81,8 @@ describe('projection recovery after journal commit', () => {
     repository.append([created('conversation-2', 'Unaffected record')])
     writeFileSync(join(directory, 'search-index.json'), '{broken')
     repository.append([renamed()])
-    expect(repository.search('Unaffected record')).toHaveLength(1)
-    expect(repository.search('After crash')).toHaveLength(1)
+    expect(repository.search({ query: 'Unaffected record' })).toHaveLength(1)
+    expect(repository.search({ query: 'After crash' })).toHaveLength(1)
   })
 
   it('rejects a stale but internally valid snapshot even if the checkpoint is current', () => {
@@ -127,7 +127,7 @@ describe('projection recovery after journal commit', () => {
       const catalog = JSON.parse(readFileSync(join(directory, 'catalog.json'), 'utf8'))
       expect(catalog.records.map((record: ConversationRecordV2) => record.title).sort()).toEqual(['Concurrent a', 'Concurrent b'])
       const restarted = new ConversationRepositoryV2(directory)
-      expect(restarted.search('Concurrent')).toHaveLength(2)
+      expect(restarted.search({ query: 'Concurrent' })).toHaveLength(2)
       expect(restarted.projection('conversation-a').throughSeq).toBe(2)
       expect(restarted.projection('conversation-b').throughSeq).toBe(2)
     } finally {

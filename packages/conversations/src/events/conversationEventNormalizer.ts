@@ -397,7 +397,7 @@ export class ConversationEventNormalizer {
         for (const toolCall of turn.toolCalls || []) {
           events.push(this.event('tool.proposed', { toolCall }, {
             at,
-            source: 'migration',
+            source: 'runtime',
             provenance: 'restored',
             runId: this.runId,
             turnId: turn.id,
@@ -421,7 +421,7 @@ export class ConversationEventNormalizer {
       for (const toolResult of turn.toolResults || []) {
         events.push(this.event('tool.completed', { toolResult }, {
           at,
-          source: 'migration',
+          source: 'runtime',
           provenance: 'restored',
           runId: turn.metadata?.workRunId || this.runId,
           stepId: this.currentStepId,
@@ -553,7 +553,7 @@ export class ConversationEventNormalizer {
   ): AppendConversationEventInput<Type> {
     return this.event(type, { turn }, {
       at,
-      source: provenance === 'restored' ? 'migration' : 'agent',
+      source: provenance === 'restored' ? 'runtime' : 'agent',
       provenance,
       runId: turn.metadata?.workRunId || this.runId,
       turnId: turn.id,
@@ -573,7 +573,7 @@ export class ConversationEventNormalizer {
   ): AppendConversationEventInput<'stream.committed'> {
     return this.event('stream.committed', { channel, text }, {
       at,
-      source: provenance === 'restored' ? 'migration' : 'agent',
+      source: provenance === 'restored' ? 'runtime' : 'agent',
       provenance,
       runId: this.runId,
       turnId,

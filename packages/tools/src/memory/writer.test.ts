@@ -9,7 +9,7 @@ import { MemoryService } from './service'
 import { MemoryWriter } from './writer'
 
 const roots: string[] = []
-function workspace() { const root = mkdtempSync(join(tmpdir(), 'turboflux-memory-writers-')); roots.push(root); return root }
+function workspace() { const root = mkdtempSync(join(tmpdir(), 'fluxagent-memory-writers-')); roots.push(root); return root }
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 
 describe('memory writer shared state', () => {
@@ -38,7 +38,7 @@ describe('memory writer shared state', () => {
     const first = await a.remember({ workspacePath, text: 'Runtime reads deployment configuration', tags: ['first'] })
     const repeated = await b.remember({ workspacePath, text: 'Runtime reads deployment configuration', tags: ['second'] })
     expect(repeated).toMatchObject({ id: first.id, deduplicated: true })
-    rmSync(join(workspacePath, '.turboflux', 'memory', 'facts.jsonl'))
+    rmSync(join(workspacePath, '.fluxagent', 'memory', 'facts.jsonl'))
     expect(await a.update({ workspacePath, id: first.id!, pinned: true })).toMatchObject({ success: false })
     expect((await a.remember({ workspacePath, text: 'Runtime reads deployment configuration' })).id).not.toBe(first.id)
   })
@@ -80,7 +80,7 @@ describe('memory writer shared state', () => {
       const results = await Promise.all(processes.map(process => process.done))
       expect(results.every(result => result.success)).toBe(true)
       expect(results[0].id).toBe(results[1].id)
-      const lines = readFileSync(join(workspacePath, '.turboflux', 'memory', 'facts.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line) as Memory)
+      const lines = readFileSync(join(workspacePath, '.fluxagent', 'memory', 'facts.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line) as Memory)
       expect(lines.at(-1)?.tags).toEqual(expect.arrayContaining(['writer-0', 'writer-1']))
     } finally {
       for (const process of processes) if (process.child.exitCode === null) process.child.kill()

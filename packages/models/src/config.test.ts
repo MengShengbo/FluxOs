@@ -74,8 +74,8 @@ describe('setConfigValue', () => {
     expect(next.reasoning?.effort).toBe('high')
   })
 
-  it('migrates legacy approval names and stores native reasoning effort', () => {
-    const approval = setConfigValue(baseConfig, 'approvalPolicy', 'auto')
+  it('accepts current approval names and stores native reasoning effort', () => {
+    const approval = setConfigValue(baseConfig, 'approvalPolicy', 'agent')
     const reasoning = setConfigValue({ ...baseConfig, provider: 'openai', model: 'gpt-5.6' }, 'reasoningEffort', 'xhigh')
 
     expect(approval.approvalPolicy).toBe('agent')

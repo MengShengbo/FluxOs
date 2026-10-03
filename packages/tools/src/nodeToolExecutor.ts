@@ -78,13 +78,13 @@ const MAX_TERMINAL_BUFFER_CHARS = 1_000_000
 const MAX_RECOVERED_TERMINAL_READ_BYTES = 2 * 1024 * 1024
 const MAX_COMMAND_OUTPUT_CHARS = 2_000_000
 const COMMAND_TERMINATION_GRACE_MS = 2000
-const RUNTIME_LOG_DIRECTORY = join('.turboflux', 'runtime-logs')
+const RUNTIME_LOG_DIRECTORY = join('.fluxagent', 'runtime-logs')
 const TERMINAL_KILL_TIMEOUT_MS = 5000
 const RUNTIME_TASK_SNAPSHOT_INTERVAL_MS = 5000
 const MODEL_REQUEST_TIMEOUT_MS = 2 * 60 * 1000
 const DEFAULT_SHELL = getDefaultShellSpec()
 const CODE_SEARCH_SKIPPED_DIRS = new Set([
-  '.git', '.hg', '.svn', '.claude', '.turboflux', '.vscode', '.cache', '.next', '.turbo',
+  '.git', '.hg', '.svn', '.claude', '.fluxagent', '.vscode', '.cache', '.next', '.turbo',
   '.gradle', '.m2', '.npm', '.pnpm-store', '.rustup', '.venv',
   'AppData', 'appdata', 'Library', 'library', 'node_modules', 'vendor', 'venv', 'dist', 'dist-desktop', 'build', 'out',
   'coverage', 'target', 'tmp', 'temp',
@@ -104,7 +104,7 @@ export class NodeToolExecutor implements ToolExecutor {
   private readonly runtimeLogsRoot?: string
 
   constructor(private workspacePath: string, options: NodeToolExecutorOptions = {}) {
-    this.webResearchService = new WebResearchService({ sourceDirectory: join(options.runtimeLogsRoot || join(workspacePath, '.turboflux'), 'web-sources', options.ownerSessionId ? createHash('sha256').update(options.ownerSessionId).digest('hex').slice(0, 32) : 'workspace') })
+    this.webResearchService = new WebResearchService({ sourceDirectory: join(options.runtimeLogsRoot || join(workspacePath, '.fluxagent'), 'web-sources', options.ownerSessionId ? createHash('sha256').update(options.ownerSessionId).digest('hex').slice(0, 32) : 'workspace') })
     this.memoryService = new MemoryService(options.memoryRoot)
     this.runtimeLogsRoot = options.runtimeLogsRoot ? resolveNativePath(options.runtimeLogsRoot) : undefined
     this.capabilityBoundary = new CapabilityBoundary(workspacePath, options.capabilityProfile)
@@ -223,7 +223,7 @@ export class NodeToolExecutor implements ToolExecutor {
       const dir = dirname(safePath)
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
       safePath = this.resolvePath(safePath, 'write')
-      const lockPath = join(dir, `.${basename(safePath)}.turboflux-write.lock`)
+      const lockPath = join(dir, `.${basename(safePath)}.fluxagent-write.lock`)
       await writeFileAtomic(safePath, content, {
         lockPath,
         expectNotExists: metadata?.expectNotExists === true,
@@ -251,7 +251,7 @@ export class NodeToolExecutor implements ToolExecutor {
   async deleteFile(path: string, options?: { recursive?: boolean; expectedHash?: string }): Promise<Result<void>> {
     try {
       const safePath = this.resolvePath(path, 'write')
-      return withFileLockSync(join(dirname(safePath), `.${basename(safePath)}.turboflux-write.lock`), () => {
+      return withFileLockSync(join(dirname(safePath), `.${basename(safePath)}.fluxagent-write.lock`), () => {
         if (!existsSync(safePath)) return { success: false, error: 'File not found' }
         const expectedHash = options?.expectedHash
         if (typeof expectedHash === 'string') {
@@ -274,7 +274,7 @@ export class NodeToolExecutor implements ToolExecutor {
       const safeDestinationPath = this.resolvePath(destinationPath, 'write')
       const parent = dirname(safeDestinationPath)
       if (!existsSync(parent)) mkdirSync(parent, { recursive: true })
-      const locks = [safeSourcePath, safeDestinationPath].sort().map(target => join(dirname(target), `.${basename(target)}.turboflux-write.lock`))
+      const locks = [safeSourcePath, safeDestinationPath].sort().map(target => join(dirname(target), `.${basename(target)}.fluxagent-write.lock`))
       return withFileLockSync(locks[0]!, () => withFileLockSync(locks[1]!, () => {
         if (!existsSync(safeSourcePath)) return { success: false, error: `File not found: ${sourcePath}` }
         if (statSync(safeSourcePath).isDirectory()) return { success: false, error: `Cannot move directory with moveFile: ${sourcePath}` }
@@ -1741,9 +1741,9 @@ function getShellCommand(command: string): { shell: string; shellArgs: string[] 
   const wrapped = [
     '[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [Console]::OutputEncoding',
     command,
-    '$turbofluxSucceeded = $?',
-    '$turbofluxExitCode = $LASTEXITCODE',
-    'if (-not $turbofluxSucceeded) { if ($null -ne $turbofluxExitCode) { exit $turbofluxExitCode }; exit 1 }',
+    '$fluxagentSucceeded = $?',
+    '$fluxagentExitCode = $LASTEXITCODE',
+    'if (-not $fluxagentSucceeded) { if ($null -ne $fluxagentExitCode) { exit $fluxagentExitCode }; exit 1 }',
   ].join('\n')
   return {
     shell: DEFAULT_SHELL.command,

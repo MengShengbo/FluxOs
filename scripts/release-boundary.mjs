@@ -5,7 +5,7 @@ export const corePackageIds = Object.freeze([
   'contracts', 'platform', 'models', 'tools', 'extensions', 'agent-runtime',
   'conversations', 'profiles', 'automations', 'presentation',
 ])
-export const productPackageIds = Object.freeze(['agent-core', 'workbench', 'renderer', 'remote-protocol'])
+export const productPackageIds = Object.freeze(['workbench', 'renderer', 'remote-protocol'])
 export const productIntegrationTests = new Set([
   'packages/agent-runtime/src/coreOwnership.test.ts',
   'packages/conversations/src/conversations/conversationRuntimeRepositoryV2.test.ts',

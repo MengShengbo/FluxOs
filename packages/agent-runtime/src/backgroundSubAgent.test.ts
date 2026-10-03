@@ -1,3 +1,4 @@
+import { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -35,8 +36,8 @@ describe('AgentEngine background subagent tools', () => {
   })
 
   it('offers the built-in research agent without project definitions', async () => {
-    const workspacePath = mkdtempSync(path.join(tmpdir(), 'turboflux-agent-engine-empty-'))
-    const runtime = createAgentRuntime({ legacySubAgentRunner: runSubAgent,
+    const workspacePath = mkdtempSync(path.join(tmpdir(), 'fluxagent-agent-engine-empty-'))
+    const runtime = createAgentRuntime({
       workspacePath,
       workspaceName: 'empty-agent-test',
       conversationId: 'conversation-empty',
@@ -67,9 +68,9 @@ describe('AgentEngine background subagent tools', () => {
   })
 
   it('returns an agent ID immediately, then exposes the persisted result', async () => {
-    const workspacePath = mkdtempSync(path.join(tmpdir(), 'turboflux-agent-engine-bg-'))
+    const workspacePath = mkdtempSync(path.join(tmpdir(), 'fluxagent-agent-engine-bg-'))
     registerTestAgent('background_test_agent')
-    const runtime = createAgentRuntime({ legacySubAgentRunner: runSubAgent,
+    const runtime = createAgentRuntime({
       workspacePath,
       workspaceName: 'background-agent-test',
       conversationId: 'conversation-bg',
@@ -84,9 +85,11 @@ describe('AgentEngine background subagent tools', () => {
         maxTokens: 4096,
       },
     })
-    const dispatchTool = (runtime.engine as unknown as {
+    const dispatchToolRaw = (runtime.engine as unknown as {
       dispatchTool: (name: string, args: Record<string, unknown>) => Promise<string | { output: string; data?: ToolResultData }>
     }).dispatchTool.bind(runtime.engine)
+    let childOrdinal = 0
+    const dispatchTool = (name: string, args: Record<string, unknown>) => dispatchToolRaw(name, name === 'spawn_agent' ? { name: 'Test child ' + ++childOrdinal, ...args } : args)
     let resolveFetch!: (response: Response) => void
     const events: Array<{ type: string }> = []
     const unsubscribe = runtime.engine.subscribe(event => events.push(event))
@@ -99,6 +102,19 @@ describe('AgentEngine background subagent tools', () => {
       }, { once: true })
     })) as unknown as typeof fetch
 
+    vi.spyOn(NodeToolExecutor.prototype, 'streamMessage').mockImplementation(async (_url, _headers, body, onLine) => {
+      const input = JSON.parse(body)
+      if (input.tool_choice?.function?.name === 'set_response_mode') {
+        onLine('data: ' + JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'mode', type: 'function', function: { name: 'set_response_mode', arguments: '{"mode":"task"}' } }] }, finish_reason: 'tool_calls' }] }))
+      } else {
+        const response = await new Promise<Response>(resolve => { resolveFetch = resolve })
+        const data = await response.json() as { choices: Array<{ message: { content: string } }> }
+        onLine('data: ' + JSON.stringify({ choices: [{ delta: { content: data.choices[0]!.message.content }, finish_reason: 'stop' }], usage: { prompt_tokens: 30, completion_tokens: 10 } }))
+      }
+      onLine('data: [DONE]')
+      return { success: true, data: '' }
+    })
+
     try {
       const launchResult = await dispatchTool('spawn_agent', {
         agent_type: 'background_test_agent',
@@ -108,25 +124,22 @@ describe('AgentEngine background subagent tools', () => {
       const agentId = launchResult.match(/Agent ID: ([\w-]+)/)?.[1]
 
       expect(agentId).toBeTruthy()
-      expect(runtime.subAgentTaskManager.getTask(agentId!)?.runtimeTask.status).toBe('running')
-      expect(await dispatchTool('list_agents', {})).toMatchObject({
-        output: expect.stringContaining(`[running] ${agentId}`),
-        data: { kind: 'items', items: [{ title: 'Find the runtime entry point', description: 'background_test_agent', status: 'running' }] },
-      })
+      expect(runtime.subAgentTaskManager.listTasks().find(task => task.agentSessionId === agentId)?.runtimeTask.status).toBe('running')
+      expect(JSON.parse(String(await dispatchTool('list_agents', {})))).toEqual(expect.arrayContaining([expect.objectContaining({ agentId, state: 'running' })]))
 
       for (let attempt = 0; !resolveFetch && attempt < 50; attempt += 1) {
         await new Promise(resolve => setTimeout(resolve, 5))
       }
       expect(resolveFetch).toBeTypeOf('function')
       resolveFetch(new Response(JSON.stringify({
-        choices: [{ message: { content: 'The runtime starts in agentRuntime.ts.' } }],
+        choices: [{ message: { content: 'The runtime starts in agentRuntime.ts.' }, finish_reason: 'stop' }],
+        output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'The runtime starts in agentRuntime.ts.' }] }],
       }), { status: 200 }))
-      await waitForStatus(() => runtime.subAgentTaskManager.getTask(agentId!)?.runtimeTask.status, 'completed')
+      await waitForStatus(() => runtime.subAgentTaskManager.listTasks().find(task => task.agentSessionId === agentId)?.runtimeTask.status, 'completed')
 
       const result = await dispatchTool('read_agent', { agent_id: agentId })
-      expect(result).toContain('Status: completed')
+      expect(JSON.parse(String(result)).agent.lastOutcome).toBe('completed')
       expect(result).toContain('The runtime starts in agentRuntime.ts.')
-      expect(result).toContain('Transcript:')
       expect(events.some(event => event.type === 'subagent:progress')).toBe(true)
     } finally {
       unsubscribe()
@@ -136,9 +149,9 @@ describe('AgentEngine background subagent tools', () => {
   })
 
   it('cancels a running agent by ID', async () => {
-    const workspacePath = mkdtempSync(path.join(tmpdir(), 'turboflux-agent-engine-cancel-'))
+    const workspacePath = mkdtempSync(path.join(tmpdir(), 'fluxagent-agent-engine-cancel-'))
     registerTestAgent('cancel_test_agent')
-    const runtime = createAgentRuntime({ legacySubAgentRunner: runSubAgent,
+    const runtime = createAgentRuntime({
       workspacePath,
       workspaceName: 'cancel-agent-test',
       conversationId: 'conversation-cancel',
@@ -153,9 +166,11 @@ describe('AgentEngine background subagent tools', () => {
         maxTokens: 4096,
       },
     })
-    const dispatchTool = (runtime.engine as unknown as {
+    const dispatchToolRaw = (runtime.engine as unknown as {
       dispatchTool: (name: string, args: Record<string, unknown>) => Promise<string>
     }).dispatchTool.bind(runtime.engine)
+    let childOrdinal = 0
+    const dispatchTool = (name: string, args: Record<string, unknown>) => dispatchToolRaw(name, name === 'spawn_agent' ? { name: 'Test child ' + ++childOrdinal, ...args } : args)
     globalThis.fetch = vi.fn((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => {
         const error = new Error('Aborted')
@@ -173,8 +188,8 @@ describe('AgentEngine background subagent tools', () => {
       expect(agentId).toBeTruthy()
 
       expect(await dispatchTool('cancel_agent', { agent_id: agentId })).toContain('is stopped')
-      await waitForStatus(() => runtime.subAgentTaskManager.getTask(agentId!)?.runtimeTask.status, 'stopped')
-      expect(await dispatchTool('read_agent', { agent_id: agentId })).toContain('Status: stopped')
+      await waitForStatus(() => runtime.subAgentTaskManager.listTasks().find(task => task.agentSessionId === agentId)?.runtimeTask.status, 'stopped')
+      expect(JSON.parse(String(await dispatchTool('read_agent', { agent_id: agentId }))).agent.lastOutcome).toBe('interrupted')
     } finally {
       await runtime.destroy()
       rmSync(workspacePath, { recursive: true, force: true })
@@ -182,10 +197,10 @@ describe('AgentEngine background subagent tools', () => {
   })
 
   it('enforces the frozen automation strategy for child agents', async () => {
-    const workspacePath = mkdtempSync(path.join(tmpdir(), 'turboflux-agent-engine-policy-'))
+    const workspacePath = mkdtempSync(path.join(tmpdir(), 'fluxagent-agent-engine-policy-'))
     registerTestAgent('automation_allowed_agent')
     registerTestAgent('automation_denied_agent')
-    const runtime = createAgentRuntime({ legacySubAgentRunner: runSubAgent,
+    const runtime = createAgentRuntime({
       workspacePath,
       workspaceName: 'automation-agent-policy-test',
       conversationId: 'conversation-policy',
@@ -193,9 +208,11 @@ describe('AgentEngine background subagent tools', () => {
       connectMcp: false,
       config: { provider: 'custom', apiKey: 'test', baseUrl: 'http://example.test', model: 'test-model', contextWindow: 100_000, maxTokens: 4096 },
     })
-    const dispatchTool = (runtime.engine as unknown as {
+    const dispatchToolRaw = (runtime.engine as unknown as {
       dispatchTool: (name: string, args: Record<string, unknown>) => Promise<string>
     }).dispatchTool.bind(runtime.engine)
+    let childOrdinal = 0
+    const dispatchTool = (name: string, args: Record<string, unknown>) => dispatchToolRaw(name, name === 'spawn_agent' ? { name: 'Test child ' + ++childOrdinal, ...args } : args)
     globalThis.fetch = vi.fn((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })), { once: true })
     })) as unknown as typeof fetch
@@ -224,9 +241,9 @@ describe('AgentEngine background subagent tools', () => {
     }
   })
   it('waits for a running subagent with a timeout snapshot and supports detach', async () => {
-    const workspacePath = mkdtempSync(path.join(tmpdir(), 'turboflux-agent-engine-wait-'))
+    const workspacePath = mkdtempSync(path.join(tmpdir(), 'fluxagent-agent-engine-wait-'))
     registerTestAgent('wait_test_agent')
-    const runtime = createAgentRuntime({ legacySubAgentRunner: runSubAgent,
+    const runtime = createAgentRuntime({
       workspacePath,
       workspaceName: 'wait-agent-test',
       conversationId: 'conversation-wait',
@@ -234,9 +251,11 @@ describe('AgentEngine background subagent tools', () => {
       connectMcp: false,
       config: { provider: 'custom', apiKey: 'test', baseUrl: 'http://example.test', model: 'test-model', contextWindow: 100_000, maxTokens: 4096 },
     })
-    const dispatchTool = (runtime.engine as unknown as {
+    const dispatchToolRaw = (runtime.engine as unknown as {
       dispatchTool: (name: string, args: Record<string, unknown>) => Promise<string | { output: string }>
     }).dispatchTool.bind(runtime.engine)
+    let childOrdinal = 0
+    const dispatchTool = (name: string, args: Record<string, unknown>) => dispatchToolRaw(name, name === 'spawn_agent' ? { name: 'Test child ' + ++childOrdinal, ...args } : args)
     globalThis.fetch = vi.fn((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })), { once: true })
     })) as unknown as typeof fetch

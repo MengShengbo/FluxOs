@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { automationDefinitionFromV2Record, migrateAutomationV2Store } from './automationMigration'
+import { automationDefinitionFromRecord } from './automationDefinition'
 import { validateAutomationRecovery } from './automationRecovery'
 import {
   automationSpecDigest,
@@ -36,7 +35,6 @@ export interface AutomationExecutionPool {
 }
 
 export interface AutomationCoordinatorOptions {
-  sourcePath?: string
   ownerId?: string
   maxConcurrentRuns?: number
   leaseMs?: number
@@ -135,7 +133,7 @@ function runCreation(claim: AutomationClaim): AutomationRunCreation {
   }
 }
 
-function legacyRunTerminal(status: AutomationRunRecord['status']): boolean {
+function serviceRunTerminal(status: AutomationRunRecord['status']): boolean {
   return ['completed', 'failed', 'canceled', 'interrupted', 'needs_review', 'skipped', 'missed', 'retry_scheduled'].includes(status)
 }
 
@@ -193,9 +191,6 @@ export class AutomationCoordinator {
     this.repository.initialize()
     this.repository.runRetentionMaintenance({ now: this.now() })
     this.lastMaintenanceAt = this.now()
-    if (this.options.sourcePath && existsSync(this.options.sourcePath)) {
-      migrateAutomationV2Store(this.repository, this.options.sourcePath, this.now())
-    }
     for (const definition of this.service.list().automations) {
       if (definition.enabled && definition.triggers.some(trigger => !['manual', 'schedule', 'cron'].includes(trigger.kind))) {
         this.service.update(definition.id, { enabled: false, lifecycleStatus: 'invalid' })
@@ -310,20 +305,20 @@ export class AutomationCoordinator {
   }
 
   syncDefinitions(): void {
-    const legacyDefinitions = this.service.list().automations
-    const legacyIds = new Set(legacyDefinitions.map(definition => definition.id))
-    for (const legacy of legacyDefinitions) this.syncDefinition(legacy)
+    const serviceDefinitions = this.service.list().automations
+    const serviceIds = new Set(serviceDefinitions.map(definition => definition.id))
+    for (const record of serviceDefinitions) this.syncDefinition(record)
     for (const existing of this.repository.listDefinitions()) {
-      if (legacyIds.has(existing.id) || existing.status === 'archived') continue
+      if (serviceIds.has(existing.id) || existing.status === 'archived') continue
       this.repository.saveDefinition({
         ...existing,
         revision: existing.revision + 1,
         status: 'archived',
         updatedAt: this.now(),
       }, {
-        source: 'migration',
+        source: 'runtime',
         parentRevision: existing.revision,
-        changeSummary: 'Archived after removal from the compatibility definition store.',
+        changeSummary: 'Archived after removal from the definition service.',
       })
     }
   }
@@ -379,7 +374,7 @@ export class AutomationCoordinator {
               userAction: 'Inspect the recovery blockers in Run details and choose whether to continue or stop.',
             },
           })
-          this.holdLegacyRunForReview(reviewed)
+          this.holdServiceRunForReview(reviewed)
           continue
         }
       }
@@ -520,7 +515,7 @@ export class AutomationCoordinator {
             userAction: 'Inspect the recovery blockers and choose again.',
           },
         })
-        this.holdLegacyRunForReview(reviewed)
+        this.holdServiceRunForReview(reviewed)
         throw new Error(`Automation recovery blocked: ${queuedValidation.issues.join(' ')}`)
       }
       const queuedClaim = this.restoreDurableClaim(run)
@@ -589,8 +584,8 @@ export class AutomationCoordinator {
     for (const approval of this.service.listApprovals(run.id)) {
       if (approval.status === 'pending') this.service.cancelApproval(approval.id, this.now())
     }
-    const legacy = this.service.getRun(run.definitionId, run.id)
-    if (legacy && !['completed', 'canceled', 'skipped', 'missed'].includes(legacy.status)) {
+    const record = this.service.getRun(run.definitionId, run.id)
+    if (record && !['completed', 'canceled', 'skipped', 'missed'].includes(record.status)) {
       this.service.markRunStatus(run.definitionId, run.id, 'canceled', {
         error: 'Recovery was stopped by the user after reviewing the checkpoint.',
         now: this.now(),
@@ -613,31 +608,31 @@ export class AutomationCoordinator {
     }
   }
 
-  private syncDefinition(legacy: AutomationRecord): void {
-    let existing = this.repository.getDefinition(legacy.id)
+  private syncDefinition(record: AutomationRecord): void {
+    let existing = this.repository.getDefinition(record.id)
     if (!existing) {
-      const first = automationDefinitionFromV2Record(legacy, 1)
+      const first = automationDefinitionFromRecord(record, 1)
       this.repository.saveDefinition(first, {
-        source: 'migration',
-        changeSummary: 'Imported from the compatibility automation service.',
-        validationIssues: legacy.validationIssues,
+        source: 'runtime',
+        changeSummary: 'Created from the automation service.',
+        validationIssues: record.validationIssues,
       })
       existing = first
     }
-    for (let revision = existing.revision + 1; revision <= legacy.revision; revision += 1) {
-      const definition = automationDefinitionFromV2Record(legacy, revision)
+    for (let revision = existing.revision + 1; revision <= record.revision; revision += 1) {
+      const definition = automationDefinitionFromRecord(record, revision)
       this.repository.saveDefinition(definition, {
         source: 'user',
         parentRevision: revision - 1,
-        changeSummary: 'Synchronized from the compatibility automation service.',
-        validationIssues: legacy.validationIssues,
+        changeSummary: 'Synchronized from the automation service.',
+        validationIssues: record.validationIssues,
       })
       existing = definition
     }
-    const expected = automationDefinitionFromV2Record(legacy, existing.revision)
+    const expected = automationDefinitionFromRecord(record, existing.revision)
     expected.context.continuationConversationId = existing.context.continuationConversationId
     if (automationSpecDigest(existing) !== automationSpecDigest(expected)) {
-      throw new Error(`Automation definition changed without a new revision: ${legacy.id}`)
+      throw new Error(`Automation definition changed without a new revision: ${record.id}`)
     }
   }
 
@@ -696,7 +691,7 @@ export class AutomationCoordinator {
       heartbeat.unref?.()
       const completion = handle.completion.then(run => this.finishRun(durable.id, run, ownership)).catch(error => {
         const current = this.service.getRun(claim.automation.id, claim.run.id)
-        if (current && !legacyRunTerminal(current.status)) {
+        if (current && !serviceRunTerminal(current.status)) {
           this.service.markRunStatus(claim.automation.id, claim.run.id, 'failed', {
             error: error instanceof Error ? error.message : String(error),
             now: this.now(),
@@ -743,7 +738,7 @@ export class AutomationCoordinator {
         throw error
       }
       const current = this.service.getRun(claim.automation.id, claim.run.id)
-      if (current && !legacyRunTerminal(current.status)) {
+      if (current && !serviceRunTerminal(current.status)) {
         this.service.markRunStatus(claim.automation.id, claim.run.id, 'failed', {
           error: error instanceof Error ? error.message : String(error),
           now: this.now(),
@@ -877,7 +872,7 @@ export class AutomationCoordinator {
 
   private prepareAutomaticRecovery(run: AutomationRun): void {
     if (run.status === 'needs_review') {
-      this.holdLegacyRunForReview(run)
+      this.holdServiceRunForReview(run)
       return
     }
     if (run.status !== 'interrupted') return
@@ -892,7 +887,7 @@ export class AutomationCoordinator {
           userAction: 'Review the workspace and stop this run before starting a new one.',
         },
       })
-      this.holdLegacyRunForReview(reviewed)
+      this.holdServiceRunForReview(reviewed)
       return
     }
     const action: AutomationRecoveryAction = checkpoint.inFlightToolEffect
@@ -909,7 +904,7 @@ export class AutomationCoordinator {
           userAction: 'Inspect the recovery blockers in Run details and choose whether to skip or stop.',
         },
       })
-      this.holdLegacyRunForReview(reviewed)
+      this.holdServiceRunForReview(reviewed)
       return
     }
     this.repository.prepareRunRecovery(run.id, {
@@ -929,9 +924,9 @@ export class AutomationCoordinator {
     })
   }
 
-  private holdLegacyRunForReview(run: AutomationRun): void {
-    const legacy = this.service.getRun(run.definitionId, run.id)
-    if (!legacy || legacy.status === 'needs_review') return
+  private holdServiceRunForReview(run: AutomationRun): void {
+    const record = this.service.getRun(run.definitionId, run.id)
+    if (!record || record.status === 'needs_review') return
     this.service.markRunStatus(run.definitionId, run.id, 'needs_review', {
       error: run.error?.message ?? 'This run requires checkpoint review before it can continue.',
       now: this.now(),
@@ -1007,8 +1002,8 @@ export class AutomationCoordinator {
           userAction: 'Review the latest checkpoint before retrying this run.',
         },
       })
-      const legacy = this.service.getRun(claim.automation.id, claim.run.id)
-      if (legacy && !['canceled', 'needs_review', 'skipped', 'missed'].includes(legacy.status)) {
+      const record = this.service.getRun(claim.automation.id, claim.run.id)
+      if (record && !['canceled', 'needs_review', 'skipped', 'missed'].includes(record.status)) {
         this.service.markRunStatus(claim.automation.id, claim.run.id, 'interrupted', {
           error: reason,
           suppressRetry: true,
@@ -1026,7 +1021,7 @@ export class AutomationCoordinator {
     return [...new Set([...this.running.keys(), ...this.dispatching])]
   }
 
-  private finishRun(runId: string, legacy: AutomationRunRecord, ownership: AutomationExecutionOwnership): void {
+  private finishRun(runId: string, record: AutomationRunRecord, ownership: AutomationExecutionOwnership): void {
     const current = this.repository.getRun(runId)
     if (!current || ['completed', 'failed', 'canceled', 'interrupted', 'needs_review', 'skipped', 'expired', 'invalid'].includes(current.status)) return
     if (!ownership.valid || this.executionOwnership.get(runId) !== ownership) {
@@ -1040,45 +1035,45 @@ export class AutomationCoordinator {
       this.options.onStateChanged?.()
       return
     }
-    const error = legacy.error
-      ? legacy.status === 'interrupted'
-        ? { code: 'host_interrupted', category: 'host_interrupted' as const, message: legacy.error, retryable: true }
-        : automationRunErrorFromFailure(legacy.error)
+    const error = record.error
+      ? record.status === 'interrupted'
+        ? { code: 'host_interrupted', category: 'host_interrupted' as const, message: record.error, retryable: true }
+        : automationRunErrorFromFailure(record.error)
       : undefined
     const transition = (status: AutomationRunStatus) => {
       const latest = this.repository.getRun(runId)
       if (latest?.status === status) return latest
       return this.repository.transitionRun(runId, status, {
-        conversationId: legacy.conversationId,
-        result: legacy.result,
+        conversationId: record.conversationId,
+        result: record.result,
         error,
-        retryAt: legacy.retryAt,
+        retryAt: record.retryAt,
         clearLease: true,
       })
     }
-    if (legacy.status === 'completed') {
+    if (record.status === 'completed') {
       transition('completed')
 
     }
-    else if (legacy.status === 'canceled') transition('canceled')
-    else if (legacy.status === 'skipped') transition('skipped')
-    else if (legacy.status === 'missed') transition('expired')
-    else if (legacy.status === 'retry_scheduled') {
+    else if (record.status === 'canceled') transition('canceled')
+    else if (record.status === 'skipped') transition('skipped')
+    else if (record.status === 'missed') transition('expired')
+    else if (record.status === 'retry_scheduled') {
       transition('failed')
       transition('retry_scheduled')
-    } else if (legacy.status === 'interrupted') transition('interrupted')
-    else if (legacy.status === 'invalid') transition('invalid')
+    } else if (record.status === 'interrupted') transition('interrupted')
+    else if (record.status === 'invalid') transition('invalid')
     else transition('failed')
   }
 
   private syncActiveRunStatus(runId: string, claim: AutomationClaim): void {
-    const legacy = this.service.getRun(claim.automation.id, claim.run.id)
+    const record = this.service.getRun(claim.automation.id, claim.run.id)
     const durable = this.repository.getRun(runId)
-    if (!legacy || !durable) return
-    if (legacy.status === 'waiting_for_approval' && durable.status === 'running') {
+    if (!record || !durable) return
+    if (record.status === 'waiting_for_approval' && durable.status === 'running') {
       this.repository.transitionRun(runId, 'waiting_for_approval')
       this.options.onStateChanged?.()
-    } else if (legacy.status === 'running' && durable.status === 'waiting_for_approval') {
+    } else if (record.status === 'running' && durable.status === 'waiting_for_approval') {
       this.repository.transitionRun(runId, 'running')
       this.options.onStateChanged?.()
     }

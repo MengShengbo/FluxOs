@@ -186,7 +186,7 @@ export function validatePluginManifest(value: unknown): PluginManifest {
   for (const unsupported of ['views', 'viewsContainers', 'themes'] as const) {
     if (optionalArray(contributes[unsupported], `Plugin ${unsupported}`, 128).length > 0) throw new Error('Renderer views and themes are not supported by the sandboxed plugin platform')
   }
-  const engine = manifest.engines?.turboflux || manifest.engines?.turboforge
+  const engine = manifest.engines?.fluxagent
   if (engine && !['*', '>=1.0.0', '^1.0.0', '1.x'].includes(engine)) throw new Error(`Unsupported FluxAgentCore engine range: ${engine}`)
   return JSON.parse(JSON.stringify(manifest)) as PluginManifest
 }

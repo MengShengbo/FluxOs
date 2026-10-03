@@ -92,7 +92,7 @@ import {
 import { resolveRequestMaxTokens } from '@fluxagentcore/models/modelRequestBudget'
 import { dispatchTaskTool, type TaskSystemCreationEvent } from './taskToolDispatcher'
 import { SubAgentRegistry, getAvailableAgentTypes } from './subAgentRegistry'
-import { AgentOrchestrator, type AutomationSubAgentPolicy, type LegacySubAgentRunner } from './agentOrchestrator'
+import { AgentOrchestrator, type AutomationSubAgentPolicy } from './agentOrchestrator'
 import type { ToolExecutor, WebFetchResponse, WebSearchResponse, RequestOptions, Result } from '@fluxagentcore/contracts/toolExecutor'
 import type { AgentStateProvider, APIConfig, APIModel, ContextCompactionState, ContextHandoff, ContextHandoffFacts, ContextReservoirEntry, ContextSegment, WorkspaceInfo } from '@fluxagentcore/contracts/stateTypes'
 import type { TreeNode } from '@fluxagentcore/contracts/types'
@@ -447,7 +447,7 @@ export class AgentEngine {
   // Registry of background PTY sessions the agent has spawned via
   // run_command(run_in_background=true). Tracks the command + start time so
   // list_terminals / read_terminal can label them. Foreground commands use
-  // the legacy exec path and do not need a session.
+  // the command execution path and do not need a session.
   private agentBackgroundSessions: Map<string, { command: string; startedAt: number }> = new Map()
   private turnStrategyPlanner: TurnStrategyPlanner = new TurnStrategyPlanner()
   private currentTurnStrategy: TurnStrategy | null = null
@@ -498,7 +498,6 @@ export class AgentEngine {
   private readonly orchestration: AgentOrchestrator
   setChildAgentController(controller: ChildAgentController): void { this.orchestration.setChildAgentController(controller) }
   getChildAgentController(): ChildAgentController | null { return this.orchestration.getChildAgentController() }
-  setLegacySubAgentRunner(runner: LegacySubAgentRunner): void { this.orchestration.setLegacyRunner(runner) }
   publishChildAgentSnapshot(agent: ChildAgentSnapshot): void { this.emit({ type: 'child-agent:update', agent }) }
   followupChildAgent(agentId: string, message: string): string { return this.orchestration.followupChildAgent(agentId, message) }
   closeChildAgent(agentId: string): Promise<void> { return this.orchestration.close(agentId) }
@@ -659,7 +658,7 @@ export class AgentEngine {
       onSettled: () => this.emitActiveTaskContext(),
     })
 
-    // 加载动态代理定义（.turboflux/agents/*.md）
+    // 加载动态代理定义（.fluxagent/agents/*.md）
     if (config.workspacePath) {
       this.agentRegistry.reload(config.workspacePath)
     }
@@ -2100,8 +2099,8 @@ export class AgentEngine {
             ...config.customHeaders,
           })
       if (config.provider === 'openrouter') {
-        headers['HTTP-Referer'] = 'https://turboflux.dev'
-        headers['X-Title'] = 'Turboflux'
+        headers['HTTP-Referer'] = 'https://fluxagent.dev'
+        headers['X-Title'] = 'FluxAgent'
       }
 
       const coldBody = protocol === 'anthropic_messages'
@@ -2624,10 +2623,10 @@ Before retrying:
     const conversationId = this.config.conversationId || this.stateProvider.getConversationId()
     const workRunId = this.workExecution.getCurrentRunId()
     return {
-      ...(conversationId ? { 'x-turboflux-conversation-id': conversationId } : {}),
-      ...(workRunId ? { 'x-turboflux-run-id': workRunId } : {}),
-      'x-turboflux-round': String(this.currentModelRequestRound),
-      'x-turboflux-protocol': protocol,
+      ...(conversationId ? { 'x-fluxagent-conversation-id': conversationId } : {}),
+      ...(workRunId ? { 'x-fluxagent-run-id': workRunId } : {}),
+      'x-fluxagent-round': String(this.currentModelRequestRound),
+      'x-fluxagent-protocol': protocol,
     }
   }
 
@@ -2977,8 +2976,8 @@ Before retrying:
     })
 
     if (config.provider === 'openrouter') {
-      headers['HTTP-Referer'] = 'https://turboflux.dev'
-      headers['X-Title'] = 'Turboflux'
+      headers['HTTP-Referer'] = 'https://fluxagent.dev'
+      headers['X-Title'] = 'FluxAgent'
     }
 
     // Tool visibility is mode/policy based. Turn strategy may influence
@@ -3266,8 +3265,8 @@ Before retrying:
       ...this.nextModelRequestTraceHeaders('openai_responses'),
     })
     if (config.provider === 'openrouter') {
-      headers['HTTP-Referer'] = 'https://turboflux.dev'
-      headers['X-Title'] = 'Turboflux'
+      headers['HTTP-Referer'] = 'https://fluxagent.dev'
+      headers['X-Title'] = 'FluxAgent'
     }
 
     const chatTools = this.buildOpenAITools(config)

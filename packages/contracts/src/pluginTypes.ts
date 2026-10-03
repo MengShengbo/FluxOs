@@ -1,7 +1,7 @@
 ﻿import type { WorkflowCheckpointSpec } from './workflowSurfaceTypes'
 
 /**
- * Turboflux 插件系统类型定义
+ * FluxAgent 插件系统类型定义
  *
  * 插件架构设计原则：
  * 1. 安全第一 - 插件运行在受限环境中
@@ -52,14 +52,9 @@ export interface PluginManifest {
   /** 仓库 URL */
   repository?: string;
 
-  /** Minimum host application version this plugin supports.
-   *  The legacy field name `turboforge` is preserved on disk so existing
-   *  plugin manifests (.json) keep validating; do not rename it without
-   *  also bumping the plugin manifest schema version and writing a migrator.
-   *  New manifests should use `turboflux` instead. */
+  /** Minimum FluxAgent host version supported by the plugin. */
   engines?: {
-    turboforge: string;
-    turboflux?: string;
+    fluxagent: string;
   };
 
   /** 插件分类 */

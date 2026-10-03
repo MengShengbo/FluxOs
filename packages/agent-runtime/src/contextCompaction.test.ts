@@ -111,7 +111,7 @@ describe('context compaction compiler', () => {
       summarySource: 'deterministic',
       facts,
     })
-    expect(handoff.document).toContain('FluxAgentCore Development Handoff')
+    expect(handoff.document).toContain('FluxAgent Development Handoff')
     expect(handoff.document).toContain('src/core/contextCompaction.ts')
     expect(handoff.compactDocument.length).toBeLessThanOrEqual(20_000)
   })

@@ -60,7 +60,7 @@ function assertJsonBudget(value: unknown): void {
       if (DEVICE_KEYS.has(key)) throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', '资料包包含禁止迁移的设备状态。', '请勿导入该文件，并从可信设备重新导出。')
       if (typeof child === 'string' && /path$/iu.test(key)
         && (WINDOWS_ABSOLUTE_PATH.test(child) || UNC_PATH.test(child) || UNIX_ABSOLUTE_PATH.test(child))) {
-        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', '资料包组件包含本机绝对路径。', '请从新版 FluxAgentCore 重新导出。')
+        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', '资料包组件包含本机绝对路径。', '请从新版 FluxAgent 重新导出。')
       }
       stack.push({ value: child, depth: current.depth + 1 })
     }
@@ -102,10 +102,10 @@ function assertNoUnsafeExecutableState(value: unknown, label: string): void {
     if (!current || typeof current !== 'object') continue
     for (const [key, child] of Object.entries(current as Record<string, unknown>)) {
       if (SECRET_KEY.test(key) && child !== '' && child !== '[secret-redacted]' && child !== null && child !== undefined) {
-        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', `${label} 包含未隔离的内联秘密。`, '请从新版 FluxAgentCore 重新导出，或取消该组件。')
+        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', `${label} 包含未隔离的内联秘密。`, '请从新版 FluxAgent 重新导出，或取消该组件。')
       }
       if (ACTIVE_RUNTIME_KEY.test(key)) {
-        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', `${label} 包含活动执行状态。`, '请从新版 FluxAgentCore 重新导出，或取消该组件。')
+        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', `${label} 包含活动执行状态。`, '请从新版 FluxAgent 重新导出，或取消该组件。')
       }
       stack.push(child)
     }
@@ -118,28 +118,28 @@ function assertPortableConversationInteraction(value: unknown, conversationId: s
   if (Object.keys(interaction).some(key => !allowedInteractionKeys.has(key))
     || interaction.schemaVersion !== 1
     || interaction.conversationId !== conversationId) {
-    throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'Conversation V2 草稿文档包含不支持的状态。', '请从新版 FluxAgentCore 重新导出。')
+    throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'Conversation V2 草稿文档包含不支持的状态。', '请从新版 FluxAgent 重新导出。')
   }
   const draft = objectValue(interaction.draft, 'Conversation V2 草稿')
   const allowedDraftKeys = new Set(['text', 'pendingPastes', 'capabilities'])
   if (Object.keys(draft).some(key => !allowedDraftKeys.has(key)) || typeof draft.text !== 'string') {
-    throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'Conversation V2 草稿字段无效。', '请从新版 FluxAgentCore 重新导出。')
+    throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'Conversation V2 草稿字段无效。', '请从新版 FluxAgent 重新导出。')
   }
   if (draft.pendingPastes !== undefined) {
     for (const value of arrayValue(draft.pendingPastes, 'Conversation V2 粘贴草稿')) {
       const paste = objectValue(value, 'Conversation V2 粘贴草稿')
       if (Object.keys(paste).some(key => key !== 'placeholder' && key !== 'text')
         || typeof paste.placeholder !== 'string' || typeof paste.text !== 'string') {
-        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'Conversation V2 粘贴草稿字段无效。', '请从新版 FluxAgentCore 重新导出。')
+        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'Conversation V2 粘贴草稿字段无效。', '请从新版 FluxAgent 重新导出。')
       }
     }
   }
   if (draft.capabilities !== undefined && (!draft.capabilities || typeof draft.capabilities !== 'object' || Array.isArray(draft.capabilities))) {
-    throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'Conversation V2 草稿能力选择无效。', '请从新版 FluxAgentCore 重新导出。')
+    throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'Conversation V2 草稿能力选择无效。', '请从新版 FluxAgent 重新导出。')
   }
   assertNoUnsafeExecutableState(interaction, 'Conversation V2 草稿')
   if (containsForbiddenExportData(JSON.stringify(interaction))) {
-    throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'Conversation V2 草稿包含本机路径或未移除的秘密。', '请从新版 FluxAgentCore 重新导出。')
+    throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'Conversation V2 草稿包含本机路径或未移除的秘密。', '请从新版 FluxAgent 重新导出。')
   }
 }
 
@@ -153,8 +153,8 @@ function validateComponentDocuments(manifest: ProfileArchiveManifestV1, document
     if (component.requiredComponents?.some(required => !componentIds.has(required))) {
       throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', `${component.id} 组件缺少必要依赖。`, '请重新导出资料包。')
     }
-    if (component.schemaVersion !== 1 && !(component.id === 'conversations' && component.schemaVersion === 2)) {
-      throw new ProfileArchiveError('ARCHIVE_UNSUPPORTED_VERSION', `${component.id} 组件版本不受支持。`, '请升级 FluxAgentCore 后重试。')
+    if (component.schemaVersion !== (component.id === 'conversations' ? 2 : 1)) {
+      throw new ProfileArchiveError('ARCHIVE_UNSUPPORTED_VERSION', `${component.id} 组件版本不受支持。`, '请升级 FluxAgent 后重试。')
     }
     const prefix = `components/${component.id}/`
     const paths = [...entryPaths].filter(path => path.startsWith(prefix))
@@ -215,12 +215,6 @@ function validateComponentDocuments(manifest: ProfileArchiveManifestV1, document
           }
           assertPortableConversationInteraction(documents.get(item.interactionPath), item.id)
         }
-      } else {
-        const conversation = objectValue(document.conversation, '会话')
-        assertNoUnsafeExecutableState(conversation, '会话')
-        if (conversation.id !== item.id || (conversation.workspaceId !== undefined && !workspaceIds.has(String(conversation.workspaceId)))) {
-          throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', '会话身份或工作区引用无效。', '请重新导出资料包。')
-        }
       }
     }
     if (descriptor.schemaVersion === 2) {
@@ -239,7 +233,7 @@ function validateComponentDocuments(manifest: ProfileArchiveManifestV1, document
       const automation = objectValue(value, '自动化')
       assertNoUnsafeExecutableState(automation, '自动化')
       if (automation.enabled === true || (typeof automation.status === 'string' && !['paused', 'archived', 'disabled'].includes(automation.status))) {
-        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', '自动化未处于安全禁用状态。', '请从新版 FluxAgentCore 重新导出，或取消自动化组件。')
+        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', '自动化未处于安全禁用状态。', '请从新版 FluxAgent 重新导出，或取消自动化组件。')
       }
     }
   }
@@ -251,7 +245,7 @@ function validateComponentDocuments(manifest: ProfileArchiveManifestV1, document
     const servers = objectValue(configurations.mcpServers, 'MCP')
     for (const value of Object.values(servers)) {
       const server = objectValue(value, 'MCP')
-      if (server.enabled === true) throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'MCP 未处于安全断开状态。', '请从新版 FluxAgentCore 重新导出，或取消 MCP 组件。')
+      if (server.enabled === true) throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', 'MCP 未处于安全断开状态。', '请从新版 FluxAgent 重新导出，或取消 MCP 组件。')
     }
   }
 
@@ -300,13 +294,6 @@ function componentWarnings(componentId: ArchiveComponentId): ArchiveWarning[] {
 function hasMissingWorkspaceReferences(manifest: ProfileArchiveManifestV1, documents: Map<string, unknown>): boolean {
   const components = new Set(manifest.components.map(component => component.id))
   const conversations = manifest.components.find(component => component.id === 'conversations')
-  if (conversations?.schemaVersion === 1) {
-    const index = documents.get('components/conversations/index.json') as { items?: Array<{ path?: string }> } | undefined
-    if ((index?.items ?? []).some(item => {
-      const document = documents.get(String(item.path)) as { conversation?: { workspaceId?: unknown } } | undefined
-      return document?.conversation?.workspaceId === undefined
-    })) return true
-  }
   if (components.has('projects')) {
     const document = documents.get('components/projects/projects.json') as { projects?: Array<{ workspaceId?: unknown }> } | undefined
     if ((document?.projects ?? []).some(project => project.workspaceId === undefined)) return true

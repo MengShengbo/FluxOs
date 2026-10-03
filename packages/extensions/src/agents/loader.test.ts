@@ -7,7 +7,7 @@ import { loadAgentsFromDir, normalizeSubAgentConfig } from './loader'
 const newline = String.fromCharCode(10)
 
 function writeAgent(workspacePath: string, name: string, frontmatterLines: string[]): void {
-  const agentsDir = path.join(workspacePath, '.turboflux', 'agents')
+  const agentsDir = path.join(workspacePath, '.fluxagent', 'agents')
   mkdirSync(agentsDir, { recursive: true })
   const content = ['---', ...frontmatterLines, '---', 'Agent body', ''].join(newline)
   writeFileSync(path.join(agentsDir, name + '.md'), content)
@@ -15,7 +15,7 @@ function writeAgent(workspacePath: string, name: string, frontmatterLines: strin
 
 describe('subagent config normalization', () => {
   it('loads valid project agents and rejects invalid limits or tool references at load time', () => {
-    const workspacePath = mkdtempSync(path.join(tmpdir(), 'turboflux-agent-loader-'))
+    const workspacePath = mkdtempSync(path.join(tmpdir(), 'fluxagent-agent-loader-'))
     try {
       writeAgent(workspacePath, 'valid', [
         'name: valid',

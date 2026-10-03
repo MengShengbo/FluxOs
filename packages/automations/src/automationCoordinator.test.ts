@@ -115,7 +115,7 @@ class FakeExecutionPool implements AutomationExecutionPool {
 function createHarness(now: number, options: Partial<AutomationCoordinatorOptions> = {}) {
   vi.useFakeTimers()
   vi.setSystemTime(now)
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-coordinator-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-coordinator-'))
   directories.push(root)
   const service = new AutomationService(join(root, 'automations.json'))
   const repository = new AutomationRepository(join(root, 'automations-v3'), { now: () => Date.now() })
@@ -166,7 +166,6 @@ describe('AutomationCoordinator', () => {
     const restarted = new AutomationCoordinator(service, repository, new FakeExecutionPool(service), {
       ownerId: 'desktop-restarted-after-v2-store',
       now: () => Date.now(),
-      sourcePath: join(root, 'automations.json'),
     })
     restarted.initialize()
 

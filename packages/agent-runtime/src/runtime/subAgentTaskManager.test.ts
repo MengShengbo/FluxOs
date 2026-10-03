@@ -6,7 +6,7 @@ import { RuntimeTaskManager } from '@fluxagentcore/tools/runtimeTaskManager'
 import { SubAgentTaskManager } from './subAgentTaskManager'
 
 function createWorkspace(): string {
-  return mkdtempSync(path.join(tmpdir(), 'turboflux-subagents-'))
+  return mkdtempSync(path.join(tmpdir(), 'fluxagent-subagents-'))
 }
 
 describe('SubAgentTaskManager', () => {
@@ -80,7 +80,7 @@ describe('SubAgentTaskManager', () => {
 
   it('restores transcript results when the runtime journal recovered the task first', async () => {
     const workspacePath = createWorkspace()
-    const journalPath = path.join(workspacePath, '.turboflux', 'runtime', 'journal.jsonl')
+    const journalPath = path.join(workspacePath, '.fluxagent', 'runtime', 'journal.jsonl')
     const firstRuntime = new RuntimeTaskManager({ journalPath })
     const firstManager = new SubAgentTaskManager({ workspacePath, runtimeTaskManager: firstRuntime })
 

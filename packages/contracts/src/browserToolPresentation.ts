@@ -104,7 +104,7 @@ export function describeBrowserPermission(
   const target = browserTarget(args)
   return {
     title: definition.title,
-    question: `允许 FluxAgentCore ${appendTarget(action, target)}吗？`,
+    question: `允许 FluxAgent ${appendTarget(action, target)}吗？`,
     reason: definition.permissionReason || '这会与当前网页交互，并可能改变页面状态。',
     runningDetail: appendTarget(definition.running, target),
   }

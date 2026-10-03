@@ -11,7 +11,7 @@ export interface WindowsProxySettings {
 }
 
 export interface NetworkProxyConfiguration {
-  source: 'turboflux' | 'environment' | 'windows' | 'direct'
+  source: 'fluxagent' | 'environment' | 'windows' | 'direct'
   httpProxy?: string
   httpsProxy?: string
   noProxy: string
@@ -114,12 +114,12 @@ export function resolveNetworkProxy(
   windowsSettings?: WindowsProxySettings,
 ): NetworkProxyConfiguration {
   const noProxy = firstValue(environment, 'no_proxy', 'NO_PROXY')
-  const turboFluxProxy = normalizeProxyUrl(firstValue(environment, 'turboflux_proxy', 'TURBOFLUX_PROXY'))
-  if (turboFluxProxy) {
+  const fluxAgentProxy = normalizeProxyUrl(firstValue(environment, 'fluxagent_proxy', 'FLUXAGENT_PROXY'))
+  if (fluxAgentProxy) {
     return {
-      source: 'turboflux',
-      httpProxy: turboFluxProxy,
-      httpsProxy: turboFluxProxy,
+      source: 'fluxagent',
+      httpProxy: fluxAgentProxy,
+      httpsProxy: fluxAgentProxy,
       noProxy: mergeNoProxy(noProxy),
     }
   }

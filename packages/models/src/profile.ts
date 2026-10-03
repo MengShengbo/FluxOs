@@ -29,7 +29,7 @@ export interface FluxAgentProfile {
   updatedAt: string
 }
 
-export const TURBOFLUX_PROFILE_VERSION = 1
+export const FLUXAGENT_PROFILE_VERSION = 1
 export const PROFILE_FILE_NAME = 'profile.json'
 
 const ENGINEERING_FOUNDATION_PROMPT = [
@@ -162,12 +162,12 @@ const NEKOMATA_ENGINEER_PROMPT = [
 export const PERSONA_DEFINITIONS: PersonaDefinition[] = [
   {
     id: 'default',
-    nameZh: 'FluxAgentCore 默认',
-    nameEn: 'FluxAgentCore Default',
+    nameZh: 'FluxAgent 默认',
+    nameEn: 'FluxAgent Default',
     descriptionZh: '清晰、稳健、少废话，适合日常开发协作。',
     descriptionEn: 'Clear, steady, and low-noise for everyday work.',
     systemPrompt: [
-      'Use FluxAgentCore default style: clear, practical, grounded, and calm.',
+      'Use FluxAgent default style: clear, practical, grounded, and calm.',
       'Work as a capable execution partner: understand the request, gather enough context, act, verify, and report the result.',
       'Keep user-visible prose concise. Add explanation only when it helps the user make a decision or learn the system.',
       ENGINEERING_FOUNDATION_PROMPT,
@@ -229,8 +229,8 @@ export const PERSONA_DEFINITIONS: PersonaDefinition[] = [
     id: 'custom',
     nameZh: '自定义人设',
     nameEn: 'Custom Persona',
-    descriptionZh: '使用你自己写的 FluxAgentCore 行为风格。',
-    descriptionEn: 'Use your own FluxAgentCore behavior style.',
+    descriptionZh: '使用你自己写的 FluxAgent 行为风格。',
+    descriptionEn: 'Use your own FluxAgent behavior style.',
     systemPrompt: '',
     isCustom: true,
   },
@@ -240,7 +240,7 @@ const KNOWN_PERSONA_IDS = new Set(PERSONA_DEFINITIONS.map(persona => persona.id)
 const BUILTIN_PERSONA_IDS = PERSONA_DEFINITIONS.filter(persona => !persona.isCustom).map(persona => persona.id)
 
 export const DEFAULT_PROFILE: FluxAgentProfile = {
-  version: TURBOFLUX_PROFILE_VERSION,
+  version: FLUXAGENT_PROFILE_VERSION,
   interfaceLanguage: 'zh-CN',
   aiOutputLanguage: 'follow-user',
   customAiOutputLanguage: '',
@@ -308,7 +308,7 @@ export function normalizeProfile(rawValue: unknown): FluxAgentProfile {
   }
 
   return {
-    version: TURBOFLUX_PROFILE_VERSION,
+    version: FLUXAGENT_PROFILE_VERSION,
     interfaceLanguage: normalizeInterfaceLanguage(raw.interfaceLanguage || raw.lang || raw.preferredLang),
     aiOutputLanguage: normalizeOutputLanguage(raw.aiOutputLanguage || raw.aiOutputLang),
     customAiOutputLanguage: stringValue(raw.customAiOutputLanguage || raw.customOutputLanguage),
@@ -335,7 +335,7 @@ export function loadProfile(): FluxAgentProfile {
     return normalizeProfile(raw)
   } catch (error) {
     const backupPath = quarantineCorruptFileSync(file)
-    console.warn(`FluxAgentCore preserved an invalid profile file at ${backupPath}: ${error instanceof Error ? error.message : String(error)}`)
+    console.warn(`FluxAgent preserved an invalid profile file at ${backupPath}: ${error instanceof Error ? error.message : String(error)}`)
     const recovered = normalizeProfile({ ...DEFAULT_PROFILE, updatedAt: new Date().toISOString() })
     writeFileAtomicSync(file, JSON.stringify(recovered, null, 2), 0o600)
     return recovered
@@ -409,7 +409,7 @@ export function buildProfileSystemPromptSection(profileValue: unknown): string {
   const persona = personaInstruction(profile)
   const customInstructions = profile.customInstructions.trim()
   const lines = [
-    '<turboflux_profile>',
+    '<fluxagent_profile>',
     `<output_language>${outputLanguageInstruction(profile)}</output_language>`,
     `<persona id="${persona.id}" name="${persona.name}">`,
     persona.prompt.trim(),
@@ -420,6 +420,6 @@ export function buildProfileSystemPromptSection(profileValue: unknown): string {
     lines.push('<custom_user_instructions>', customInstructions, '</custom_user_instructions>')
   }
 
-  lines.push('</turboflux_profile>')
+  lines.push('</fluxagent_profile>')
   return lines.join('\n')
 }

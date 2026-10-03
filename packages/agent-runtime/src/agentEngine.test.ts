@@ -461,12 +461,12 @@ describe('model request tracing', () => {
     internals.workExecution.startRun('run-1', 'trace request')
 
     expect(internals.nextModelRequestTraceHeaders('openai_chat')).toEqual({
-      'x-turboflux-conversation-id': 'conversation-1',
-      'x-turboflux-run-id': 'run-1',
-      'x-turboflux-round': '1',
-      'x-turboflux-protocol': 'openai_chat',
+      'x-fluxagent-conversation-id': 'conversation-1',
+      'x-fluxagent-run-id': 'run-1',
+      'x-fluxagent-round': '1',
+      'x-fluxagent-protocol': 'openai_chat',
     })
-    expect(internals.nextModelRequestTraceHeaders('openai_chat')['x-turboflux-round']).toBe('2')
+    expect(internals.nextModelRequestTraceHeaders('openai_chat')['x-fluxagent-round']).toBe('2')
     engine.destroy()
   })
 })
@@ -606,7 +606,7 @@ describe('AgentEngine MCP dispatch', () => {
         .resolves.toMatchObject({ isError: false, output: 'click complete' })
       expect(requests).toHaveLength(1)
       expect(requests[0]).toMatchObject({
-        question: '允许 FluxAgentCore 点击当前网页中的内容吗？',
+        question: '允许 FluxAgent 点击当前网页中的内容吗？',
         reason: '这会与当前网页交互，并可能改变页面状态。',
       })
       expect(requests[0]?.question).not.toContain('browser__click')
@@ -651,7 +651,7 @@ describe('AgentEngine MCP dispatch', () => {
         arguments: { app_name: 'Keynote', bundle_id: 'com.apple.Keynote' },
       })).resolves.toBeNull()
       expect(requests[0]).toMatchObject({
-        question: '允许 FluxAgentCore 在 Keynote 中点击内容吗？',
+        question: '允许 FluxAgent 在 Keynote 中点击内容吗？',
         reason: '这会与目标应用交互，并可能改变应用状态。',
         options: ['allow-once', 'deny'],
       })
@@ -663,7 +663,7 @@ describe('AgentEngine MCP dispatch', () => {
         arguments: { app_name: 'Safari', safety_class: 'destructive' },
       })).resolves.toBeNull()
       expect(requests[1]).toMatchObject({
-        question: '允许 FluxAgentCore 在 Safari 中点击内容吗？',
+        question: '允许 FluxAgent 在 Safari 中点击内容吗？',
         reason: '这可能删除或覆盖内容，完成后可能难以恢复。',
         options: ['allow-once', 'deny'],
       })
@@ -791,7 +791,7 @@ describe('AgentEngine MCP dispatch', () => {
 
 describe('AgentEngine structured patch dispatch', () => {
   it('preflights and applies multiple patch operations with conflict checks', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'turboflux-apply-patch-'))
+    const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-apply-patch-'))
     const sourcePath = join(workspace, 'sample.txt')
     writeFileSync(sourcePath, 'before\n')
     const stateProvider = new DefaultAgentStateProvider({
@@ -1741,12 +1741,12 @@ describe('AgentEngine tool scheduling and task contracts', () => {
     try {
       expect(internal.workflowBlockedToolMessage({ id: 'blocked', name: 'create_tasks', arguments: {} }))
         .toContain('workflow checkpoint "direction-count"')
-      expect(internal.workflowBlockedToolMessage({ id: 'allowed', name: 'write_file', arguments: { path: '.turboflux/design-atlas/run/premise.md' } }))
+      expect(internal.workflowBlockedToolMessage({ id: 'allowed', name: 'write_file', arguments: { path: '.fluxagent/design-atlas/run/premise.md' } }))
         .toBeUndefined()
       expect(internal.workflowCheckpointTriggerMatches(internal.activeWorkflowContract.checkpoints[0], {
         id: 'replace-trigger',
         name: 'replace_file',
-        arguments: { path: '.turboflux/design-atlas/run/premise.md' },
+        arguments: { path: '.fluxagent/design-atlas/run/premise.md' },
       })).toBe(true)
     } finally {
       engine.destroy()
@@ -4145,7 +4145,7 @@ describe('context compaction boundaries', () => {
       expect(engine.getSession().turns.map(turn => turn.id)).toEqual(recentTurns.map(turn => turn.id))
       const [segment] = stateProvider.getContextSegments()
       expect(segment?.handoff?.summarySource).toBe('deterministic')
-      expect(segment?.handoff?.document).toContain('FluxAgentCore Development Handoff')
+      expect(segment?.handoff?.document).toContain('FluxAgent Development Handoff')
       expect(segment?.handoff?.document).toContain('src/core/contextCompaction.ts')
       expect(segment?.handoff?.document).toContain('continue after compression without restarting')
       expect(segment?.summary).toContain('<continuation_summary>')

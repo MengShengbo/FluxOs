@@ -1,7 +1,7 @@
 /**
  * Append-only persistent store for agent-written workspace memories.
  *
- * Storage format: one JSON object per line in `.turboflux/memory/facts.jsonl`.
+ * Storage format: one JSON object per line in `.fluxagent/memory/facts.jsonl`.
  * Later lines with the same id override earlier ones when loaded.
  */
 
@@ -51,11 +51,11 @@ export class MemoryWriter {
   constructor(private readonly memoryRoot?: string) {}
 
   private factsPath(workspacePath: string): string {
-    return path.join(this.memoryRoot ?? path.join(workspacePath, '.turboflux', 'memory'), 'facts.jsonl')
+    return path.join(this.memoryRoot ?? path.join(workspacePath, '.fluxagent', 'memory'), 'facts.jsonl')
   }
 
   private ensureDirForWrite(workspacePath: string): void {
-    fs.mkdirSync(this.memoryRoot ?? path.join(workspacePath, '.turboflux', 'memory'), { recursive: true })
+    fs.mkdirSync(this.memoryRoot ?? path.join(workspacePath, '.fluxagent', 'memory'), { recursive: true })
   }
 
   private getIndex(workspacePath: string): Map<string, Memory> {

@@ -58,9 +58,9 @@ async function withinDeadline<T>(result: Promise<T>): Promise<T> {
 }
 
 async function archive(encrypted = true): Promise<string> {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-archive-lifecycle-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-archive-lifecycle-'))
   directories.push(root)
-  const path = join(root, 'profile.turboflux-profile')
+  const path = join(root, 'profile.fluxagent-profile')
   const data = Buffer.from('authenticated archive content')
   await writeProfileArchive({
     targetPath: path,
@@ -210,7 +210,7 @@ describe('profile archive read lifecycle', () => {
   })
 
   it('removes temporary output when cancelled during post-write verification', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-archive-verification-cancel-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-archive-verification-cancel-'))
     directories.push(root)
     const controller = new AbortController()
     const reason = new Error('Cancelled during export verification')
@@ -221,7 +221,7 @@ describe('profile archive read lifecycle', () => {
       return source
     })
     await expect(withinDeadline(writeProfileArchive({
-      targetPath: join(root, 'cancelled.turboflux-profile'),
+      targetPath: join(root, 'cancelled.fluxagent-profile'),
       entries: [], password, signal: controller.signal,
     }))).rejects.toBe(reason)
     expect(readdirSync(root)).toEqual([])

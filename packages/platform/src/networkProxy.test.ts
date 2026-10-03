@@ -7,7 +7,7 @@ describe('network proxy resolution', () => {
   it('keeps domain NO_PROXY rules when the transport is pinned to an IP', async () => {
     const original = getGlobalDispatcher()
     vi.resetModules()
-    vi.stubEnv('TURBOFLUX_PROXY', 'http://127.0.0.1:7892')
+    vi.stubEnv('FLUXAGENT_PROXY', 'http://127.0.0.1:7892')
     vi.stubEnv('no_proxy', 'bypass.test,*.suffix.test:8443')
     const network = await import('./networkProxy')
     try {
@@ -34,17 +34,17 @@ describe('network proxy resolution', () => {
     }
   })
 
-  it('prefers TURBOFLUX_PROXY over environment and Windows settings', () => {
+  it('prefers FLUXAGENT_PROXY over environment and Windows settings', () => {
     const result = resolveNetworkProxy({
-      TURBOFLUX_PROXY: 'http://user:secret@proxy.local:7892',
+      FLUXAGENT_PROXY: 'http://user:secret@proxy.local:7892',
       HTTPS_PROXY: 'http://environment.local:8080',
     }, { enabled: true, server: 'windows.local:9000' })
 
-    expect(result.source).toBe('turboflux')
+    expect(result.source).toBe('fluxagent')
     expect(result.httpsProxy).toBe('http://user:secret@proxy.local:7892/')
     expect(describeNetworkProxy(result)).toEqual({
       enabled: true,
-      source: 'turboflux',
+      source: 'fluxagent',
       endpoint: 'proxy.local:7892',
     })
     expect(JSON.stringify(describeNetworkProxy(result))).not.toContain('secret')

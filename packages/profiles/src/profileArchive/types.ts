@@ -1,8 +1,8 @@
 export const PROFILE_ARCHIVE_CONTAINER_VERSION = 1 as const
 export const PROFILE_ARCHIVE_MANIFEST_VERSION = 1 as const
-export const PROFILE_ARCHIVE_MAGIC = 'TURBOFLUXPROFILE' as const
+export const PROFILE_ARCHIVE_MAGIC = 'FLUXAGENTPROFILE' as const
 export const PROFILE_ARCHIVE_EXTENSION = '.fluxagent-profile' as const
-export const PROFILE_ARCHIVE_MIME = 'application/vnd.turboflux.profile' as const
+export const PROFILE_ARCHIVE_MIME = 'application/vnd.fluxagent.profile' as const
 
 export type ArchiveComponentId =
   | 'profile.preferences'
@@ -45,7 +45,6 @@ export interface ArchiveWorkspaceDescriptor {
   }
 }
 
-export type ArchiveConversationMigrationSource = 'legacy-v1' | 'profile-archive-v2' | 'recovery'
 
 export interface ArchiveConversationDataDescriptorV2 {
   schemaVersion: 2
@@ -59,7 +58,6 @@ export interface ArchiveConversationDataDescriptorV2 {
     included: false
     rebuildRequired: true
   }
-  migrationSources: ArchiveConversationMigrationSource[]
 }
 
 export interface ProfileArchiveManifestV1 {
@@ -76,7 +74,7 @@ export interface ProfileArchiveManifestV1 {
     sourceProfileId: string
     displayName: string
   }
-  conversationDataVersion?: 1 | 2
+  conversationDataVersion?: 2
   conversationData?: ArchiveConversationDataDescriptorV2
   components: ArchiveComponentDescriptor[]
   workspaces: ArchiveWorkspaceDescriptor[]
@@ -245,7 +243,7 @@ export type ArchiveOperationPhase =
   | 'preview_ready'
   | 'planning'
   | 'staging'
-  | 'migrating'
+  | 'restoring'
   | 'validating'
   | 'committing'
   | 'rolled_back'

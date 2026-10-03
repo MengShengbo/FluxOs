@@ -8,8 +8,8 @@ import { composeRuntimeProfileSystemPrompt, createAgentRuntime } from './agentRu
 
 describe('createAgentRuntime runtime tasks', () => {
   it('isolates runtime journals from the inspected workspace when requested', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'turboflux-agent-runtime-workspace-'))
-    const runtimeStorage = mkdtempSync(join(tmpdir(), 'turboflux-agent-runtime-storage-'))
+    const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-agent-runtime-workspace-'))
+    const runtimeStorage = mkdtempSync(join(tmpdir(), 'fluxagent-agent-runtime-storage-'))
     const runtime = createAgentRuntime({
       workspacePath: workspace,
       workspaceName: 'runtime-test',
@@ -34,8 +34,8 @@ describe('createAgentRuntime runtime tasks', () => {
       expect(existsSync(join(sessionRoot, 'runtime-agents'))).toBe(true)
       expect(existsSync(join(runtimeStorage, 'runtime', 'journal.jsonl'))).toBe(false)
       expect(existsSync(join(runtimeStorage, 'runtime-agents'))).toBe(false)
-      expect(existsSync(join(workspace, '.turboflux', 'runtime', 'journal.jsonl'))).toBe(false)
-      expect(existsSync(join(workspace, '.turboflux', 'runtime-agents'))).toBe(false)
+      expect(existsSync(join(workspace, '.fluxagent', 'runtime', 'journal.jsonl'))).toBe(false)
+      expect(existsSync(join(workspace, '.fluxagent', 'runtime-agents'))).toBe(false)
     } finally {
       await runtime.destroy()
       rmSync(workspace, { recursive: true, force: true })
@@ -44,8 +44,8 @@ describe('createAgentRuntime runtime tasks', () => {
   })
 
   it('isolates task journals and subagent transcripts between conversations', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'turboflux-agent-runtime-workspace-'))
-    const runtimeStorage = mkdtempSync(join(tmpdir(), 'turboflux-agent-runtime-storage-'))
+    const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-agent-runtime-workspace-'))
+    const runtimeStorage = mkdtempSync(join(tmpdir(), 'fluxagent-agent-runtime-storage-'))
     const config = {
       provider: 'custom' as const,
       apiKey: 'test',
@@ -116,12 +116,12 @@ describe('createAgentRuntime runtime tasks', () => {
   it('keeps surface guidance beside the user profile across runtime creation', () => {
     const prompt = composeRuntimeProfileSystemPrompt(DEFAULT_PROFILE, '<desktop_experience>plain-language work</desktop_experience>')
 
-    expect(prompt).toContain('<turboflux_profile>')
+    expect(prompt).toContain('<fluxagent_profile>')
     expect(prompt).toContain('<desktop_experience>plain-language work</desktop_experience>')
   })
 
   it('uses one unique conversation identity across the engine and registry', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'turboflux-agent-runtime-'))
+    const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-agent-runtime-'))
     const runtime = createAgentRuntime({
       workspacePath: workspace,
       workspaceName: 'runtime-test',
@@ -147,8 +147,8 @@ describe('createAgentRuntime runtime tasks', () => {
   })
 
   it('turns full approval into unrestricted filesystem access', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'turboflux-agent-runtime-'))
-    const outside = mkdtempSync(join(tmpdir(), 'turboflux-agent-runtime-outside-'))
+    const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-agent-runtime-'))
+    const outside = mkdtempSync(join(tmpdir(), 'fluxagent-agent-runtime-outside-'))
     const runtime = createAgentRuntime({
       workspacePath: workspace,
       workspaceName: 'runtime-test',
@@ -176,7 +176,7 @@ describe('createAgentRuntime runtime tasks', () => {
   })
 
   it('shares one task manager and assigns command ownership to the conversation', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'turboflux-agent-runtime-'))
+    const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-agent-runtime-'))
     const runtime = createAgentRuntime({
       workspacePath: workspace,
       workspaceName: 'runtime-test',
@@ -212,7 +212,7 @@ describe('createAgentRuntime runtime tasks', () => {
   })
 
   it('switches every runtime owner through one session registry', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'turboflux-agent-runtime-'))
+    const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-agent-runtime-'))
     const runtime = createAgentRuntime({
       workspacePath: workspace,
       workspaceName: 'runtime-test',
@@ -254,7 +254,7 @@ describe('createAgentRuntime runtime tasks', () => {
   })
 
   it('applies global configuration to every runtime consumer', async () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'turboflux-agent-runtime-'))
+    const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-agent-runtime-'))
     const runtime = createAgentRuntime({
       workspacePath: workspace,
       workspaceName: 'runtime-test',

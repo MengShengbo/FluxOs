@@ -5,7 +5,6 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
 import type { ConversationDraftState, PersistedConversation } from '@fluxagentcore/conversations/conversations/types'
-import { ConversationStore } from '@fluxagentcore/conversations/conversations/store'
 import { ConversationInteractionStoreV2 } from '@fluxagentcore/conversations/conversations/conversationInteractionStoreV2'
 import { ConversationRepositoryV2 } from '@fluxagentcore/conversations/conversations/conversationRepositoryV2'
 import { normalizeConversationV2Id, stableConversationV2Id } from '@fluxagentcore/conversations/conversations/conversationV2Ids'
@@ -74,7 +73,7 @@ function safeDisplayName(value: string): string {
 }
 
 function unboundWorkspacePath(workspaceId: string): string {
-  return `turboflux-unbound:${workspaceId}`
+  return `fluxagent-unbound:${workspaceId}`
 }
 
 function unassociatedWorkspaceId(scan: ScannedProfileArchive): string | undefined {
@@ -104,7 +103,7 @@ function scrubSecretValue(value: unknown): void {
 }
 
 export function isUnboundWorkspacePath(value: string): boolean {
-  return /^turboflux-unbound:(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|workspace-[A-Za-z0-9_-]{8,96})$/iu.test(value)
+  return /^fluxagent-unbound:(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|workspace-[A-Za-z0-9_-]{8,96})$/iu.test(value)
 }
 
 function contained(root: string, path: string): string {
@@ -258,25 +257,7 @@ async function applyConversations(scan: ScannedProfileArchive, incomingRoot: str
     repository.rebuildCatalog()
     return items.length
   }
-  const store = new ConversationStore(stagePath(layout, payloadRoot, layout.conversationsRoot))
-  const fallbackWorkspaceId = unassociatedWorkspaceId(scan)
-  for (const value of items) {
-    const item = value as Record<string, unknown>
-    const document = await selectedDocument(scan, incomingRoot, String(item.path))
-    const conversation = structuredClone(document.conversation) as PersistedConversation & { workspaceId?: string; importedInterrupted?: boolean }
-    const workspaceId = importedWorkspaceId(conversation.workspaceId, fallbackWorkspaceId)
-    conversation.workspacePath = unboundWorkspacePath(workspaceId)
-    delete conversation.workspaceId
-    conversation.interactionState = {
-      queuedInputs: [],
-      draft: conversation.interactionState?.draft ?? { text: '' },
-      pendingSteering: [],
-      pendingApprovals: [],
-      workflow: conversation.interactionState?.workflow,
-    }
-    store.save(conversation, { compact: true })
-  }
-  return items.length
+  throw new ProfileArchiveError('ARCHIVE_UNSUPPORTED_VERSION', '会话组件版本不受支持。', '请使用当前开发版重新导出资料。')
 }
 
 async function applyWorkspaceBindings(scan: ScannedProfileArchive, layout: ProfileStorageLayout, payloadRoot: string, now: number): Promise<void> {
@@ -508,7 +489,7 @@ export class ProfileArchiveImporter {
       })
       await this.afterPhase(journal, journalPath, 'staging')
 
-      input.onProgress?.('migrating', 0.5, '正在迁移并禁用可执行内容…')
+      input.onProgress?.('restoring', 0.5, '正在恢复资料并禁用可执行内容…')
       const selected = new Set(input.plan.selectedComponents)
       const config: Record<string, unknown> = {}
       const timestamp = this.now()
@@ -575,7 +556,6 @@ export class ProfileArchiveImporter {
         profileId,
         selectedComponents: input.plan.selectedComponents,
         skippedComponents: input.plan.skippedComponents,
-        migrations: scan.manifest.conversationData?.migrationSources ?? [],
         conversationData: scan.manifest.conversationData ? {
           sourceVersion: scan.manifest.conversationData.schemaVersion,
           eventSegments: structuredClone(scan.manifest.conversationData.eventSegments),

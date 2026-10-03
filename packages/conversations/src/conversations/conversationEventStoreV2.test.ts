@@ -17,7 +17,7 @@ afterEach(() => {
 })
 
 function root(): string {
-  const value = mkdtempSync(join(tmpdir(), 'turboflux-conversation-v2-'))
+  const value = mkdtempSync(join(tmpdir(), 'fluxagent-conversation-v2-'))
   roots.push(value)
   return value
 }
@@ -188,7 +188,7 @@ describe('ConversationEventStoreV2', () => {
     const store = new ConversationEventStoreV2(directory)
     expect(() => store.append([{ ...createdEvent(), type: 'future.event' } as never])).toThrow('Invalid Conversation V2 event')
     expect(() => store.append([{
-      eventId: 'event-unknown-item', profileId: 'profile-1', conversationId: 'conversation-1', source: 'migration', provenance: 'migrated', type: 'item.created',
+      eventId: 'event-unknown-item', profileId: 'profile-1', conversationId: 'conversation-1', source: 'runtime', provenance: 'restored', type: 'item.created',
       payload: { item: { schemaVersion: 1, id: 'item-1', conversationId: 'conversation-1', kind: 'future_item', payload: {} } },
     } as never])).toThrow('Invalid Conversation V2 item')
     expect(existsSync(join(directory, 'conversation-1.jsonl'))).toBe(false)

@@ -134,7 +134,7 @@ const COMPUTER_TOOLS: Record<ComputerToolOperation, ComputerToolDefinition> = {
     completed: '已进入用户接管',
     approvalLevel: 'always',
     permissionAction: '进入用户接管',
-    permissionReason: '接管期间 FluxAgentCore 会暂停电脑操作，直到你明确继续。',
+    permissionReason: '接管期间 FluxAgent 会暂停电脑操作，直到你明确继续。',
   },
 }
 
@@ -279,7 +279,7 @@ export function describeComputerPermission(
     return {
       title: '电脑操作已阻止',
       question: '此电脑操作不能执行。',
-      reason: 'FluxAgentCore 只允许已注册并经过安全分级的电脑操作。',
+      reason: 'FluxAgent 只允许已注册并经过安全分级的电脑操作。',
       runningDetail: '该电脑操作不可用',
       approvalLevel: 'deny',
     }
@@ -292,7 +292,7 @@ export function describeComputerPermission(
       ? '付款、购买和资金操作必须由你亲自完成。'
       : safetyClass === 'system'
         ? '管理员授权、系统权限和安全设置必须由你亲自完成。'
-        : 'FluxAgentCore 不会代为输入密码、验证码或其他认证信息。'
+        : 'FluxAgent 不会代为输入密码、验证码或其他认证信息。'
     return {
       title: '需要你接管',
       question: target ? `请在 ${target} 中接管并完成这一步。` : '请接管电脑并完成这一步。',
@@ -424,7 +424,7 @@ function compactLabel(value: string): string | undefined {
 }
 
 function permissionQuestion(action: string): string {
-  return `允许 FluxAgentCore ${action}${/[A-Za-z0-9)]$/.test(action) ? ' ' : ''}吗？`
+  return `允许 FluxAgent ${action}${/[A-Za-z0-9)]$/.test(action) ? ' ' : ''}吗？`
 }
 
 function appendTarget(text: string, target?: string): string {

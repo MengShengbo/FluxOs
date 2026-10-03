@@ -30,7 +30,7 @@ function harness() {
 
 describe('AgentEngine tool lifecycle integration', () => {
   it.each(['edit_file', 'multi_edit'])('%s writes literal dollar markers and reports the exact resulting file', async name => {
-    const workspacePath = mkdtempSync(join(tmpdir(), 'turboflux-literal-edit-'))
+    const workspacePath = mkdtempSync(join(tmpdir(), 'fluxagent-literal-edit-'))
     const source = 'prefix\nTARGET\nsuffix\n'
     const replacement = ['$&', '$$', '$`', "$'", '$1', '$<name>'].join(' ')
     const expected = `prefix\n${replacement}\nsuffix\n`

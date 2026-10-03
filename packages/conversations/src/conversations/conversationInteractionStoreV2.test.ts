@@ -11,7 +11,7 @@ afterEach(() => {
 })
 
 function root(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'turboflux-interaction-v2-'))
+  const directory = mkdtempSync(join(tmpdir(), 'fluxagent-interaction-v2-'))
   roots.push(directory)
   return directory
 }

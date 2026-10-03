@@ -8,7 +8,7 @@ import type { SubAgentDefinition, SubAgentEvent, SubAgentEvidence } from '@fluxa
 import { childCapabilityProfile, normalizeChildName, type ChildCapabilityMode } from '@fluxagentcore/contracts/childAgentTypes'
 import type { AgentEventType } from './agentEngine'
 import { getSubAgentDefinition, getAvailableAgentTypes, type SubAgentRegistry } from './subAgentRegistry'
-import type { RunSubAgentOptions, SubAgentResult } from './subAgent'
+import type { SubAgentResult } from './subAgent'
 import { SubAgentBudget, type SubAgentBudgetConfig, type SubAgentBudgetTaskView } from './subAgentBudget'
 import { AgentJoinCoordinator } from './agentJoinCoordinator'
 import { effectiveRequiredChildren } from './subAgentStepCoordinator'
@@ -17,7 +17,6 @@ import type { ChildAgentController } from './runtime/childAgentController'
 import type { TaskManager } from './taskManager'
 
 export const AGENT_CONTROL_TOOLS = ['spawn_agent', 'followup_agent', 'send_agent_message', 'close_agent', 'wait_agents', 'detach_agent', 'cancel_agent', 'list_agents', 'read_agent'] as const
-export type LegacySubAgentRunner = (options: RunSubAgentOptions) => Promise<SubAgentResult>
 export interface AutomationSubAgentPolicy {
   runId: string
   allowedTools: string[]
@@ -43,17 +42,14 @@ export interface AgentOrchestratorHost {
 export class AgentOrchestrator {
   private childAgents: ChildAgentController | null = null
   private readonly admissions = new Set<string>()
-  private legacyRunner: LegacySubAgentRunner | null = null
   private automationSubAgentPolicy: AutomationSubAgentPolicy | null = null
   private readonly subAgentBudget = new SubAgentBudget()
   readonly joinCoordinator = new AgentJoinCoordinator()
   constructor(private readonly host: AgentOrchestratorHost) {}
   setChildAgentController(controller: ChildAgentController): void { this.childAgents = controller }
   getChildAgentController(): ChildAgentController | null { return this.childAgents }
-  /** Compatibility is explicit; failure must never switch execution backends. */
-  setLegacyRunner(runner: LegacySubAgentRunner): void { this.legacyRunner = runner }
   handles(name: string): boolean { return (AGENT_CONTROL_TOOLS as readonly string[]).includes(name) }
-  canSpawn(): boolean { return Boolean(this.childAgents || this.legacyRunner) }
+  canSpawn(): boolean { return Boolean(this.childAgents) }
   private get subAgentTaskManager(): SubAgentTaskManager { return this.host.tasks }
 
   private resolveTask(id: string): SubAgentTaskSnapshot {
@@ -188,45 +184,18 @@ export class AgentOrchestrator {
     switch (name) {
       case 'list_agents': {
         const named = this.childAgents?.list(this.host.getConfig().conversationId || '') || []
-        if (named.length) {
-          const historical = this.subAgentTaskManager.listTasks().filter(task => task.ownerSessionId === this.host.getConfig().conversationId && !task.agentSessionId)
-          return JSON.stringify([...named, ...historical.map(task => ({ agentId: task.id, executionId: task.id, legacy: true, roleId: task.agentType, status: task.runtimeTask.status, objective: task.objective }))])
-        }
-        const tasks = this.subAgentTaskManager.listTasks().filter(task => task.ownerSessionId === this.host.getConfig().conversationId)
-        const data: ToolResultData = { kind: 'items', items: tasks.map(task => ({ title: task.objective, description: task.agentType, status: task.runtimeTask.status })) }
-        if (tasks.length === 0) return { output: 'No subagent tasks found.', data }
-        return { data, output: tasks.map(task => {
-          const elapsedMs = (task.runtimeTask.endedAt || Date.now()) - task.startedAt
-          return `[${task.runtimeTask.status}] ${task.id} · ${task.agentType} · join=${task.joinPolicy} · ${elapsedMs}ms\n  ${task.objective}`
-        }).join('\n') }
+        return JSON.stringify(named)
       }
 
       case 'read_agent': {
-        if (this.childAgents?.list(this.host.getConfig().conversationId || '').some(agent => agent.agentId === args.agent_id)) return JSON.stringify(this.childAgents.read(String(args.agent_id), this.host.getConfig().conversationId || '', Number(args.offset || 0), Number(args.limit || 20)))
+        const owner = this.host.getConfig().conversationId || ''
         const agentId = String(args.agent_id || '').trim()
         if (!agentId) return 'Error: agent_id is required'
-        const task = this.resolveTask(agentId)
-        if (!task) return `Error: unknown agent_id "${agentId}".`
-        const transcript = this.subAgentTaskManager.readTranscript(agentId, {
-          offset: typeof args.offset === 'number' ? args.offset : undefined,
-          limit: typeof args.limit === 'number' ? args.limit : undefined,
-        })
-        const lines = [this.formatSubAgentTask(task)]
-        if (transcript.records.length > 0) {
-          lines.push('', `Transcript records ${transcript.offset}-${transcript.nextOffset - 1} of ${transcript.total}:`)
-          transcript.records.forEach((record, index) => {
-            let detail: string
-            if (record.type === 'start') detail = `${record.task.agentType} started`
-            else if (record.type === 'event') {
-              try { detail = JSON.stringify(record.event).slice(0, 1200) } catch { detail = '[unserializable event]' }
-            } else if (record.type === 'result') detail = `result ${record.status}${record.error ? `: ${record.error}` : ''}`
-            else if (record.type === 'state') detail = `${record.status}${record.error ? `: ${record.error}` : ''}`
-            else detail = `join_policy: ${record.joinPolicy}`
-            lines.push(`${transcript.offset + index}: ${record.type} · ${detail}`)
-          })
-          if (transcript.nextOffset < transcript.total) lines.push(`Next offset: ${transcript.nextOffset}`)
-        }
-        return lines.join('\n')
+        if (!this.childAgents) throw new Error('Child sessions are unavailable')
+        const identity = this.childAgents.list(owner).find(agent => agent.agentId === agentId)
+        const resolved = identity?.agentId || this.resolveTask(agentId).agentSessionId
+        if (!resolved) throw new Error('Child session not found')
+        return JSON.stringify(this.childAgents.read(resolved, owner, Number(args.offset || 0), Number(args.limit || 20)))
       }
 
       case 'send_agent_message': {
@@ -312,7 +281,7 @@ export class AgentOrchestrator {
         }
         if (previous && previous.agentType !== def.id) return 'Error: a retry must preserve the original child role.'
         const priorIdentity = previous?.agentSessionId ? this.childAgents?.get(previous.agentSessionId, previous.ownerSessionId || '') : undefined
-        const childName = priorIdentity?.name ?? (args.name === undefined && this.legacyRunner ? undefined : normalizeChildName(args.name))
+        const childName = priorIdentity?.name ?? normalizeChildName(args.name)
         const mode: ChildCapabilityMode = priorIdentity?.mode ?? (args.capability_mode === 'read_only' ? 'read_only' : 'full')
         if (childName) this.childAgents?.assertNameAvailable(childName, this.host.getConfig().conversationId || '', priorIdentity?.agentId)
         const task = this.startSubAgentTask(def, objective, enrichedObjective, previous?.id, joinPolicy, previous?.stepId,
@@ -369,10 +338,9 @@ export class AgentOrchestrator {
   ): RuntimeTask {
     const workspacePath = this.host.getConfig().workspacePath
     if (workspacePath === undefined || workspacePath === '') throw new Error('No workspace open; cannot spawn subagent')
-    if (childIdentity && !this.childAgents) throw new Error('Named child runtime is unavailable; execution cannot fall back to the legacy runner')
-    if (!childIdentity && !this.legacyRunner) throw new Error('A named child session is required; legacy execution must be explicitly configured')
-    const admissionKey = childIdentity ? JSON.stringify([this.host.getConfig().conversationId, childIdentity.name]) : null
-    if (admissionKey && this.admissions.has(admissionKey)) throw new Error('Child already has an active execution: ' + childIdentity!.name)
+    if (!childIdentity || !this.childAgents) throw new Error('A named child runtime is required')
+    const admissionKey = JSON.stringify([this.host.getConfig().conversationId, childIdentity.name])
+    if (this.admissions.has(admissionKey)) throw new Error('Child already has an active execution: ' + childIdentity.name)
     const activeChildConfig = this.host.stateProvider.getActiveConfig()
     if (childIdentity && !activeChildConfig) throw new Error('No active model configuration for child execution')
     if (childIdentity?.agentId) {
@@ -454,8 +422,6 @@ export class AgentOrchestrator {
             recordEvent(event)
             this.emitSubAgentProgress(taskId, definition.id, definition.label, event)
           }
-          const activeConfig = this.host.stateProvider.getActiveConfig()
-          const activeModel = this.host.stateProvider.getActiveModel()
           if (childIdentity && this.childAgents && activeChildConfig) {
             let turns = 0
             return this.childAgents.execute({
@@ -482,22 +448,7 @@ export class AgentOrchestrator {
               }
             })
           }
-          return this.legacyRunner!({
-            definition,
-            objective: enrichedObjective,
-            workspacePath,
-            toolExecutor: this.host.toolExecutor,
-            apiKey: activeConfig?.apiKey || '',
-            baseUrl: activeConfig?.baseUrl || 'https://api.deepseek.com',
-            provider: activeConfig?.provider,
-            customHeaders: activeConfig?.customHeaders,
-            modelCapabilities: activeConfig?.modelCapabilities,
-            model: activeModel?.id || activeConfig?.defaultModel,
-            allowedTools: parentChildConfig.allowedTools,
-            deniedTools: parentChildConfig.disabledTools,
-            abortSignal: signal,
-            onEvent: onSubEvent,
-          })
+          throw new Error('Child model configuration is unavailable')
         },
         isSuccess: result => result.ok,
         getError: result => result.error || 'Subagent failed',

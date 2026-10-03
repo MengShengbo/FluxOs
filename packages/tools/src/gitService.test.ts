@@ -99,7 +99,7 @@ describe('Git status parsing', () => {
 
 describe('Git runtime access', () => {
   it('reads repository state through a read-only capability profile', async () => {
-    const workspace = await mkdtemp(join(tmpdir(), 'turboflux-git-readonly-'))
+    const workspace = await mkdtemp(join(tmpdir(), 'fluxagent-git-readonly-'))
     try {
       await execFileAsync('git', ['init'], { cwd: workspace })
       const executor = new NodeToolExecutor(workspace, { capabilityProfile: 'read-only' })
@@ -122,13 +122,13 @@ describe('Git safety boundaries', () => {
   })
 
   it('unstages selected paths without changing their working tree content', async () => {
-    const workspace = await mkdtemp(join(tmpdir(), 'turboflux-git-unstage-'))
+    const workspace = await mkdtemp(join(tmpdir(), 'fluxagent-git-unstage-'))
     const executor = realGitExecutor()
     const git = async (...args: string[]) => execFileAsync('git', args, { cwd: workspace, env: process.env })
     try {
       await git('init')
       await git('config', 'user.name', 'FluxAgentCore Test')
-      await git('config', 'user.email', 'test@turboflux.local')
+      await git('config', 'user.email', 'test@fluxagent.local')
       await writeFile(join(workspace, 'example.txt'), 'before\n')
       await git('add', '--', 'example.txt')
       await git('commit', '-m', 'initial')
@@ -210,7 +210,7 @@ describe('Git safety boundaries', () => {
     const { executor, runProcess } = executorWithProcessMock((args, env) => {
       if (args[0] === 'rev-parse') return { success: true, stdout: args[1] === 'HEAD' ? 'abc1234\n' : 'parent\n' }
       if (args[0] === 'commit') {
-        expect(env.GIT_INDEX_FILE).toContain('turboflux-git-index-')
+        expect(env.GIT_INDEX_FILE).toContain('fluxagent-git-index-')
         return { success: true, stdout: '[main abc1234] changes\n' }
       }
       return { success: true }
@@ -245,13 +245,13 @@ describe('Git safety boundaries', () => {
   })
 
   it('commits AI paths without consuming unrelated staged content in a real repository', async () => {
-    const workspace = await mkdtemp(join(tmpdir(), 'turboflux-git-test-'))
+    const workspace = await mkdtemp(join(tmpdir(), 'fluxagent-git-test-'))
     const executor = realGitExecutor()
     const git = async (...args: string[]) => execFileAsync('git', args, { cwd: workspace, env: process.env })
     try {
       await git('init')
       await git('config', 'user.name', 'FluxAgentCore Test')
-      await git('config', 'user.email', 'test@turboflux.local')
+      await git('config', 'user.email', 'test@fluxagent.local')
       await writeFile(join(workspace, 'base.txt'), 'base\n')
       await writeFile(join(workspace, 'user.txt'), 'before\n')
       await git('add', '--', 'base.txt', 'user.txt')
@@ -273,13 +273,13 @@ describe('Git safety boundaries', () => {
   }, 20_000)
 
   it('creates an isolated initial commit while preserving unrelated staged paths', async () => {
-    const workspace = await mkdtemp(join(tmpdir(), 'turboflux-git-initial-test-'))
+    const workspace = await mkdtemp(join(tmpdir(), 'fluxagent-git-initial-test-'))
     const executor = realGitExecutor()
     const git = async (...args: string[]) => execFileAsync('git', args, { cwd: workspace, env: process.env })
     try {
       await git('init')
       await git('config', 'user.name', 'FluxAgentCore Test')
-      await git('config', 'user.email', 'test@turboflux.local')
+      await git('config', 'user.email', 'test@fluxagent.local')
       await writeFile(join(workspace, 'agent.txt'), 'agent change\n')
       await writeFile(join(workspace, 'user.txt'), 'user staged\n')
       await git('add', '--', 'agent.txt', 'user.txt')

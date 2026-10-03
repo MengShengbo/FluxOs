@@ -51,7 +51,7 @@ export function writeConversationRecoveryBundle(
     ? (isAbsolute(requestedPath) ? resolve(requestedPath) : resolve(workspacePath, requestedPath))
     : join(
         workspacePath,
-        '.turboflux',
+        '.fluxagent',
         'recovery',
         `${safeFileName(bundle.conversation.id)}-${new Date(bundle.exportedAt).toISOString().replace(/[:.]/g, '-')}.json`,
       )

@@ -16,10 +16,6 @@ import { generatedConversationTitle } from '@fluxagentcore/presentation/conversa
 const CONVERSATION_CATALOG_FILENAME = '.conversation-catalog-v1.json'
 const CONVERSATION_ID_PATTERN = /^[a-zA-Z0-9._-]+$/
 const checkedJournalBoundaries = new Set<string>()
-const LEGACY_RECOVERED_ASSISTANT_MESSAGES = new Set([
-  'Interrupted: assistant response was not recorded before restart.',
-  '上次回复在生成内容前中断。',
-])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -287,43 +283,6 @@ function cloneConversation(conversation: PersistedConversation): PersistedConver
   return JSON.parse(JSON.stringify(conversation)) as PersistedConversation
 }
 
-function readLegacyConversation(id: string, root?: string): PersistedConversation | null {
-  let filePath: string
-  try {
-    filePath = conversationPath(id, 'json', root)
-  } catch {
-    return null
-  }
-  if (!existsSync(filePath)) return null
-  try {
-    const conversation = JSON.parse(readFileSync(filePath, 'utf-8')) as Partial<PersistedConversation>
-    return isLegacyConversation(conversation) ? conversation : null
-  } catch {
-    return null
-  }
-}
-
-async function readLegacyConversationAsync(id: string, root?: string): Promise<PersistedConversation | null> {
-  let filePath: string
-  try {
-    filePath = await conversationPathAsync(id, 'json', root)
-  } catch {
-    return null
-  }
-  try {
-    const conversation = JSON.parse(await readFileAsync(filePath, 'utf-8')) as Partial<PersistedConversation>
-    return isLegacyConversation(conversation) ? conversation : null
-  } catch {
-    return null
-  }
-}
-
-function isLegacyConversation(value: Partial<PersistedConversation>): value is PersistedConversation {
-  return typeof value.id === 'string'
-    && typeof value.workspacePath === 'string'
-    && Array.isArray(value.turns)
-}
-
 function parseJournal(content: string): { entries: ConversationJournalEntry[]; truncated: boolean } {
   const entries: ConversationJournalEntry[] = []
   let truncated = false
@@ -477,24 +436,6 @@ function hasVisibleConversationContent(conversation: PersistedConversation): boo
   return conversation.turns.length > 0 || hasMeaningfulInteractionState(conversation.interactionState)
 }
 
-function isLegacyRecoveredAssistantPlaceholder(turn: AgentTurn): boolean {
-  return turn.role === 'assistant'
-    && turn.id.startsWith('recovered-assistant-')
-    && LEGACY_RECOVERED_ASSISTANT_MESSAGES.has(turn.content.trim())
-}
-
-function removeLegacyRecoveredAssistantPlaceholders(conversation: PersistedConversation): void {
-  conversation.turns = conversation.turns.filter(turn => !isLegacyRecoveredAssistantPlaceholder(turn))
-  if (conversation.activeTurns) {
-    conversation.activeTurns = conversation.activeTurns.filter(turn => !isLegacyRecoveredAssistantPlaceholder(turn))
-  }
-  if (conversation.contextReservoir) {
-    conversation.contextReservoir = conversation.contextReservoir.map(entry => ({
-      ...entry,
-      turns: entry.turns.filter(turn => !isLegacyRecoveredAssistantPlaceholder(turn)),
-    }))
-  }
-}
 
 function normalizeRecoveredAssistantInterruptions(conversation: PersistedConversation): boolean {
   let found = false
@@ -728,12 +669,12 @@ function hasPendingStreamContent(pendingStream: PendingStreamReplay): boolean {
   return pendingStream.contentChunks.length > 0 || pendingStream.thinkingChunks.length > 0
 }
 
-function replayConversation(id: string, legacy: PersistedConversation | null, entries: ConversationJournalEntry[], truncatedJournal: boolean): PersistedConversation | null {
-  let conversation = legacy ? cloneConversation(legacy) : null
+function replayConversation(id: string, entries: ConversationJournalEntry[], truncatedJournal: boolean): PersistedConversation | null {
+  let conversation: PersistedConversation | null = null
   let pendingStream: PendingStreamReplay | null = null
   const pendingToolCalls = new Map<string, ToolCall>()
   const journalToolResults = new Map<string, ToolResult>()
-  let latestTimestamp = conversation?.updatedAt || 0
+  let latestTimestamp = 0
   let interrupted = false
   let replayTruncated = truncatedJournal
   let canonicalLastSeq = 0
@@ -921,7 +862,6 @@ function replayConversation(id: string, legacy: PersistedConversation | null, en
   }
 
   if (!conversation) return null
-  removeLegacyRecoveredAssistantPlaceholders(conversation)
   interrupted = normalizeRecoveredAssistantInterruptions(conversation) || interrupted
   normalizeRecoveredAssistantWorkExecution(conversation)
   normalizeRecoveredRunErrors(conversation)
@@ -1039,15 +979,13 @@ export function appendConversationJournalBatch(id: string, entries: Conversation
 }
 
 export function updateConversationMetadata(meta: ConversationMeta, root?: string): boolean {
-  let legacyPath: string
   let journalPath: string
   try {
-    legacyPath = conversationPath(meta.id, 'json', root)
     journalPath = conversationPath(meta.id, 'jsonl', root)
   } catch {
     return false
   }
-  if (!existsSync(legacyPath) && !existsSync(journalPath)) return false
+  if (!existsSync(journalPath)) return false
   appendConversationJournal(meta.id, {
     version: 1,
     type: 'meta',
@@ -1076,24 +1014,20 @@ export function saveConversation(conv: PersistedConversation, options: { compact
 }
 
 export function loadConversation(id: string, root?: string): PersistedConversation | null {
-  const legacy = readLegacyConversation(id, root)
   const journal = readJournal(id, root)
-  if (!legacy && journal.entries.length === 0) return null
-  return replayConversation(id, legacy, journal.entries, journal.truncated)
+  if (journal.entries.length === 0) return null
+  return replayConversation(id, journal.entries, journal.truncated)
 }
 
 export async function loadConversationAsync(id: string, root?: string): Promise<PersistedConversation | null> {
-  const [legacy, journal] = await Promise.all([
-    readLegacyConversationAsync(id, root),
-    readJournalAsync(id, root),
-  ])
-  if (!legacy && journal.entries.length === 0) return null
-  return replayConversation(id, legacy, journal.entries, journal.truncated)
+  const journal = await readJournalAsync(id, root)
+  if (journal.entries.length === 0) return null
+  return replayConversation(id, journal.entries, journal.truncated)
 }
 
 export function deleteConversation(id: string, root?: string): boolean {
   let deleted = false
-  for (const extension of ['json', 'jsonl'] as const) {
+  for (const extension of ['jsonl'] as const) {
     let filePath: string
     try {
       filePath = conversationPath(id, extension, root)
@@ -1110,7 +1044,7 @@ export function deleteConversation(id: string, root?: string): boolean {
 
 export async function deleteConversationAsync(id: string, root?: string): Promise<boolean> {
   let deleted = false
-  for (const extension of ['json', 'jsonl'] as const) {
+  for (const extension of ['jsonl'] as const) {
     let filePath: string
     try {
       filePath = await conversationPathAsync(id, extension, root)
@@ -1138,8 +1072,8 @@ export function sameWorkspacePath(left: string, right: string): boolean {
 
 export function listConversations(workspacePath?: string, root?: string): ConversationMeta[] {
   const files = readdirSync(ensureDir(root)).filter(file =>
-    file !== CONVERSATION_CATALOG_FILENAME && (file.endsWith('.json') || file.endsWith('.jsonl')))
-  const ids = new Set(files.map(file => file.replace(/\.(json|jsonl)$/, '')))
+    file !== CONVERSATION_CATALOG_FILENAME && file.endsWith('.jsonl'))
+  const ids = new Set(files.map(file => file.replace(/\.jsonl$/, '')))
   const metas: ConversationMeta[] = []
 
   for (const id of ids) {
@@ -1166,8 +1100,8 @@ export function listConversations(workspacePath?: string, root?: string): Conver
 
 export async function listConversationsAsync(workspacePath?: string, root?: string): Promise<ConversationMeta[]> {
   const files = (await readdirAsync(await ensureDirAsync(root)))
-    .filter(file => file !== CONVERSATION_CATALOG_FILENAME && (file.endsWith('.json') || file.endsWith('.jsonl')))
-  const ids = [...new Set(files.map(file => file.replace(/\.(json|jsonl)$/, '')))]
+    .filter(file => file !== CONVERSATION_CATALOG_FILENAME && file.endsWith('.jsonl'))
+  const ids = [...new Set(files.map(file => file.replace(/\.jsonl$/, '')))]
   const metas: ConversationMeta[] = []
 
   for (const id of ids) {

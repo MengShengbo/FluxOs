@@ -26,7 +26,7 @@ describe('ConversationCatalog', () => {
   let directory: string
 
   beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), 'turboflux-catalog-'))
+    directory = mkdtempSync(join(tmpdir(), 'fluxagent-catalog-'))
   })
 
   afterEach(() => {

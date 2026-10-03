@@ -150,7 +150,7 @@ describe('RuntimeTaskManager', () => {
   })
 
   it('persists events and marks active tasks orphaned on recovery', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-runtime-journal-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-runtime-journal-'))
     const journalPath = join(root, 'runtime', 'journal.jsonl')
     try {
       const first = new RuntimeTaskManager({ journalPath, now: () => 100 })
@@ -175,7 +175,7 @@ describe('RuntimeTaskManager', () => {
   })
 
   it('compacts an oversized journal into recoverable task snapshots', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-runtime-compact-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-runtime-compact-'))
     const journalPath = join(root, 'journal.jsonl')
     try {
       let now = 100
@@ -227,7 +227,7 @@ describe('RuntimeTaskManager', () => {
   })
 
   it('persists terminal-task removals so pruned tasks stay gone after restart', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-runtime-prune-recovery-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-runtime-prune-recovery-'))
     const journalPath = join(root, 'journal.jsonl')
     try {
       const manager = new RuntimeTaskManager({
@@ -255,7 +255,7 @@ describe('RuntimeTaskManager', () => {
   })
 
   it('recovers a live process as observable and read-only', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-runtime-live-recovery-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-runtime-live-recovery-'))
     const journalPath = join(root, 'journal.jsonl')
     try {
       const first = new RuntimeTaskManager({ journalPath, now: () => 100 })
@@ -279,7 +279,7 @@ describe('RuntimeTaskManager', () => {
   })
 
   it('repairs a truncated journal tail', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-runtime-repair-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-runtime-repair-'))
     const journalPath = join(root, 'journal.jsonl')
     try {
       const first = new RuntimeTaskManager({ journalPath, now: () => 100 })
@@ -299,7 +299,7 @@ describe('RuntimeTaskManager', () => {
   })
 
   it('reads task output using a resumable byte cursor', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-runtime-output-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-runtime-output-'))
     const logPath = join(root, 'task.jsonl')
     try {
       writeFileSync(logPath, '0123456789', 'utf8')
@@ -315,7 +315,7 @@ describe('RuntimeTaskManager', () => {
   })
 
   it('keeps byte cursors on UTF-8 character boundaries', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-runtime-utf8-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-runtime-utf8-'))
     const logPath = join(root, 'task.log')
     try {
       writeFileSync(logPath, 'A你B', 'utf8')

@@ -7,8 +7,8 @@ export const DESIGN_ATLAS_PROMPT_FILES: Record<string, string> = {
 
 ## 边界
 
-- 只在 .turboflux/design-atlas/ 下创建探索原型、截图、清单和选型文件。除非用户随后明确要求实现选中的方向，否则不要修改产品源代码。
-- 研究资料写入 .turboflux/design-research/。不要把完整研究报告、所有网页正文或所有参考图片灌入主对话。
+- 只在 .fluxagent/design-atlas/ 下创建探索原型、截图、清单和选型文件。除非用户随后明确要求实现选中的方向，否则不要修改产品源代码。
+- 研究资料写入 .fluxagent/design-research/。不要把完整研究报告、所有网页正文或所有参考图片灌入主对话。
 - 设计规范只规定质量底线，不规定固定视觉风格。不得把“高级感”等同于暗色、极简、黑金、玻璃、渐变或任何单一语法。
 - 最终必须交付 1–20 个真实渲染并截图的方向预览；线框文字、色板、Moodboard 或口头描述不能代替设计演示。
 - 方向卡交付后结束本次任务。用户下一轮回复喜欢的编号时，只确认选择并进入普通协作，不重新启动本流程。
@@ -20,7 +20,7 @@ export const DESIGN_ATLAS_PROMPT_FILES: Record<string, string> = {
 - 如果用户给出编号，并且对话中存在最近一次 Design Atlas 方向清单：确认编号、方向名、核心设计命题和原型位置；必要时写入该探索目录的 selection.json；随后停止本工作流。不要再次询问调研或抽卡数量。
 - 否则，提取产品类型、核心任务、目标用户、使用环境、品牌约束、内容语言、必须展示的真实能力、交付范围和已有素材。
 - 只有缺失信息会让所有方向建立在错误产品上时，才问一个最关键的澄清问题。非关键缺口使用明确假设继续。
-- 为本轮建立唯一 exploration_id，并把状态放在 .turboflux/design-atlas/<exploration_id>/manifest.json，便于中断后继续，禁止重复调研和重复截图。
+- 为本轮建立唯一 exploration_id，并把状态放在 .fluxagent/design-atlas/<exploration_id>/manifest.json，便于中断后继续，禁止重复调研和重复截图。
 
 ## 状态 1：决定是否提供深度调研
 
@@ -41,7 +41,7 @@ export const DESIGN_ATLAS_PROMPT_FILES: Record<string, string> = {
 
 用户同意后，执行隔离式研究：
 
-1. 把统一研究简报写入 .turboflux/design-research/<exploration_id>/brief.md。简报只含产品事实、用户目标、范围、限制和待回答问题。
+1. 把统一研究简报写入 .fluxagent/design-research/<exploration_id>/brief.md。简报只含产品事实、用户目标、范围、限制和待回答问题。
 2. 并行启动以下三个子代理，不要让它们重复同一主题：
    - design-market-researcher：同类产品、定位、可信度和品类惯例。
    - design-visual-scout：高质量视觉参考、品牌语法、可截图页面和可借鉴/不可复制部分。
@@ -73,7 +73,7 @@ export const DESIGN_ATLAS_PROMPT_FILES: Record<string, string> = {
 
 ## 状态 4：抽卡数量
 
-把 design premise 写入 .turboflux/design-atlas/<exploration_id>/premise.md。写入成功后停止安排后续工具，等待宿主自动打开 direction-count Surface；不要主动调用 present_workflow，也不要在聊天里追问或猜测数量。
+把 design premise 写入 .fluxagent/design-atlas/<exploration_id>/premise.md。写入成功后停止安排后续工具，等待宿主自动打开 direction-count Surface；不要主动调用 present_workflow，也不要在聊天里追问或猜测数量。
 
 宿主声明的 Surface 合法范围为 1–20，并提供 1、3、6、12、20 快捷选项和 1–20 数值输入。如果写入成功后宿主没有进入 checkpoint，应停止流程并报告运行时契约错误，不得用 ask_user、普通聊天或自行调用另一个 Surface 绕过硬边界。
 
@@ -99,7 +99,7 @@ export const DESIGN_ATLAS_PROMPT_FILES: Record<string, string> = {
 
 ## 状态 6：隔离原型、截图与画廊
 
-1. 在 .turboflux/design-atlas/<exploration_id>/prototype/ 内使用一种技术实现全部方向。优先复用项目已有前端栈；如果没有合适栈，使用无依赖 HTML/CSS/JavaScript。不得混用多套框架让比较失真。
+1. 在 .fluxagent/design-atlas/<exploration_id>/prototype/ 内使用一种技术实现全部方向。优先复用项目已有前端栈；如果没有合适栈，使用无依赖 HTML/CSS/JavaScript。不得混用多套框架让比较失真。
 2. 每个方向必须是同一真实页面或关键产品切片的完整演示：包含足以判断层级、内容、交互和品牌的真实区域，不做只有 Hero 的壁纸稿，不使用 lorem ipsum、假奖项、假客户、假指标或无意义图表。
 3. 不把组件库默认样式当设计。组件只负责行为，视觉语言必须来自方向合同。
 4. 动效应服务进入、层级、状态变化和空间关系。优先 transform 与 opacity，保持可打断，支持 prefers-reduced-motion；禁止为了“丝滑”堆持续漂浮、光斑、跟手噪声和无意义视差。

@@ -19,16 +19,16 @@ export function resolveProfileArchiveBenchmarkConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): ProfileArchiveBenchmarkConfig {
   const stable = argv.includes('--stable')
-  const blobMiB = integer((environment.FLUXAGENT_BENCH_BLOB_MIB ?? environment.TURBOFLUX_BENCH_BLOB_MIB), stable ? STABLE_MINIMUM_BLOB_MIB : 64, 1)
+  const blobMiB = integer(environment.FLUXAGENT_BENCH_BLOB_MIB, stable ? STABLE_MINIMUM_BLOB_MIB : 64, 1)
   if (stable && blobMiB < STABLE_MINIMUM_BLOB_MIB) {
     throw new Error(`Stable profile archive benchmark requires at least ${STABLE_MINIMUM_BLOB_MIB} MiB, received ${blobMiB} MiB`)
   }
   return {
     qualification: stable ? 'stable' : 'development',
-    conversationCount: integer((environment.FLUXAGENT_BENCH_CONVERSATIONS ?? environment.TURBOFLUX_BENCH_CONVERSATIONS), 100, 1),
+    conversationCount: integer(environment.FLUXAGENT_BENCH_CONVERSATIONS, 100, 1),
     blobMiB,
-    kdfBudgetMs: integer((environment.FLUXAGENT_BENCH_KDF_BUDGET_MS ?? environment.TURBOFLUX_BENCH_KDF_BUDGET_MS), 1_500, 100),
-    roundTripBudgetMs: integer((environment.FLUXAGENT_BENCH_ROUNDTRIP_BUDGET_MS ?? environment.TURBOFLUX_BENCH_ROUNDTRIP_BUDGET_MS), stable ? 180_000 : 30_000, 1_000),
-    rssBudgetMiB: integer((environment.FLUXAGENT_BENCH_RSS_BUDGET_MIB ?? environment.TURBOFLUX_BENCH_RSS_BUDGET_MIB), 256, 32),
+    kdfBudgetMs: integer(environment.FLUXAGENT_BENCH_KDF_BUDGET_MS, 1_500, 100),
+    roundTripBudgetMs: integer(environment.FLUXAGENT_BENCH_ROUNDTRIP_BUDGET_MS, stable ? 180_000 : 30_000, 1_000),
+    rssBudgetMiB: integer(environment.FLUXAGENT_BENCH_RSS_BUDGET_MIB, 256, 32),
   }
 }

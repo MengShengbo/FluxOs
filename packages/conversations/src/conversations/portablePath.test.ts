@@ -16,7 +16,7 @@ afterEach(() => {
 })
 
 function root(): string {
-  const value = mkdtempSync(join(tmpdir(), 'turboflux-portable-path-'))
+  const value = mkdtempSync(join(tmpdir(), 'fluxagent-portable-path-'))
   roots.push(value)
   return value
 }

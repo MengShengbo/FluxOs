@@ -21,7 +21,7 @@ function canonicalEvent(seq: number, eventId = `event-${seq}`, conversationId = 
     conversationId,
     threadId: conversationId,
     runId: 'run-1',
-    turnId: 'turn-1',
+    turnId: '7bb84f04-265a-58ff-bbc8-326ba6aae90c',
     seq,
     at: 100 + seq,
     source: 'runtime',
@@ -35,13 +35,13 @@ describe.sequential('ConversationManager journal integration', () => {
   let directory: string
 
   beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), 'turboflux-conversation-manager-'))
-    process.env.TURBOFLUX_CONVERSATIONS_DIR = directory
+    directory = mkdtempSync(join(tmpdir(), 'fluxagent-conversation-manager-'))
+    process.env.FLUXAGENT_CONVERSATIONS_DIR = directory
   })
 
   afterEach(() => {
     vi.useRealTimers()
-    delete process.env.TURBOFLUX_CONVERSATIONS_DIR
+    delete process.env.FLUXAGENT_CONVERSATIONS_DIR
     rmSync(directory, { recursive: true, force: true })
   })
 
@@ -391,7 +391,7 @@ describe.sequential('ConversationManager journal integration', () => {
     expect(manager.isPersistenceHealthy()).toBe(false)
     expect(() => manager.startNew()).toThrow(/degraded/)
 
-    const exportRoot = mkdtempSync(join(tmpdir(), 'turboflux-conversation-export-'))
+    const exportRoot = mkdtempSync(join(tmpdir(), 'fluxagent-conversation-export-'))
     const exportPath = join(exportRoot, 'recovery.json')
     try {
       manager.exportRecoveryBundle(exportPath)
@@ -459,7 +459,7 @@ describe.sequential('ConversationManager journal integration', () => {
     manager.recordWorkflowState({
       schemaVersion: 1,
       instanceId: 'design-atlas-run-1',
-      pluginId: 'turboflux.design-atlas',
+      pluginId: 'fluxagent.design-atlas',
       pluginVersion: '1.3.2',
       skillId: 'design-atlas',
       workflow: 'design-atlas',
@@ -760,7 +760,7 @@ describe.sequential('ConversationManager journal integration', () => {
         workspaceId: 'workspace-12345678',
       },
     )
-    const userTurn: AgentTurn = { id: 'turn-user', role: 'user', content: 'Canonical prompt', timestamp: 101 }
+    const userTurn: AgentTurn = { id: 'f9f94597-0ece-5aed-9fe1-b712ca84dcea', role: 'user', content: 'Canonical prompt', timestamp: 101 }
 
     manager.recordCanonicalEvent({
       schemaVersion: 1,
@@ -840,7 +840,7 @@ describe.sequential('ConversationManager journal integration', () => {
       },
     )
 
-    const userTurn: AgentTurn = { id: 'turn-user', role: 'user', content: 'Inspect the workspace', timestamp: 101 }
+    const userTurn: AgentTurn = { id: 'f9f94597-0ece-5aed-9fe1-b712ca84dcea', role: 'user', content: 'Inspect the workspace', timestamp: 101 }
     turns.push(userTurn)
     session.updatedAt = 101
     manager.recordEvent({ type: 'turn:start', turn: userTurn })
@@ -849,12 +849,12 @@ describe.sequential('ConversationManager journal integration', () => {
     const firstEventCount = eventStore.readAll(session.id).length
 
     const assistantTurn: AgentTurn = {
-      id: 'turn-assistant',
+      id: '0c638ba2-9d0e-51b5-ac18-36eacea833ad',
       role: 'assistant',
       content: 'Workspace inspection finished',
       timestamp: 102,
-      toolCalls: [{ id: 'tool-read', name: 'read_file', arguments: { path: 'NEXT.md' } }],
-      toolResults: [{ toolCallId: 'tool-read', name: 'read_file', output: 'Next task', isError: false }],
+      toolCalls: [{ id: '3fa1d6bb-a7c7-5de2-ba94-f5d3df70e195', name: 'read_file', arguments: { path: 'NEXT.md' } }],
+      toolResults: [{ toolCallId: '3fa1d6bb-a7c7-5de2-ba94-f5d3df70e195', name: 'read_file', output: 'Next task', isError: false }],
     }
     turns.push(assistantTurn)
     session.updatedAt = 102
@@ -866,14 +866,14 @@ describe.sequential('ConversationManager journal integration', () => {
     const continuedEvents = eventStore.readAll(session.id)
     expect(continuedEvents.length).toBeGreaterThan(firstEventCount)
     expect(new ConversationRepositoryV2(v2Root).projection(session.id)).toMatchObject({
-      turns: [{ id: 'turn-user' }, { id: 'turn-assistant' }],
+      turns: [{ id: 'f9f94597-0ece-5aed-9fe1-b712ca84dcea' }, { id: '0c638ba2-9d0e-51b5-ac18-36eacea833ad' }],
       items: expect.arrayContaining([
         expect.objectContaining({ kind: 'assistant_message', payload: { text: 'Workspace inspection finished' } }),
-        expect.objectContaining({ kind: 'tool_call', payload: expect.objectContaining({ toolCallId: 'tool-read' }) }),
+        expect.objectContaining({ kind: 'tool_call', payload: expect.objectContaining({ toolCallId: '3fa1d6bb-a7c7-5de2-ba94-f5d3df70e195' }) }),
         expect.objectContaining({ kind: 'tool_result', payload: expect.objectContaining({ output: 'Next task' }) }),
       ]),
     })
-    expect(new ConversationRepositoryV2(v2Root).search('inspection finished')).toEqual([
+    expect(new ConversationRepositoryV2(v2Root).search({ query: 'inspection finished' })).toEqual([
       expect.objectContaining({ conversationId: session.id, kind: 'message' }),
     ])
 
@@ -995,7 +995,7 @@ describe.sequential('ConversationManager journal integration', () => {
     )
 
     expect(manager.recordCanonicalEvent(canonicalEvent(1, 'empty-startup-event', session.id))).toBe(true)
-    turns.push({ id: 'turn-1', role: 'user', content: 'Now persist', timestamp: 102 })
+    turns.push({ id: '7bb84f04-265a-58ff-bbc8-326ba6aae90c', role: 'user', content: 'Now persist', timestamp: 102 })
     session.updatedAt = 102
     expect(manager.recordCanonicalEvent(canonicalEvent(2, 'first-persisted-event', session.id))).toBe(true)
 

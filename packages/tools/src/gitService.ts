@@ -415,7 +415,7 @@ export async function gitCommitPaths(
     const indexBefore = await runGit(workspacePath, ['ls-files', '-s', '-z', '--', ...paths], executor)
     if (!indexBefore.ok) return { ok: false, error: commandError(indexBefore, 'Unable to snapshot the real Git index') }
 
-    temporaryDirectory = await mkdtemp(join(tmpdir(), 'turboflux-git-index-'))
+    temporaryDirectory = await mkdtemp(join(tmpdir(), 'fluxagent-git-index-'))
     const indexPath = join(temporaryDirectory, 'index')
     const env = { GIT_INDEX_FILE: indexPath }
     const readTree = await runGit(workspacePath, head.ok ? ['read-tree', 'HEAD'] : ['read-tree', '--empty'], executor, { env })

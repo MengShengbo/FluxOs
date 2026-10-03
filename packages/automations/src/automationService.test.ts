@@ -9,7 +9,7 @@ afterEach(() => { vi.useRealTimers(); for (const directory of directories.splice
 
 describe('AutomationService', () => {
   it('persists trigger definitions and returns them as owned deep copies', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const store = join(root, 'automations.json')
     const service = new AutomationService(store)
@@ -39,66 +39,8 @@ describe('AutomationService', () => {
     expect(new AutomationService(store).get(created.id)?.triggers).toEqual(service.get(created.id)?.triggers)
   })
 
-  it('migrates legacy failure notification switches once and preserves new independent choices', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
-    directories.push(root)
-    const store = join(root, 'automations.json')
-    const service = new AutomationService(store)
-    const automation = service.create({
-      name: 'Delivery migration',
-      prompt: 'Verify notification policy migration',
-      workspacePath: root,
-      schedule: { kind: 'manual' },
-      deliveryPolicy: {
-        desktop: ['failed'],
-        remoteMobile: ['failed'],
-        providerRefs: [],
-        providerEvents: ['failed'],
-      },
-    }).automations[0]!
-
-    expect(automation.deliveryPolicy).toMatchObject({
-      eventPolicyVersion: 2,
-      desktop: ['failed', 'timeout', 'budget', 'recovered'],
-      remoteMobile: ['failed', 'timeout', 'budget', 'recovered'],
-      providerEvents: ['failed', 'timeout', 'budget', 'recovered'],
-    })
-
-    const persisted = JSON.parse(readFileSync(store, 'utf8')) as { automations: Array<Record<string, unknown>> }
-    const legacy = persisted.automations[0] as { revision: number; deliveryPolicy: Record<string, unknown> }
-    delete legacy.deliveryPolicy.eventPolicyVersion
-    legacy.deliveryPolicy.desktop = ['failed']
-    legacy.deliveryPolicy.remoteMobile = ['failed']
-    legacy.deliveryPolicy.providerEvents = ['failed']
-    writeFileSync(store, JSON.stringify(persisted))
-    const migratedService = new AutomationService(store)
-    expect(migratedService.get(automation.id)).toMatchObject({
-      revision: legacy.revision + 1,
-      deliveryPolicy: {
-        eventPolicyVersion: 2,
-        desktop: ['failed', 'timeout', 'budget', 'recovered'],
-      },
-    })
-    expect(new AutomationService(store).get(automation.id)?.revision).toBe(legacy.revision + 1)
-
-    migratedService.update(automation.id, {
-      deliveryPolicy: {
-        eventPolicyVersion: 2,
-        desktop: ['failed'],
-        remoteMobile: [],
-        providerRefs: [],
-        providerEvents: ['budget'],
-      },
-    })
-    expect(migratedService.get(automation.id)?.deliveryPolicy).toMatchObject({
-      desktop: ['failed'],
-      remoteMobile: [],
-      providerEvents: ['budget'],
-    })
-  })
-
   it('defaults new definitions to isolated mode and freezes run permission and context snapshots', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -135,7 +77,7 @@ describe('AutomationService', () => {
   it('forces dry runs to ask without advancing their formal schedule', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-01T09:00:00+08:00'))
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -153,7 +95,7 @@ describe('AutomationService', () => {
   })
 
   it('freezes the previous run summary only when the context policy requests it', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -191,7 +133,7 @@ describe('AutomationService', () => {
   })
 
   it('freezes the selected child-agent strategy into each run snapshot', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -230,7 +172,7 @@ describe('AutomationService', () => {
     vi.useFakeTimers()
     const now = Date.parse('2026-09-01T01:00:00.000Z')
     vi.setSystemTime(now)
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -262,7 +204,7 @@ describe('AutomationService', () => {
     vi.useFakeTimers()
     const now = Date.parse('2026-09-01T01:30:00.000Z')
     vi.setSystemTime(now)
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -291,44 +233,10 @@ describe('AutomationService', () => {
     expect(restored).not.toHaveProperty('activeRunId')
   })
 
-  it('loads the real v2 compatibility fixture with one audited delivery-policy revision', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
-    directories.push(root)
-    const store = join(root, 'automations.json')
-    const fixturePath = join(import.meta.dirname, 'fixtures', 'automation-v2.json')
-    const fixture = JSON.parse(readFileSync(fixturePath, 'utf8')) as { automations: Array<{ workspacePath: string }> }
-    fixture.automations[0]!.workspacePath = root
-    writeFileSync(store, `${JSON.stringify(fixture, null, 2)}\n`)
-
-    const automation = new AutomationService(store).get('automation-v2-fixture')
-
-    expect(automation).toMatchObject({
-      revision: 2,
-      mode: 'continuation',
-      name: 'V2 compatibility fixture',
-      workspacePath: root,
-      schedule: { kind: 'weekly', weekday: 1, time: '09:30' },
-      timezone: 'Asia/Shanghai',
-      approvalPolicy: 'ask',
-      overlapPolicy: 'queue-one',
-      retryPolicy: { maxRetries: 3, backoffMinutes: 4 },
-      maxRuntimeMinutes: 90,
-      conversationId: 'desktop-v2-automation-conversation',
-      lastStatus: 'completed',
-    })
-    expect(automation?.history).toEqual([
-      expect.objectContaining({
-        id: 'automation-run-v2-fixture',
-        status: 'completed',
-        resultSummary: 'Persisted V2 run completed.',
-      }),
-    ])
-  })
-
   it('computes interval runs, marks due work, and survives restart', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-07T09:00:00+08:00'))
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const store = join(root, 'automations.json')
     const workspace = join(root, 'workspace')
@@ -342,7 +250,7 @@ describe('AutomationService', () => {
   })
 
   it('removes next run while disabled and restores it when enabled', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({ name: 'Daily', prompt: 'Run daily', workspacePath: root, schedule: { kind: 'daily', time: '09:30' } }).automations[0]
@@ -354,7 +262,7 @@ describe('AutomationService', () => {
     vi.useFakeTimers()
     const now = Date.parse('2026-09-01T01:00:00.000Z')
     vi.setSystemTime(now)
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -373,7 +281,7 @@ describe('AutomationService', () => {
   it('supports one-time and weekly schedules', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-07T09:00:00+08:00'))
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const onceAt = new Date('2026-08-07T10:30:00+08:00').toISOString()
@@ -389,7 +297,7 @@ describe('AutomationService', () => {
   it('keeps bounded run history and advances a schedule only once per run', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-07T09:00:00+08:00'))
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -410,7 +318,7 @@ describe('AutomationService', () => {
   })
 
   it('duplicates automations as disabled independent records', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const original = service.create({ name: 'Daily', prompt: 'Run daily', workspacePath: root, schedule: { kind: 'daily', time: '09:30' }, approvalPolicy: 'full' }).automations[0]
@@ -421,7 +329,7 @@ describe('AutomationService', () => {
   it('marks overdue work in another project as waiting without consuming its schedule', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-07T09:00:00+08:00'))
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const otherWorkspace = join(root, 'other')
@@ -484,7 +392,7 @@ describe('AutomationService', () => {
   it('applies misfire and overlap policies without duplicate claims', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-08-07T09:00:00+08:00'))
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const skipped = service.create({
@@ -520,7 +428,7 @@ describe('AutomationService', () => {
     vi.useFakeTimers()
     const now = Date.parse('2026-08-07T01:00:00.000Z')
     vi.setSystemTime(now)
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -544,7 +452,7 @@ describe('AutomationService', () => {
     vi.useFakeTimers()
     const now = Date.parse('2026-08-07T01:30:00.000Z')
     vi.setSystemTime(now)
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -575,7 +483,7 @@ describe('AutomationService', () => {
   })
 
   it('treats explicit approval options as an authoritative response whitelist', () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-'))
     directories.push(root)
     const service = new AutomationService(join(root, 'automations.json'))
     const automation = service.create({
@@ -615,47 +523,5 @@ describe('AutomationService', () => {
       status: 'denied',
       decision: 'deny',
     })
-  })
-
-  it('migrates v1 data and recovers interrupted runs on startup', () => {
-    vi.useFakeTimers()
-    const now = Date.parse('2026-08-07T01:00:00.000Z')
-    vi.setSystemTime(now)
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-'))
-    directories.push(root)
-    const store = join(root, 'automations.json')
-    writeFileSync(store, JSON.stringify({
-      schemaVersion: 1,
-      automations: [{
-        id: 'legacy',
-        name: 'Legacy',
-        prompt: 'Resume safely',
-        workspacePath: root,
-        schedule: { kind: 'manual' },
-        enabled: true,
-        approvalPolicy: 'ask',
-        createdAt: now - 10_000,
-        updatedAt: now - 5_000,
-        activeRunId: 'legacy-run',
-        history: [{
-          id: 'legacy-run',
-          trigger: 'scheduled',
-          status: 'running',
-          attempt: 1,
-          startedAt: now - 5_000,
-          updatedAt: now - 5_000,
-        }],
-      }],
-    }))
-    const migrated = new AutomationService(store).get('legacy')!
-    expect(migrated).toMatchObject({
-      timezone: expect.any(String),
-      misfirePolicy: 'run-once',
-      overlapPolicy: 'skip',
-      retryPolicy: { maxRetries: 2, backoffMinutes: 2 },
-      activeRunId: undefined,
-      lastStatus: 'retry_scheduled',
-    })
-    expect(migrated.history[0]).toMatchObject({ status: 'retry_scheduled', error: expect.stringContaining('exited') })
   })
 })

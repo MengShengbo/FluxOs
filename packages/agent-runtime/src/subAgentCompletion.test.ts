@@ -7,7 +7,7 @@ import { createSubAgentDelivery } from './subAgentDelivery'
 import { SubAgentTaskManager } from './runtime/subAgentTaskManager'
 
 function createWorkspace(): string {
-  return mkdtempSync(path.join(tmpdir(), 'turboflux-completions-'))
+  return mkdtempSync(path.join(tmpdir(), 'fluxagent-completions-'))
 }
 
 describe('subagent completion delivery', () => {

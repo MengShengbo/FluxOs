@@ -18,7 +18,7 @@ afterEach(() => {
 })
 
 function temporaryDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'turboflux-file-io-'))
+  const directory = mkdtempSync(join(tmpdir(), 'fluxagent-file-io-'))
   directories.push(directory)
   return directory
 }

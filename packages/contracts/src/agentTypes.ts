@@ -4,7 +4,6 @@ export type ApprovalPolicy = 'ask' | 'agent' | 'full'
 
 export type CapabilityProfile = 'read-only' | 'workspace-write' | 'danger-full-access'
 
-export type LegacyApprovalPolicy = 'request' | 'auto'
 
 export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 
@@ -167,7 +166,7 @@ export interface ModelRequestRecord {
   model?: string
   provider?: string
   protocol?: 'openai_responses' | 'openai_chat' | 'anthropic_messages'
-  purpose: 'turn' | 'compaction' | 'legacy'
+  purpose: 'turn' | 'compaction'
   status: 'running' | 'completed' | 'failed' | 'interrupted'
   startedAt: number
   updatedAt: number
@@ -371,8 +370,6 @@ export const CAPABILITY_PROFILE_DESCRIPTIONS: Record<CapabilityProfile, string> 
 
 export function normalizeApprovalPolicy(value: unknown, fallback: ApprovalPolicy = 'ask'): ApprovalPolicy {
   if (value === 'ask' || value === 'agent' || value === 'full') return value
-  if (value === 'request') return 'ask'
-  if (value === 'auto') return 'agent'
   return fallback
 }
 

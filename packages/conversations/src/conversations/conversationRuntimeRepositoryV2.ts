@@ -3,8 +3,8 @@ import type { ModelRequestRecord } from '@fluxagentcore/contracts/agentTypes'
 import type { AgentTurn, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
 import { copyToolResultDetails } from '@fluxagentcore/contracts/toolResultData'
 import { ConversationRepositoryV2 } from './conversationRepositoryV2'
-import { planConversationV2Migration } from './conversationV2Migration'
-import { portablePathRefsForToolValue } from './conversationV2Migration'
+import { planConversationRuntimeEvents } from './conversationRuntimeEvents'
+import { portablePathRefsForToolValue } from './conversationRuntimeEvents'
 import { conversationV2IdFactory } from './conversationV2Ids'
 import type { AnyAppendConversationEventV2Input, ConversationItemV2, ConversationRunV2, ConversationTranscriptProjectionV2, ConversationTurnV2, ConversationV2ItemStatus, ConversationV2RunStatus } from './conversationV2Types'
 import type { ConversationMeta, PersistedConversation } from './types'
@@ -440,7 +440,7 @@ function canonicalEventsFromProjectionV2(projection: ConversationTranscriptProje
       itemId: candidate.itemId,
       seq: index + 1,
       at: candidate.at,
-      source: 'migration',
+      source: 'runtime',
       provenance: 'restored',
       type: candidate.type,
       payload: candidate.payload,
@@ -502,7 +502,7 @@ export class ConversationRuntimeRepositoryV2 {
     const eventId = ids.stable
     const previousProjection = this.repository.projection(conversation.id)
     const existing = previousProjection.conversation
-    const plan = planConversationV2Migration(this.profileId, conversation, {
+    const plan = planConversationRuntimeEvents(this.profileId, conversation, {
       workspaceId: this.workspaceId,
       source: 'runtime',
       provenance: 'live',
@@ -805,20 +805,7 @@ export class ConversationRuntimeRepositoryV2 {
         inputs.push({ ...common, itemId: ids.normalize('request', request.id), eventId: canonicalEventId(event), type: 'model.request_updated', payload: { request } })
         break
       }
-      case 'usage.updated': {
-        // Current engines persist attempt snapshots separately. Legacy events
-        // still have a stable request identity when a step/run id is available.
-        if (event.payload.attemptId || !isTokenUsage(event.payload.usage)) break
-        const id = ids.stable('legacy-model-request', event.runId ?? conversation.id, event.stepId ?? 'declaration')
-        const previous = projection.modelRequests?.find(record => record.id === id)
-        const request: ModelRequestRecord = {
-          id, requestId: id, runId: common.runId, model: conversation.model, provider: conversation.provider,
-          purpose: 'legacy', status: 'completed', startedAt: previous?.startedAt ?? event.at, updatedAt: event.at,
-          usage: { ...event.payload.usage }, usageFinal: event.payload.usage.source === 'provider',
-        }
-        inputs.push({ ...common, eventId: canonicalEventId(event), type: 'model.request_updated', payload: { request } })
-        break
-      }
+      case 'usage.updated': break
       case 'turn.completed': {
         const turn = event.payload.turn
         const turnId = portableId('turn', turn.id)

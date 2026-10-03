@@ -22,7 +22,7 @@ async function createArchive(input: {
   encrypted?: boolean
   workspaces?: Array<{ id: string; displayName: string }>
 }): Promise<{ path: string; password?: string }> {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-scan-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-scan-'))
   directories.push(root)
   const componentEntries = input.components.map(component => jsonEntry(component.path, component.value))
   const profile = jsonEntry('profile/profile.json', { schemaVersion: 1, displayName: 'Imported' })
@@ -68,7 +68,7 @@ async function createArchive(input: {
     components: groupedComponents,
     workspaces: input.workspaces ?? [],
   })
-  const targetPath = join(root, 'fixture.turboflux-profile')
+  const targetPath = join(root, 'fixture.fluxagent-profile')
   const password = input.encrypted ? 'scanner fixture password' : undefined
   await writeProfileArchive({ targetPath, password, verifyDocument: true, entries: [jsonEntry('manifest.json', manifest), profile, ...componentEntries, checksums] })
   return { path: targetPath, password }
@@ -163,7 +163,7 @@ describe('profile archive security scanner', () => {
     await expect(scanProfileArchive(fixture)).rejects.toMatchObject({ code: 'ARCHIVE_COMPONENT_INVALID' })
   })
 
-  it('rejects a conversation that carries an active approval', async () => {
+  it('rejects the retired single-snapshot conversation component', async () => {
     const fixture = await createArchive({
       components: [
         {
@@ -181,7 +181,7 @@ describe('profile archive security scanner', () => {
         },
       ],
     })
-    await expect(scanProfileArchive(fixture)).rejects.toMatchObject({ code: 'ARCHIVE_COMPONENT_INVALID' })
+    await expect(scanProfileArchive(fixture)).rejects.toMatchObject({ code: 'ARCHIVE_UNSUPPORTED_VERSION' })
   })
 
   it('rejects Conversation V2 interaction documents that carry queued runtime state', async () => {

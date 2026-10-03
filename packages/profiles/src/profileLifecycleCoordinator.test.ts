@@ -8,7 +8,7 @@ import { InstallationProfileRegistry } from './profileRegistry'
 const roots: string[] = []
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-profile-lifecycle-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-profile-lifecycle-'))
   roots.push(root)
   let nextId = 0
   const registry = new InstallationProfileRegistry(join(root, 'data'), {

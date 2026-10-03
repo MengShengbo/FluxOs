@@ -9,7 +9,7 @@ import type { AgentTurn, AgentConfig, CapabilityProfile, NativeReasoningConfig }
 import type { APIConfig, ContextSegment, ContextReservoirEntry } from '@fluxagentcore/contracts/stateTypes'
 import type { AgentEventType, AgentEngine } from '../agentEngine'
 import type { SubAgentResult } from '../subAgent'
-import { childMessageBatch, enqueueChildMessage, messageReceipt, migrateChildInbox, reconcileChildMessages, type ChildMessageOptions, type StoredChildMessage } from './childAgentMailbox'
+import { childMessageBatch, enqueueChildMessage, messageReceipt, reconcileChildMessages, type ChildMessageOptions, type StoredChildMessage } from './childAgentMailbox'
 import type { ChildAgentMessageReceipt } from '@fluxagentcore/contracts/childAgentTypes'
 
 export interface ChildRuntimeHandle {
@@ -44,10 +44,6 @@ interface ChildRecord {
   items: ChildTranscriptItem[]
   messages: StoredChildMessage[]
   instructions: string
-}
-interface LegacyChildRecord extends Omit<ChildRecord, 'schemaVersion' | 'messages'> {
-  schemaVersion: 1
-  inbox: Array<{ id: string; message: string }>
 }
 interface LiveChild { runtime: ChildRuntimeHandle; unsubscribe: () => void }
 
@@ -334,13 +330,8 @@ export class ChildAgentController {
   private restore(): void {
     for (const filename of readdirSync(this.storageRoot)) {
       if (!filename.endsWith('.json')) continue
-      const stored = JSON.parse(readFileSync(join(this.storageRoot, filename), 'utf8')) as ChildRecord | LegacyChildRecord
-      if ((stored.schemaVersion !== 1 && stored.schemaVersion !== 2) || !stored.snapshot?.agentId) continue
-      let record: ChildRecord
-      if (stored.schemaVersion === 1) {
-        const { inbox, ...legacy } = stored
-        record = { ...legacy, schemaVersion: 2, messages: migrateChildInbox(inbox) }
-      } else record = stored
+      const record = JSON.parse(readFileSync(join(this.storageRoot, filename), 'utf8')) as ChildRecord
+      if (record.schemaVersion !== 2 || !record.snapshot?.agentId) continue
       record.messages = reconcileChildMessages(record.messages, record.turns)
       if (record.snapshot.state === 'running') {
         record.snapshot.state = 'idle'; record.snapshot.lastOutcome = 'interrupted'

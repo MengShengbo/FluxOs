@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { childMessageBatch, enqueueChildMessage, reconcileChildMessages, migrateChildInbox, messageReceipt, type StoredChildMessage } from './childAgentMailbox'
+import { childMessageBatch, enqueueChildMessage, reconcileChildMessages, messageReceipt, type StoredChildMessage } from './childAgentMailbox'
 
 describe('child mailbox protocol', () => {
   it('deduplicates queued and committed messages without storing committed text twice', () => {
@@ -43,17 +43,9 @@ describe('child mailbox protocol', () => {
     expect(enqueueChildMessage(messages, 'done', { messageId: 'done-0' }).duplicate).toBe(false)
   })
 
-  it('drains legacy oversized backlogs in FIFO batches without discarding queued messages', () => {
-    const messages = migrateChildInbox([1, 2, 3, 4].map(id => ({ id: 'legacy-' + id, message: 'a'.repeat(20_000) })))
-    expect(childMessageBatch(messages).map(message => message.messageId)).toEqual(['legacy-1', 'legacy-2', 'legacy-3'])
+  it('drains queued message backlogs in FIFO batches without discarding queued messages', () => {
+    const messages = [1, 2, 3, 4].reduce<StoredChildMessage[]>((messages, id) => enqueueChildMessage(messages, 'a'.repeat(15_000), { messageId: 'message-' + id }).messages, [])
+    expect(childMessageBatch(messages).map(message => message.messageId)).toEqual(['message-1', 'message-2', 'message-3', 'message-4'])
     expect(messages).toHaveLength(4)
-  })
-
-  it('recovers legacy identity without inventing origin or receipt timestamps', () => {
-    const messages = migrateChildInbox([{ id: 'legacy-message', message: 'Old guidance' }])
-    expect(messages[0]).not.toHaveProperty('createdAt')
-    expect(messages[0]).not.toHaveProperty('sourceWorkRunId')
-    const committed = reconcileChildMessages(messages, [{ id: 'legacy-message', role: 'user', content: 'Old guidance', timestamp: 10 }])
-    expect(committed[0]).toMatchObject({ state: 'committed', committedAt: 10 })
   })
 })

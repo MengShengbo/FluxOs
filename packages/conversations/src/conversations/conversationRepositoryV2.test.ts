@@ -13,7 +13,7 @@ afterEach(() => {
 })
 
 function root(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'turboflux-conversation-repository-v2-'))
+  const directory = mkdtempSync(join(tmpdir(), 'fluxagent-conversation-repository-v2-'))
   roots.push(directory)
   return directory
 }
@@ -100,7 +100,7 @@ describe('ConversationRepositoryV2', () => {
       eventId: 'event-message', profileId: 'profile-1', conversationId: 'conversation-1', workspaceId: 'workspace-1', itemId: 'item-1', source: 'agent', provenance: 'live', type: 'item.created', at: 20,
       payload: { item: { schemaVersion: 1, id: 'item-1', conversationId: 'conversation-1', kind: 'assistant_message', status: 'completed', createdAt: 20, updatedAt: 20, payload: { text: 'The portable result is ready' } } },
     }])
-    expect(repository.search('portable')).toEqual([expect.objectContaining({ conversationId: 'conversation-1', itemId: 'item-1', kind: 'message' })])
+    expect(repository.search({ query: 'portable' })).toEqual([expect.objectContaining({ conversationId: 'conversation-1', itemId: 'item-1', kind: 'message' })])
   })
 
   it('filters private search results by workspace, date and typed result kind', () => {
@@ -139,12 +139,12 @@ describe('ConversationRepositoryV2', () => {
       payload: { item: { schemaVersion: 1, id: 'item-b', conversationId: 'conversation-b', kind: 'user_message', status: 'completed', createdAt: 20, updatedAt: 20, payload: { text: 'PRIVATE_BETA_TOKEN', attachmentIds: [] } } },
     }])
     rmSync(join(firstRoot, 'search-index.json'), { force: true })
-    expect(first.search('private_alpha')).toEqual([expect.objectContaining({ conversationId: 'conversation-a', itemId: 'item-a' })])
-    expect(first.search('private_beta')).toEqual([])
-    expect(second.search('private_alpha')).toEqual([])
+    expect(first.search({ query: 'private_alpha' })).toEqual([expect.objectContaining({ conversationId: 'conversation-a', itemId: 'item-a' })])
+    expect(first.search({ query: 'private_beta' })).toEqual([])
+    expect(second.search({ query: 'private_alpha' })).toEqual([])
 
     first.append([{ eventId: 'event-redact-a', profileId: 'profile-a', conversationId: 'conversation-a', workspaceId: 'workspace-1', itemId: 'item-a', source: 'user', provenance: 'live', type: 'item.redacted', at: 30, payload: { reason: 'Removed by user', redactedAt: 30 } }])
-    expect(first.search('private_alpha')).toEqual([])
+    expect(first.search({ query: 'private_alpha' })).toEqual([])
   })
 
   it('lists a 10k catalog with one catalog read and no journal reads', () => {

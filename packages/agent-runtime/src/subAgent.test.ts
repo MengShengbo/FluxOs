@@ -14,10 +14,10 @@ function delay(ms: number): Promise<void> {
 
 describe('subagent registry isolation', () => {
   it('replaces workspace agents without removing programmatic registrations', () => {
-    const firstWorkspace = mkdtempSync(join(tmpdir(), 'turboflux-agent-first-'))
-    const secondWorkspace = mkdtempSync(join(tmpdir(), 'turboflux-agent-second-'))
-    mkdirSync(join(firstWorkspace, '.turboflux', 'agents'), { recursive: true })
-    writeFileSync(join(firstWorkspace, '.turboflux', 'agents', 'first.md'), [
+    const firstWorkspace = mkdtempSync(join(tmpdir(), 'fluxagent-agent-first-'))
+    const secondWorkspace = mkdtempSync(join(tmpdir(), 'fluxagent-agent-second-'))
+    mkdirSync(join(firstWorkspace, '.fluxagent', 'agents'), { recursive: true })
+    writeFileSync(join(firstWorkspace, '.fluxagent', 'agents', 'first.md'), [
       '---',
       'name: first_workspace_agent',
       'description: first workspace only',
@@ -573,7 +573,7 @@ describe('runSubAgent', () => {
 
   it('gives research agents a scoped web and report toolset', async () => {
     const originalFetch = globalThis.fetch
-    const workspacePath = mkdtempSync(join(tmpdir(), 'turboflux-design-research-agent-'))
+    const workspacePath = mkdtempSync(join(tmpdir(), 'fluxagent-design-research-agent-'))
     const requestBodies: Array<Record<string, any>> = []
     let requestCount = 0
     globalThis.fetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
@@ -582,7 +582,7 @@ describe('runSubAgent', () => {
       if (requestCount === 1) {
         return new Response(JSON.stringify({ choices: [{ message: { content: '', tool_calls: [
           { id: 'search-1', function: { name: 'web_search', arguments: JSON.stringify({ query: 'premium product design' }) } },
-          { id: 'report-1', function: { name: 'write_research_report', arguments: JSON.stringify({ path: '.turboflux/design-research/run-1/index.json', content: '{"items":[]}' }) } },
+          { id: 'report-1', function: { name: 'write_research_report', arguments: JSON.stringify({ path: '.fluxagent/design-research/run-1/index.json', content: '{"items":[]}' }) } },
         ] } }] }), { status: 200 })
       }
       return new Response(JSON.stringify({ choices: [{ message: { content: 'REPORT: index.json' } }] }), { status: 200 })
@@ -618,7 +618,7 @@ describe('runSubAgent', () => {
       expect(requestBodies[0].tools.map((tool: any) => tool.function.name)).toEqual(['web_search', 'web_fetch', 'write_research_report'])
       expect(executor.webSearch).toHaveBeenCalledWith(expect.objectContaining({ query: 'premium product design' }))
       expect(writeFile).toHaveBeenCalledWith(
-        expect.stringContaining(join('.turboflux', 'design-research', 'run-1', 'index.json')),
+        expect.stringContaining(join('.fluxagent', 'design-research', 'run-1', 'index.json')),
         '{"items":[]}',
         expect.objectContaining({ source: 'subagent' }),
       )
@@ -630,7 +630,7 @@ describe('runSubAgent', () => {
 
   it('keeps a delegated agent running until its declared outputs are written', async () => {
     const originalFetch = globalThis.fetch
-    const workspacePath = mkdtempSync(join(tmpdir(), 'turboflux-agent-completion-gate-'))
+    const workspacePath = mkdtempSync(join(tmpdir(), 'fluxagent-agent-completion-gate-'))
     let requestCount = 0
     globalThis.fetch = vi.fn(async () => {
       requestCount += 1
@@ -639,8 +639,8 @@ describe('runSubAgent', () => {
       }
       if (requestCount === 2) {
         return new Response(JSON.stringify({ choices: [{ message: { content: '', tool_calls: [
-          { id: 'report', function: { name: 'write_research_report', arguments: JSON.stringify({ path: '.turboflux/design-research/run/report.md', content: '# Report' }) } },
-          { id: 'index', function: { name: 'write_research_report', arguments: JSON.stringify({ path: '.turboflux/design-research/run/index.json', content: '{"sources":[]}' }) } },
+          { id: 'report', function: { name: 'write_research_report', arguments: JSON.stringify({ path: '.fluxagent/design-research/run/report.md', content: '# Report' }) } },
+          { id: 'index', function: { name: 'write_research_report', arguments: JSON.stringify({ path: '.fluxagent/design-research/run/index.json', content: '{"sources":[]}' }) } },
         ] } }] }), { status: 200 })
       }
       return new Response(JSON.stringify({ choices: [{ message: { content: 'REPORT and INDEX written.' } }] }), { status: 200 })

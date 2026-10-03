@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const originalConfigDir = process.env.TURBOFLUX_CONFIG_DIR
-const originalApiKey = process.env.TURBOFLUX_API_KEY
+const originalConfigDir = process.env.FLUXAGENT_CONFIG_DIR
+const originalApiKey = process.env.FLUXAGENT_API_KEY
 
 function decodeCredentialsDocument(path: string): { protected: boolean; snapshot: Record<string, unknown> } {
   const document = JSON.parse(readFileSync(path, 'utf-8'))
@@ -16,17 +16,17 @@ function decodeCredentialsDocument(path: string): { protected: boolean; snapshot
 }
 
 afterEach(() => {
-  if (originalConfigDir === undefined) delete process.env.TURBOFLUX_CONFIG_DIR
-  else process.env.TURBOFLUX_CONFIG_DIR = originalConfigDir
-  if (originalApiKey === undefined) delete process.env.TURBOFLUX_API_KEY
-  else process.env.TURBOFLUX_API_KEY = originalApiKey
+  if (originalConfigDir === undefined) delete process.env.FLUXAGENT_CONFIG_DIR
+  else process.env.FLUXAGENT_CONFIG_DIR = originalConfigDir
+  if (originalApiKey === undefined) delete process.env.FLUXAGENT_API_KEY
+  else process.env.FLUXAGENT_API_KEY = originalApiKey
   vi.resetModules()
 })
 
 describe('credential storage', () => {
   it('keeps API keys out of config.json and stores them base64url-encoded in credentials.json', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-credentials-'))
-    process.env.TURBOFLUX_CONFIG_DIR = directory
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-credentials-'))
+    process.env.FLUXAGENT_CONFIG_DIR = directory
     vi.resetModules()
     try {
       const { saveConfig, loadConfig } = await import('./config')
@@ -55,9 +55,9 @@ describe('credential storage', () => {
   })
 
   it('does not persist a process-level API key override during unrelated saves', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-env-credentials-'))
-    process.env.TURBOFLUX_CONFIG_DIR = directory
-    delete process.env.TURBOFLUX_API_KEY
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-env-credentials-'))
+    process.env.FLUXAGENT_CONFIG_DIR = directory
+    delete process.env.FLUXAGENT_API_KEY
     vi.resetModules()
     try {
       const { saveConfig, loadConfig } = await import('./config')
@@ -71,7 +71,7 @@ describe('credential storage', () => {
         approvalPolicy: 'ask',
         gitEnabled: true,
       })
-      process.env.TURBOFLUX_API_KEY = 'sk-process-only'
+      process.env.FLUXAGENT_API_KEY = 'sk-process-only'
       const loaded = await loadConfig()
       expect(loaded.apiKey).toBe('sk-process-only')
 
@@ -91,11 +91,11 @@ describe('credential storage', () => {
   })
 
   it('preserves malformed config before rebuilding it from stored credentials', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-corrupt-config-'))
-    process.env.TURBOFLUX_CONFIG_DIR = directory
-    delete process.env.TURBOFLUX_API_KEY
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-corrupt-config-'))
+    process.env.FLUXAGENT_CONFIG_DIR = directory
+    delete process.env.FLUXAGENT_API_KEY
     writeFileSync(join(directory, 'config.json'), '{broken', 'utf-8')
-    writeFileSync(join(directory, 'credentials.json'), JSON.stringify({ apiKey: 'sk-recoverable' }), 'utf-8')
+    writeFileSync(join(directory, 'credentials.json'), JSON.stringify({ schemaVersion: 2, protected: false, payload: Buffer.from(JSON.stringify({ apiKey: 'sk-recoverable' })).toString('base64url') }), 'utf-8')
     vi.resetModules()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
@@ -114,9 +114,9 @@ describe('credential storage', () => {
   })
 
   it('preserves malformed credentials instead of silently discarding the only copy', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-corrupt-credentials-'))
-    process.env.TURBOFLUX_CONFIG_DIR = directory
-    delete process.env.TURBOFLUX_API_KEY
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-corrupt-credentials-'))
+    process.env.FLUXAGENT_CONFIG_DIR = directory
+    delete process.env.FLUXAGENT_API_KEY
     writeFileSync(join(directory, 'config.json'), JSON.stringify({
       provider: 'openai',
       apiKey: '',
@@ -157,72 +157,10 @@ describe('credential storage', () => {
     }
   })
 
-  it('migrates legacy full approval to complete runtime access', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-full-access-migration-'))
-    process.env.TURBOFLUX_CONFIG_DIR = directory
-    delete process.env.TURBOFLUX_API_KEY
-    writeFileSync(join(directory, 'config.json'), JSON.stringify({
-      provider: 'custom',
-      apiKey: '',
-      baseUrl: 'https://api.example.test/v1',
-      model: 'test-model',
-      contextWindow: 128_000,
-      maxTokens: 4096,
-      approvalPolicy: 'full',
-      capabilityProfile: 'workspace-write',
-      gitEnabled: true,
-    }), 'utf-8')
-    vi.resetModules()
-    try {
-      const { loadConfig } = await import('./config')
-      const loaded = await loadConfig()
-      const persisted = JSON.parse(readFileSync(join(directory, 'config.json'), 'utf-8'))
-
-      expect(loaded.capabilityProfile).toBe('danger-full-access')
-      expect(persisted.capabilityProfile).toBe('danger-full-access')
-    } finally {
-      rmSync(directory, { recursive: true, force: true })
-    }
-  })
-
-  it('migrates legacy credentials without dropping advanced model metadata', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-legacy-config-'))
-    process.env.TURBOFLUX_CONFIG_DIR = directory
-    delete process.env.TURBOFLUX_API_KEY
-    writeFileSync(join(directory, 'config.json'), JSON.stringify({
-      provider: 'custom',
-      apiKey: 'legacy-secret',
-      baseUrl: 'https://api.example.test/v1',
-      model: 'vendor/reasoner',
-      contextWindow: 100_000,
-      maxTokens: 8_000,
-      maxOutputTokens: 12_000,
-      modelCapabilities: { reasoning: true, reasoningEfforts: ['low', 'high'] },
-      modelMetadataSources: ['api'],
-      approvalPolicy: 'ask',
-      gitEnabled: true,
-    }), 'utf-8')
-    vi.resetModules()
-    try {
-      const { loadConfig } = await import('./config')
-      const loaded = await loadConfig()
-      const profile = loaded.apiConfigs?.[0]
-
-      expect(profile?.maxOutputTokens).toBe(12_000)
-      expect(profile?.modelCapabilities?.reasoningEfforts).toEqual(['low', 'high'])
-      expect(profile?.modelMetadataSources).toEqual(['api'])
-      expect(readFileSync(join(directory, 'config.json'), 'utf-8')).not.toContain('legacy-secret')
-      const decoded = decodeCredentialsDocument(join(directory, 'credentials.json'))
-      expect(decoded.snapshot.apiKey).toBe('legacy-secret')
-    } finally {
-      rmSync(directory, { recursive: true, force: true })
-    }
-  })
-
   it('encrypts credentials at rest when platform protection is configured', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-protected-credentials-'))
-    process.env.TURBOFLUX_CONFIG_DIR = directory
-    delete process.env.TURBOFLUX_API_KEY
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-protected-credentials-'))
+    process.env.FLUXAGENT_CONFIG_DIR = directory
+    delete process.env.FLUXAGENT_API_KEY
     vi.resetModules()
     try {
       const { setCredentialProtection } = await import('./credentialStore')
@@ -255,33 +193,10 @@ describe('credential storage', () => {
     }
   })
 
-  it('decrypts and re-protects a credential document for same-device migration', async () => {
-    vi.resetModules()
-    const { reprotectCredentialDocument, serializeCredentialSnapshot, setCredentialProtection } = await import('./credentialStore')
-    setCredentialProtection({
-      protect: plaintext => Buffer.concat([Buffer.from('v1:'), plaintext]),
-      unprotect: ciphertext => Buffer.from(ciphertext.subarray(3)),
-    })
-    const legacy = Buffer.from(serializeCredentialSnapshot({ apiKey: 'sk-migrate-secret' }), 'utf8')
-    setCredentialProtection({
-      protect: plaintext => Buffer.concat([Buffer.from('v2:'), plaintext]),
-      unprotect: ciphertext => Buffer.from(ciphertext.subarray(3)),
-    })
-
-    const migrated = reprotectCredentialDocument(legacy)
-    const document = JSON.parse(migrated.toString('utf8')) as { protected: boolean; payload: string }
-    const protectedPayload = Buffer.from(document.payload, 'base64url')
-
-    expect(document.protected).toBe(true)
-    expect(protectedPayload.subarray(0, 3).toString('utf8')).toBe('v2:')
-    expect(migrated.toString('utf8')).not.toContain('sk-migrate-secret')
-    expect(JSON.parse(protectedPayload.subarray(3).toString('utf8')).apiKey).toBe('sk-migrate-secret')
-  })
-
   it('keeps protected credentials untouched when the key store disappears', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-locked-credentials-'))
-    process.env.TURBOFLUX_CONFIG_DIR = directory
-    delete process.env.TURBOFLUX_API_KEY
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-locked-credentials-'))
+    process.env.FLUXAGENT_CONFIG_DIR = directory
+    delete process.env.FLUXAGENT_API_KEY
     vi.resetModules()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {

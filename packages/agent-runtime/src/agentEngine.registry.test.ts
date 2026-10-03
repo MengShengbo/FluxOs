@@ -11,11 +11,11 @@ import { registerAgent, syncAgentSkills, runSubAgent } from './subAgent'
 import { SkillRuntime } from '@fluxagentcore/extensions/skills/runtime'
 
 it('offers built-in delegation in each workspace without leaking project definitions', () => {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-agent-availability-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-agent-availability-'))
   const first = join(root, 'first'), second = join(root, 'second')
-  mkdirSync(join(first, '.turboflux', 'agents'), { recursive: true })
+  mkdirSync(join(first, '.fluxagent', 'agents'), { recursive: true })
   mkdirSync(second)
-  writeFileSync(join(first, '.turboflux', 'agents', 'only-here.md'), '---\nname: only_here\ndescription: local only\n---\nLocal instructions')
+  writeFileSync(join(first, '.fluxagent', 'agents', 'only-here.md'), '---\nname: only_here\ndescription: local only\n---\nLocal instructions')
   const engines = [first, second].map(workspace => new AgentEngine({ mode: 'vibe', approvalPolicy: 'full', workspacePath: workspace, gitEnabled: false }, {} as ToolExecutor,
     new DefaultAgentStateProvider({ provider: 'custom', apiKey: '', baseUrl: '', model: '' }, workspace)))
   try {
@@ -32,11 +32,11 @@ it('offers built-in delegation in each workspace without leaking project definit
 })
 
 it('keeps definition lookup, refresh, spawn, retry and skills scoped to each live engine', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-scoped-agents-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-scoped-agents-'))
   const workspaces = ['a', 'b'].map(name => join(root, name))
   const writeAgent = (workspace: string, prompt: string, skill: string) => {
-    mkdirSync(join(workspace, '.turboflux', 'agents'), { recursive: true })
-    writeFileSync(join(workspace, '.turboflux', 'agents', 'reviewer.md'), [
+    mkdirSync(join(workspace, '.fluxagent', 'agents'), { recursive: true })
+    writeFileSync(join(workspace, '.fluxagent', 'agents', 'reviewer.md'), [
       '---', 'name: scoped_reviewer', 'description: Workspace reviewer', `skills: [${skill}]`, '---', prompt,
     ].join('\n'))
   }
@@ -53,11 +53,10 @@ it('keeps definition lookup, refresh, spawn, retry and skills scoped to each liv
   const seen: string[][] = [[], []]
   try {
     internals.forEach((engine, index) => {
-      engines[index].setLegacySubAgentRunner(runSubAgent)
       vi.spyOn(engine.orchestration, 'startSubAgentTask').mockImplementation(definition => { seen[index].push(definition.systemPrompt); return { id: `task-${index}` } as any })
       vi.spyOn(engine.subAgentTaskManager, 'getTask').mockReturnValue({ agentType: 'scoped_reviewer', objective: 'Review', runtimeTask: { status: 'failed' } })
     })
-    const spawn = (index: number) => internals[index].dispatchTool('spawn_agent', { agent_type: 'scoped_reviewer', objective: 'Review' })
+    const spawn = (index: number) => internals[index].dispatchTool('spawn_agent', { name: 'Reviewer', agent_type: 'scoped_reviewer', objective: 'Review' })
     await spawn(0)
     await spawn(1)
     engines[0].retrySubAgentTask('previous-a')
@@ -76,7 +75,7 @@ it('keeps definition lookup, refresh, spawn, retry and skills scoped to each liv
     expect(skills.getAll().map(skill => skill.id)).toContain('skill_a')
     expect(skills.getAll().map(skill => skill.id)).not.toContain('skill_b_new')
 
-    rmSync(join(workspaces[0], '.turboflux', 'agents', 'reviewer.md'))
+    rmSync(join(workspaces[0], '.fluxagent', 'agents', 'reviewer.md'))
     engines[0].reloadAgents()
     engines[0].retrySubAgentTask('previous-a')
     await spawn(1)

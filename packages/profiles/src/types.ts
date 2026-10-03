@@ -1,7 +1,7 @@
 export const PROFILE_REGISTRY_SCHEMA_VERSION = 1 as const
 export const PROFILE_STORAGE_VERSION = 1 as const
 
-export type LocalProfileState = 'ready' | 'migrating' | 'importing' | 'degraded' | 'trashed'
+export type LocalProfileState = 'ready' | 'importing' | 'degraded' | 'trashed'
 
 export interface LocalProfileRecord {
   schemaVersion: typeof PROFILE_REGISTRY_SCHEMA_VERSION

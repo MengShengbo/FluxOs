@@ -42,7 +42,7 @@ describe('browser tool product presentation', () => {
   it('creates natural approval copy for consequential browser actions', () => {
     expect(describeBrowserPermission('browser__type', { text: 'secret' })).toEqual({
       title: '填写网页',
-      question: '允许 FluxAgentCore 在当前网页填写内容吗？',
+      question: '允许 FluxAgent 在当前网页填写内容吗？',
       reason: '这会把内容填写到当前网页，可能向网站发送信息。',
       runningDetail: '正在填写页面内容',
     })

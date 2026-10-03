@@ -233,7 +233,7 @@ export class WebResearchService {
 
   constructor(options: WebResearchServiceOptions = {}) {
     this.sources = new WebSourceStore(options.sourceDirectory)
-    this.tavilyApiKey = String(options.tavilyApiKey || (process.env.FLUXAGENT_TAVILY_API_KEY ?? process.env.TURBOFLUX_TAVILY_API_KEY) || process.env.TAVILY_API_KEY || '').trim()
+    this.tavilyApiKey = String(options.tavilyApiKey || process.env.FLUXAGENT_TAVILY_API_KEY || process.env.TAVILY_API_KEY || '').trim()
   }
 
   async search(request: SearchRequest): Promise<Result<WebSearchResponse>> {

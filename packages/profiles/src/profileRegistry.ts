@@ -48,7 +48,7 @@ function isProfile(value: unknown): value is LocalProfileRecord {
     && typeof profile.displayName === 'string'
     && typeof profile.createdAt === 'number'
     && typeof profile.updatedAt === 'number'
-    && ['ready', 'migrating', 'importing', 'degraded', 'trashed'].includes(String(profile.state))
+    && ['ready', 'importing', 'degraded', 'trashed'].includes(String(profile.state))
     && profile.storageVersion === PROFILE_STORAGE_VERSION
     && Boolean(profile.lock && (profile.lock.kind === 'none' || profile.lock.kind === 'passphrase'))
     && (profile.avatar === undefined || isAvatar(profile.avatar))

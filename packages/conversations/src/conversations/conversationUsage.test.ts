@@ -12,7 +12,7 @@ import type { PersistedConversation } from './types'
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 function harness() {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-usage-')); roots.push(root)
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-usage-')); roots.push(root)
   const value: PersistedConversation = { id: 'conversation-usage', title: 'Usage audit', workspacePath: '/workspace', createdAt: 1, updatedAt: 1, mode: 'vibe', model: 'test', provider: 'custom', turnCount: 0, turns: [] }
   let seq = 0
   const open = () => new ConversationRuntimeRepositoryV2(root, 'profile', 'workspace-12345678', '/workspace')
@@ -44,15 +44,6 @@ describe('persistent model usage', () => {
     // Imported/saved history preserves the same accounting after another reopen.
     h.open().persist(loaded)
     expect(summarizeModelRequests(h.open().load(h.value.id)!.modelRequests!)).toEqual(summarizeModelRequests(loaded.modelRequests!))
-  })
-
-  it('retains usage from the old live event format while deduplicating updates to the same step', () => {
-    const h=harness();h.send('run.started',{objective:'legacy'})
-    const usage:TokenUsage={ input: 1200, cached: 1000, output: 20, source:'provider' }
-    h.send('usage.updated',{usage},{stepId:'step-1'});h.send('usage.updated',{usage:{...usage,output:30}},{stepId:'step-1'})
-    h.send('usage.updated',{usage:{...usage,input:1400,cached:1200}},{stepId:'step-2'})
-    const loaded=h.open().load(h.value.id)!
-    expect(summarizeModelRequests(loaded.modelRequests!)).toMatchObject({attempts:2,totals:{input:2600,cached:2200,output:50}})
   })
 
   it('keeps partial consumption through crash recovery and does not invent absent old usage', () => {

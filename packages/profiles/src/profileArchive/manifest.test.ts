@@ -21,7 +21,7 @@ describe('profile archive manifest', () => {
     expect(serializeManifest(manifest).toString('utf8')).toContain('"schemaVersion":1')
   })
 
-  it('accepts UUID workspace identities while retaining legacy archive compatibility', () => {
+  it('accepts current workspace identities', () => {
     const manifest = fixture()
     const { contentDigest: _contentDigest, ...unsigned } = manifest
     const uuidManifest = finalizeManifest({
@@ -68,7 +68,6 @@ describe('profile archive manifest', () => {
         schemaVersion: 2,
         eventSegments: { format: 'per-conversation-json', indexPath: 'components/conversations/index.json', segmentCount: 2, eventCount: 10 },
         projections: { included: false, rebuildRequired: true },
-        migrationSources: ['legacy-v1'],
       },
       components: [{ id: 'conversations', schemaVersion: 2, itemCount: 2, logicalBytes: 10, blobCount: 0, sensitivity: 'private' }],
       workspaces: [{ id: 'workspace-12345678', displayName: 'Demo' }],

@@ -11,7 +11,7 @@ const config = {
 const fixtures: Array<{ workspace: string; runtime: ReturnType<typeof createAgentRuntime> }> = []
 
 function createRuntime() {
-  const workspace = mkdtempSync(join(tmpdir(), 'turboflux-runtime-lifecycle-'))
+  const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-runtime-lifecycle-'))
   const runtime = createAgentRuntime({ workspacePath: workspace, workspaceName: 'lifecycle', config })
   fixtures.push({ workspace, runtime })
   return runtime

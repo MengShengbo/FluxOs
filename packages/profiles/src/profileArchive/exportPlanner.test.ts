@@ -1,3 +1,5 @@
+import { ConversationRuntimeRepositoryV2, persistedConversationFromProjectionV2 } from '@fluxagentcore/conversations/conversations/conversationRuntimeRepositoryV2'
+import { ConversationRepositoryV2 } from '@fluxagentcore/conversations/conversations/conversationRepositoryV2'
 import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -18,7 +20,7 @@ import { scanProfileArchive } from './archiveScanner'
 const directories: string[] = []
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-export-plan-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-export-plan-'))
   directories.push(root)
   const dataRoot = join(root, 'data')
   const deviceRoot = join(root, 'device')
@@ -52,7 +54,7 @@ function fixture() {
     turns: [{ id: 'turn-1', role: 'user', content: `Open ${workspacePath}/report.md with sk-super-secret-value`, timestamp: 1 }],
     interactionState: { queuedInputs: [{ id: 'queued', prompt: 'do not migrate' }], draft: { text: 'safe draft' }, pendingSteering: [], pendingApprovals: [{ requestId: 'approval', requestKind: 'permission', question: 'run?' }] },
   }
-  new ConversationStore(layout.conversationsRoot).save(conversation, { compact: true })
+  new ConversationRuntimeRepositoryV2(layout.conversationsV2Root, profile.id, binding.id, workspacePath).persist(conversation)
   return { root, profile, layout, workspacePath }
 }
 
@@ -61,8 +63,9 @@ afterEach(() => {
 })
 
 describe('profile export planner and service', () => {
-  it('fails closed instead of falling back to V1 when V2 event storage is missing', async () => {
+  it('rejects missing event storage', async () => {
     const { profile, layout } = fixture()
+    rmSync(join(layout.conversationsV2Root, 'events'), { recursive: true })
     const planner = new ProfileExportPlanner({
       profile,
       layout,
@@ -74,7 +77,7 @@ describe('profile export planner and service', () => {
     await expect(planner.prepare({ profileId: profile.id, components: ['conversations'], encrypted: false }))
       .rejects.toMatchObject({
         code: 'ARCHIVE_COMPONENT_INVALID',
-        message: expect.stringContaining('避免静默回退旧格式'),
+        message: expect.stringContaining('会话事件目录不存在'),
       })
   })
 
@@ -109,7 +112,7 @@ describe('profile export planner and service', () => {
 
   it('exports stable domain snapshots without device IDs, secrets, or absolute paths', async () => {
     const { root, profile, layout, workspacePath } = fixture()
-    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 1, appVersion: '1.0.1', coreVersion: '1.0.1', now: () => 200, createId: () => 'fixed-id' })
+    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 2, appVersion: '1.0.1', coreVersion: '1.0.1', now: () => 200, createId: () => 'fixed-id' })
     const service = new ProfileArchiveApplicationService({ planner, createOperationId: () => 'operation-1' })
     const estimate = await service.estimateExport({
       profileId: profile.id,
@@ -118,7 +121,7 @@ describe('profile export planner and service', () => {
     })
     expect(estimate.blockers).toEqual([])
     expect(estimate.excluded.join(' ')).toContain('Remote')
-    const targetPath = join(root, 'export.turboflux-profile')
+    const targetPath = join(root, 'export.fluxagent-profile')
     const operation = service.startExport({ planId: estimate.planId, targetPath })
     const completed = await service.waitForOperation(operation.operationId)
     expect(completed.phase).toBe('completed')
@@ -149,13 +152,13 @@ describe('profile export planner and service', () => {
     const plan = await new ProfileExportPlanner({
       profile,
       layout,
-      conversationDataVersion: 1,
+      conversationDataVersion: 2,
       appVersion: '1',
       coreVersion: '1',
       excludedWorkspacePaths: [hostOnlyPath],
       createId: () => 'without-host-only-project',
     }).prepare({ profileId: profile.id, components: ['projects'], encrypted: false })
-    const targetPath = join(root, 'without-host-only-project.turboflux-profile')
+    const targetPath = join(root, 'without-host-only-project.fluxagent-profile')
     await writeProfileArchive({ targetPath, entries: plan.entries, verifyDocument: true })
 
     const projectsEntry = plan.entries.find(entry => entry.path === 'components/projects/projects.json')
@@ -167,15 +170,15 @@ describe('profile export planner and service', () => {
 
   it('requires encryption for credentials and round trips them only inside an encrypted archive', async () => {
     const { root, profile, layout } = fixture()
-    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 1, appVersion: '1', coreVersion: '1', credentialReader: () => ({ apiKey: 'secret' }) })
+    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 2, appVersion: '1', coreVersion: '1', credentialReader: () => ({ apiKey: 'secret' }) })
     const service = new ProfileArchiveApplicationService({ planner })
     const estimate = await service.estimateExport({ profileId: profile.id, components: ['credentials'], encrypted: false })
     expect(estimate.requiresEncryption).toBe(true)
     expect(estimate.blockers[0]?.code).toBe('SECRET_EXPORT_REQUIRES_ENCRYPTION')
-    expect(() => service.startExport({ planId: estimate.planId, targetPath: join(layout.profileRoot, 'blocked.turboflux-profile') })).toThrow('必须设置资料包密码')
+    expect(() => service.startExport({ planId: estimate.planId, targetPath: join(layout.profileRoot, 'blocked.fluxagent-profile') })).toThrow('必须设置资料包密码')
 
     const protectedEstimate = await service.estimateExport({ profileId: profile.id, components: ['credentials'], encrypted: true })
-    const targetPath = join(root, 'credentials.turboflux-profile')
+    const targetPath = join(root, 'credentials.fluxagent-profile')
     const operation = service.startExport({ planId: protectedEstimate.planId, targetPath, password: 'a strong archive password' })
     expect((await service.waitForOperation(operation.operationId)).phase).toBe('completed')
     expect(readFileSync(targetPath).toString('utf8')).not.toContain('secret')
@@ -185,10 +188,10 @@ describe('profile export planner and service', () => {
 
   it('cleans temporary output after cancellation or a failed destination', async () => {
     const { root, profile, layout } = fixture()
-    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 1, appVersion: '1', coreVersion: '1' })
+    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 2, appVersion: '1', coreVersion: '1' })
     const service = new ProfileArchiveApplicationService({ planner, createOperationId: () => 'cancel-operation' })
     const estimate = await service.estimateExport({ profileId: profile.id, components: ['profile.preferences'], encrypted: false })
-    const targetPath = join(root, 'cancelled.turboflux-profile')
+    const targetPath = join(root, 'cancelled.fluxagent-profile')
     const operation = service.startExport({ planId: estimate.planId, targetPath })
     service.cancelOperation(operation.operationId)
     const cancelled = await service.waitForOperation(operation.operationId)
@@ -197,13 +200,13 @@ describe('profile export planner and service', () => {
     await expect((await import('node:fs/promises')).readdir(root).then(items => items.filter(item => item.endsWith('.tmp')))).resolves.toEqual([])
 
     const failedEstimate = await service.estimateExport({ profileId: profile.id, components: ['profile.preferences'], encrypted: false })
-    const failed = service.startExport({ planId: failedEstimate.planId, targetPath: join(root, 'missing', 'archive.turboflux-profile') })
+    const failed = service.startExport({ planId: failedEstimate.planId, targetPath: join(root, 'missing', 'archive.fluxagent-profile') })
     expect((await service.waitForOperation(failed.operationId)).phase).toBe('failed')
   })
 
   it('rejects a document whose framed entries no longer match checksums', async () => {
     const { root, profile, layout } = fixture()
-    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 1, appVersion: '1', coreVersion: '1' })
+    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 2, appVersion: '1', coreVersion: '1' })
     const plan = await planner.prepare({ profileId: profile.id, components: ['profile.preferences'], encrypted: false })
     const entries = plan.entries.map(entry => ({ ...entry }))
     const checksums = entries.find(entry => entry.path === 'checksums.json')!
@@ -213,7 +216,7 @@ describe('profile export planner and service', () => {
     checksums.data = data
     checksums.size = data.length
     checksums.digest = (await import('node:crypto')).createHash('sha256').update(data).digest('hex')
-    const targetPath = join(root, 'invalid-document.turboflux-profile')
+    const targetPath = join(root, 'invalid-document.fluxagent-profile')
     await expect(writeProfileArchive({ targetPath, entries, verifyDocument: true })).rejects.toMatchObject({ code: 'ARCHIVE_CORRUPT' })
     expect(() => readFileSync(targetPath)).toThrow()
   })
@@ -221,7 +224,7 @@ describe('profile export planner and service', () => {
   it('produces logically equivalent component content for an unchanged profile', async () => {
     const { profile, layout } = fixture()
     let ordinal = 0
-    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 1, appVersion: '1', coreVersion: '1', now: () => 500, createId: () => `id-${++ordinal}` })
+    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 2, appVersion: '1', coreVersion: '1', now: () => 500, createId: () => `id-${++ordinal}` })
     const selection = { profileId: profile.id, components: ['profile.preferences', 'conversations', 'projects'] as const, encrypted: false }
     const first = await planner.prepare({ ...selection, components: [...selection.components] })
     const second = await planner.prepare({ ...selection, components: [...selection.components] })
@@ -239,7 +242,7 @@ describe('profile export planner and service', () => {
     const planner = new ProfileExportPlanner({
       profile,
       layout,
-      conversationDataVersion: 1,
+      conversationDataVersion: 2,
       appVersion: '1',
       coreVersion: '1',
       excludedWorkspacePaths: [internalWorkspace],
@@ -256,7 +259,7 @@ describe('profile export planner and service', () => {
     writeFileSync(outside, 'outside content')
     const skillRoot = join(layout.userSkillsRoot, 'linked-skill')
     mkdirSync(skillRoot, { recursive: true })
-    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 1, appVersion: '1', coreVersion: '1' })
+    const planner = new ProfileExportPlanner({ profile, layout, conversationDataVersion: 2, appVersion: '1', coreVersion: '1' })
 
     symlinkSync(outside, join(skillRoot, 'SYMLINK.md'))
     await expect(planner.prepare({ profileId: profile.id, components: ['skills.user'], encrypted: false }))

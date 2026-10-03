@@ -17,7 +17,7 @@ import type {
   AutomationValidationIssue,
 } from './automationTypes'
 import { matchesAutomationTriggerFilters } from './automationRouting'
-import { automationDefinitionFromV2Record } from './automationMigration'
+import { automationDefinitionFromRecord } from './automationDefinition'
 
 export interface AutomationDefinitionSummary {
   id: string
@@ -366,7 +366,7 @@ export class AutomationApplicationService {
       enabled: false,
     })
     const updated = this.service.get(id)!
-    this.repository.saveDefinition(automationDefinitionFromV2Record(updated, updated.revision), {
+    this.repository.saveDefinition(automationDefinitionFromRecord(updated, updated.revision), {
       source: 'rollback',
       parentRevision: currentDefinition.revision,
       changeSummary: `Rolled back from revision ${currentDefinition.revision} to revision ${targetRevision} as a new draft.`,
@@ -385,7 +385,7 @@ export class AutomationApplicationService {
     }
     this.service.resetContinuationConversation(id)
     const updated = this.service.get(id)!
-    this.repository.saveDefinition(automationDefinitionFromV2Record(updated, updated.revision), {
+    this.repository.saveDefinition(automationDefinitionFromRecord(updated, updated.revision), {
       source: 'user',
       parentRevision: currentDefinition.revision,
       changeSummary: 'Reset the dedicated continuation conversation for the next Run.',

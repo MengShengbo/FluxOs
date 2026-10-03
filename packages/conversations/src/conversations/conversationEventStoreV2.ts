@@ -35,8 +35,8 @@ const ITEM_KINDS = new Set([
   'user_message', 'assistant_message', 'reasoning', 'tool_call', 'tool_result', 'approval', 'file_change', 'command_execution',
   'browser_activity', 'computer_activity', 'subagent', 'artifact', 'plan', 'context_compaction', 'notification', 'recovery',
 ])
-const EVENT_SOURCES = new Set(['user', 'agent', 'flow', 'runtime', 'migration', 'recovery'])
-const EVENT_PROVENANCE = new Set(['live', 'restored', 'migrated', 'imported'])
+const EVENT_SOURCES = new Set(['user', 'agent', 'flow', 'runtime', 'recovery'])
+const EVENT_PROVENANCE = new Set(['live', 'restored', 'imported'])
 const AGENT_MODES = new Set(['vibe', 'plan'])
 const APPROVAL_POLICIES = new Set(['ask', 'agent', 'full'])
 const CONVERSATION_STATUSES = new Set(['active', 'idle', 'needs_workspace', 'archived'])
@@ -257,7 +257,6 @@ export function parseConversationEventV2(value: unknown): AnyConversationEventV2
     || !EVENT_SOURCES.has(event.source)
     || typeof event.provenance !== 'string'
     || !EVENT_PROVENANCE.has(event.provenance)
-    || (event.legacyEventId !== undefined && typeof event.legacyEventId !== 'string')
     || typeof event.type !== 'string'
     || !EVENT_TYPES.has(event.type)
     || !event.payload

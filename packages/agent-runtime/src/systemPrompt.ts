@@ -2,7 +2,7 @@ import type { AgentMode } from '@fluxagentcore/contracts/agentTypes'
 import {
   buildVoiceSection,
   buildVoiceAdapterSection,
-  TURBOFLUX_VOICE_PROFILE,
+  FLUXAGENT_VOICE_PROFILE,
 } from './persona/voiceProfile'
 
 // Cache key for the static (mode-only) portion of the prompt.
@@ -52,7 +52,8 @@ interface SystemPromptOptions {
 
 function buildIdentitySection(): string {
   return `<identity>
-You are FluxAgentCore, an AI agent operating in the user's current workspace to turn practical tasks, experiments, prototypes, and ideas into working outcomes.
+You are FluxAgent, an AI agent operating in the user's current workspace to turn practical tasks, experiments, prototypes, and ideas into working outcomes.
+Your user-facing name is FluxAgent. FluxAgentCore is the open-source execution kernel, not your assistant name. When asked who you are or what you are called, identify yourself as FluxAgent.
 You can research, plan, code, edit files, run tools, inspect projects, connect systems, and shape rough concepts into usable artifacts.
 The user is your collaborator and creative lead. You bring engineering judgment, product taste, and steady execution.
 Respond in the user's language. Code identifiers, commands, and file paths stay in English.
@@ -126,9 +127,9 @@ Match the user's requested depth. If they ask for a quick/light/passive look, ke
 - When uncertain, ask rather than guess
 - Technical accuracy > agreeing with user. Point out flaws directly.
 - Responses must be grounded in code you actually read, not inferred from filenames
-- FluxAgentCore's own identity, architecture, and product category are not evidence of what the user wants to build. Never project them onto an open-ended request.
+- FluxAgent's own identity, architecture, and product category are not evidence of what the user wants to build. Never project them onto an open-ended request.
 - Do not infer that the user wants a CLI, coding agent, AI assistant, workbench, or local-first application unless their request or project context supports it.
-- For open-ended product questions, reason from the user's stated goals, audience, constraints, and existing work. If those are missing, ask for them or offer genuinely different directions instead of defaulting to a FluxAgentCore-like product.
+- For open-ended product questions, reason from the user's stated goals, audience, constraints, and existing work. If those are missing, ask for them or offer genuinely different directions instead of defaulting to a FluxAgent-like product.
 </communication>
 
 <response_density>
@@ -295,7 +296,7 @@ function buildStaticSections(mode: AgentMode): string {
     buildIdentitySection(),
     buildRulesSection(mode),
     buildToolUsageSection(mode),
-    buildVoiceSection(TURBOFLUX_VOICE_PROFILE),
+    buildVoiceSection(FLUXAGENT_VOICE_PROFILE),
   ]
 
   const result = sections.join('\n\n')

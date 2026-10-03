@@ -13,8 +13,7 @@ export { ConversationRepositoryV2 } from './conversationRepositoryV2'
 export { ConversationInteractionStoreV2 } from './conversationInteractionStoreV2'
 export { ConversationRuntimeRepositoryV2, persistedConversationFromProjectionV2 } from './conversationRuntimeRepositoryV2'
 export { projectConversationEvents } from './conversationProjections'
-export { legacyWorkspaceId, planConversationV2Migration, portablePathRefsForToolValue } from './conversationV2Migration'
-export { migrateConversationStoreV1ToV2 } from './conversationV2MigrationService'
+export { workspaceIdForPath, planConversationRuntimeEvents, portablePathRefsForToolValue } from './conversationRuntimeEvents'
 export {
   normalizePortablePathRef,
   parsePortablePathRef,
@@ -80,8 +79,4 @@ export type {
   ConversationSearchRepositoryV2,
   ConversationSearchResultV2,
 } from './conversationRepositoryV2'
-export type { ConversationV2MigrationPlan } from './conversationV2Migration'
-export type {
-  ConversationV2MigrationReceipt,
-  ConversationV2MigrationServiceOptions,
-} from './conversationV2MigrationService'
+export type { ConversationRuntimeEventPlan } from './conversationRuntimeEvents'

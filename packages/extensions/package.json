@@ -85,7 +85,7 @@
     "@fluxagentcore/contracts": "*",
     "@fluxagentcore/platform": "*"
   },
-  "turboflux": {
+  "fluxagent": {
     "runtimeAssets": [
       "plugins/pluginHostChild.mjs"
     ]

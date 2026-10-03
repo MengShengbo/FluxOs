@@ -31,7 +31,7 @@ describe('FluxAgentCore profile', () => {
       customInstructions: 'Prefer release-ready answers.',
     })
 
-    expect(section).toContain('<turboflux_profile>')
+    expect(section).toContain('<fluxagent_profile>')
     expect(section).toContain('Respond in Simplified Chinese')
     expect(section).toContain('id="architect"')
     expect(section).toContain('Prefer release-ready answers.')

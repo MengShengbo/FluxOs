@@ -60,9 +60,9 @@ describe('incremental projection persistence', () => {
     const restarted = new ConversationRepositoryV2(root)
     expect(json(restarted.projection('c'))).toEqual(json(canonical(root)))
     expect(restarted.list().conversations[0]?.title).toBe('After')
-    expect(restarted.search('After')).toHaveLength(1)
-    expect(restarted.search('Message 199')[0]).toMatchObject({ title: 'After', itemId: 'item-199' })
-    expect(restarted.search('Before')).toEqual([])
+    expect(restarted.search({ query: 'After' })).toHaveLength(1)
+    expect(restarted.search({ query: 'Message 199' })[0]).toMatchObject({ title: 'After', itemId: 'item-199' })
+    expect(restarted.search({ query: 'Before' })).toEqual([])
   })
 
   it('keeps item aliases and workspace requirements when continuing a persisted checkpoint', () => {
@@ -82,7 +82,7 @@ describe('incremental projection persistence', () => {
     ])
     expect(json(restarted.projection('c'))).toEqual(json(canonical(root)))
     expect(restarted.projection('c').conversation?.status).toBe('needs_workspace')
-    expect(new ConversationRepositoryV2(root).search('Changed via alias')).toEqual([expect.objectContaining({ itemId: 'original' })])
+    expect(new ConversationRepositoryV2(root).search({ query: 'Changed via alias' })).toEqual([expect.objectContaining({ itemId: 'original' })])
   })
 
   it('bounds the pending event window and folds it into a checkpoint without replaying old events', () => {
@@ -92,9 +92,9 @@ describe('incremental projection persistence', () => {
     expect(JSON.parse(fs.readFileSync(snapshot, 'utf8')).throughSeq).toBe(266)
     expect(replays.every(([count, mode]) => count === 1 && mode === 'delta')).toBe(true)
     expect(json(new ConversationRepositoryV2(root).projection('c'))).toEqual(json(canonical(root)))
-    expect(repository.search('rename-64')).toHaveLength(1)
+    expect(repository.search({ query: 'rename-64' })).toHaveLength(1)
     repository.append([rename('after-checkpoint')])
-    expect(new ConversationRepositoryV2(root).search('after-checkpoint')).toHaveLength(1)
+    expect(new ConversationRepositoryV2(root).search({ query: 'after-checkpoint' })).toHaveLength(1)
   })
 
   it('checkpoints a large delta and immediately removes redacted content from search results', () => {
@@ -103,8 +103,8 @@ describe('incremental projection persistence', () => {
     expect(JSON.parse(fs.readFileSync(snapshot, 'utf8')).throughSeq).toBe(202)
     repository.append([{ ...common, eventId: 'redact', itemId: 'item-199', type: 'item.redacted', payload: { reason: 'private', redactedAt: 1000 } }])
     expect(JSON.parse(fs.readFileSync(snapshot, 'utf8')).throughSeq).toBe(203)
-    expect(new ConversationRepositoryV2(root).search('Message 199')).toEqual([])
-    expect(repository.search('Message 198')).toHaveLength(1)
+    expect(new ConversationRepositoryV2(root).search({ query: 'Message 199' })).toEqual([])
+    expect(repository.search({ query: 'Message 198' })).toHaveLength(1)
   })
 
   it.each(['missing', 'corrupt', 'stale'] as const)('repairs a %s delta even when the journal checkpoint is current', kind => {
@@ -116,7 +116,7 @@ describe('incremental projection persistence', () => {
     if (kind === 'corrupt') fs.writeFileSync(delta, '{broken')
     if (kind === 'stale') fs.writeFileSync(delta, first)
     const restarted = new ConversationRepositoryV2(root)
-    expect(restarted.search('latest')).toHaveLength(1)
+    expect(restarted.search({ query: 'latest' })).toHaveLength(1)
     expect(json(restarted.projection('c'))).toEqual(json(canonical(root)))
   })
 
@@ -127,7 +127,7 @@ describe('incremental projection persistence', () => {
     new ConversationEventStoreV2(join(root, 'events')).append([rename('external')])
     repository.append([rename('last')])
     expect(json(repository.projection('c'))).toEqual(json(canonical(root)))
-    expect(repository.search('Mutated return value')).toEqual([])
+    expect(repository.search({ query: 'Mutated return value' })).toEqual([])
   })
 
   it('upgrades legacy full snapshots before continuing with incremental events', () => {
@@ -143,7 +143,7 @@ describe('incremental projection persistence', () => {
     expect(json(repository.projection('c'))).toEqual(json(canonical(root)))
     expect(JSON.parse(fs.readFileSync(snapshot, 'utf8')).schemaVersion).toBe(2)
     repository.append([rename('after-migration')])
-    expect(new ConversationRepositoryV2(root).search('after-migration')).toHaveLength(1)
+    expect(new ConversationRepositoryV2(root).search({ query: 'after-migration' })).toHaveLength(1)
   })
 
   it('keeps other pending conversations current when one conversation checkpoints or the index is rebuilt', () => {
@@ -158,14 +158,14 @@ describe('incremental projection persistence', () => {
     repository.append([rename('pending-first')])
     repository.append([{ ...rename('pending-other'), conversationId: 'other' }])
     const expected = [expect.objectContaining({ title: 'pending-first' }), expect.objectContaining({ title: 'pending-other' })]
-    expect(repository.search('pending-')).toEqual(expect.arrayContaining(expected))
+    expect(repository.search({ query: 'pending-' })).toEqual(expect.arrayContaining(expected))
     repository.append([{ ...common, eventId: 'redact', itemId: 'item-199', type: 'item.redacted', payload: { reason: 'private', redactedAt: 1000 } }])
     for (const missingIndex of [false, true]) {
       if (missingIndex) fs.rmSync(join(root, 'search-index.json'))
       const restarted = new ConversationRepositoryV2(root)
-      expect(restarted.search('pending-')).toHaveLength(2)
-      expect(restarted.search('pending-')).toEqual(expect.arrayContaining(expected))
-      expect(restarted.search('Message 199')).toEqual([expect.objectContaining({ conversationId: 'other', title: 'pending-other' })])
+      expect(restarted.search({ query: 'pending-' })).toHaveLength(2)
+      expect(restarted.search({ query: 'pending-' })).toEqual(expect.arrayContaining(expected))
+      expect(restarted.search({ query: 'Message 199' })).toEqual([expect.objectContaining({ conversationId: 'other', title: 'pending-other' })])
     }
   })
 
@@ -182,7 +182,7 @@ describe('incremental projection persistence', () => {
     const restarted = new ConversationRepositoryV2(root)
     expect(restarted.append([rename('checkpoint')]).appended).toBe(0)
     expect(json(restarted.projection('c'))).toEqual(json(canonical(root)))
-    expect(restarted.search('checkpoint')).toHaveLength(1)
+    expect(restarted.search({ query: 'checkpoint' })).toHaveLength(1)
   })
 
   it('does not resurrect old search entries after a workspace move, archive or history rewrite', () => {
@@ -191,9 +191,9 @@ describe('incremental projection persistence', () => {
     expect(new ConversationRepositoryV2(root).search({ query: 'Message 199', workspaceId: 'w' })).toEqual([])
     expect(repository.search({ query: 'Message 199', workspaceId: 'new-workspace' })).toHaveLength(1)
     repository.append([{ ...common, eventId: 'archive', type: 'conversation.archived', payload: { archivedAt: 100 } }])
-    expect(new ConversationRepositoryV2(root).search('Message 199')).toEqual([])
+    expect(new ConversationRepositoryV2(root).search({ query: 'Message 199' })).toEqual([])
     repository.append([{ ...common, eventId: 'restore', type: 'conversation.restored', payload: {} }])
-    expect(new ConversationRepositoryV2(root).search('Message 199')).toHaveLength(1)
+    expect(new ConversationRepositoryV2(root).search({ query: 'Message 199' })).toHaveLength(1)
     repository.append([{ ...common, eventId: 'rewrite', type: 'conversation.rewritten', payload: { retainedTurnIds: [], rewrittenAt: 100 } }])
     expect(json(new ConversationRepositoryV2(root).projection('c'))).toEqual(json(canonical(root)))
   })
@@ -224,7 +224,7 @@ describe('incremental projection persistence', () => {
       await Promise.all(processes.map(value => value.done))
       expect(repository.read('c', 202).events.map(event => event.eventId).sort()).toEqual(['process-a', 'process-b'])
       expect(json(repository.projection('c'))).toEqual(json(canonical(root)))
-      expect(new ConversationRepositoryV2(root).search('process-')).toHaveLength(1)
+      expect(new ConversationRepositoryV2(root).search({ query: 'process-' })).toHaveLength(1)
     } finally {
       for (const value of processes) if (value.child.exitCode === null) value.child.kill()
       await Promise.allSettled(processes.map(value => value.done))
@@ -266,7 +266,7 @@ describe('incremental projection persistence', () => {
       expect(fs.readFileSync(crashMarker, 'utf8')).toBe('before-delta-watermark')
       const restarted = new ConversationRepositoryV2(root)
       expect(restarted.append([rename('after-crash')])).toMatchObject({ appended: 0, lastSeq: 203 })
-      expect(restarted.search('after-crash')).toHaveLength(1)
+      expect(restarted.search({ query: 'after-crash' })).toHaveLength(1)
       expect(json(restarted.projection('c'))).toEqual(json(canonical(root)))
     } finally {
       if (child.exitCode === null && child.signalCode === null) child.kill()
@@ -289,9 +289,9 @@ describe('incremental projection persistence', () => {
       if (recovery === 'retry') expect(recovered.append([rename('After failure')]).appended).toBe(0)
       if (recovery === 'projection') expect(recovered.projection('c').throughSeq).toBe(203)
       if (recovery === 'list') expect(recovered.list().conversations[0]?.title).toBe('After failure')
-      if (recovery === 'search') expect(recovered.search('After failure')).toHaveLength(1)
+      if (recovery === 'search') expect(recovered.search({ query: 'After failure' })).toHaveLength(1)
       expect(json(recovered.projection('c'))).toEqual(json(canonical(root)))
-      expect(recovered.search('existing-delta')).toEqual([])
+      expect(recovered.search({ query: 'existing-delta' })).toEqual([])
       expect(fs.readdirSync(root, { recursive: true }).some(path => String(path).endsWith('.tmp'))).toBe(false)
     })
   }

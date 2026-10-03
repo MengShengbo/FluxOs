@@ -15,8 +15,8 @@ import type { WorkExecutionSnapshot, WorkRun } from './workExecutionTypes'
 
 export const CONVERSATION_EVENT_SCHEMA_VERSION = 1 as const
 
-export type ConversationEventSource = 'agent' | 'flow' | 'workbench' | 'runtime' | 'migration'
-export type ConversationEventProvenance = 'live' | 'restored' | 'migrated'
+export type ConversationEventSource = 'agent' | 'flow' | 'workbench' | 'runtime'
+export type ConversationEventProvenance = 'live' | 'restored'
 export type ConversationRunOutcome = 'completed' | 'partial' | 'failed' | 'cancelled' | 'interrupted'
 export type ConversationStepOutcome = 'completed' | 'failed' | 'cancelled' | 'interrupted'
 export type ConversationStreamChannel = 'answer' | 'thinking'

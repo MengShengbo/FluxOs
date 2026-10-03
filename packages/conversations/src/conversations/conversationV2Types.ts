@@ -5,8 +5,8 @@ export const CONVERSATION_DATA_SCHEMA_VERSION = 2 as const
 export const CONVERSATION_ITEM_SCHEMA_VERSION = 1 as const
 
 export type ConversationV2Status = 'active' | 'idle' | 'needs_workspace' | 'archived'
-export type ConversationV2Source = 'user' | 'agent' | 'flow' | 'runtime' | 'migration' | 'recovery'
-export type ConversationV2Provenance = 'live' | 'restored' | 'migrated' | 'imported'
+export type ConversationV2Source = 'user' | 'agent' | 'flow' | 'runtime' | 'recovery'
+export type ConversationV2Provenance = 'live' | 'restored' | 'imported'
 export type ConversationV2RunStatus = 'pending' | 'running' | 'waiting' | 'completed' | 'partial' | 'failed' | 'cancelled' | 'interrupted'
 export type ConversationV2ItemStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'redacted'
 
@@ -172,7 +172,6 @@ export interface ConversationEventV2<Type extends ConversationEventTypeV2 = Conv
   at: number
   source: ConversationV2Source
   provenance: ConversationV2Provenance
-  legacyEventId?: string
   type: Type
   payload: ConversationEventPayloadMapV2[Type]
 }

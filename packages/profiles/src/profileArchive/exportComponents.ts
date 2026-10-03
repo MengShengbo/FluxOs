@@ -2,10 +2,9 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { lstat, readFile, readdir, stat } from 'node:fs/promises'
 import { basename, join, relative, resolve, sep } from 'node:path'
-import { ConversationStore } from '@fluxagentcore/conversations/conversations/store'
 import { ConversationEventStoreV2 } from '@fluxagentcore/conversations/conversations/conversationEventStoreV2'
 import { ConversationInteractionStoreV2 } from '@fluxagentcore/conversations/conversations/conversationInteractionStoreV2'
-import type { ConversationDraftState, PersistedConversation } from '@fluxagentcore/conversations/conversations/types'
+import type { ConversationDraftState } from '@fluxagentcore/conversations/conversations/types'
 import { WorkspaceBindingService, type WorkspaceBindingRecord } from '../workspaceBindingService'
 import type { LocalProfileRecord, ProfileStorageLayout } from '../types'
 import { canonicalJsonBytes } from './canonicalJson'
@@ -14,7 +13,6 @@ import { redactExportText, redactExportValue, type ExportRedactionPolicy } from 
 import {
   ProfileArchiveError,
   type ArchiveConversationDataDescriptorV2,
-  type ArchiveConversationMigrationSource,
   type ArchiveComponentDescriptor,
   type ArchiveComponentId,
   type ArchiveEntryInput,
@@ -33,7 +31,7 @@ export const ARCHIVE_COMPONENT_DEFINITIONS: ArchiveComponentDefinition[] = [
   { id: 'profile.preferences', defaultSelected: true, sensitivity: 'normal', description: '资料名称、个性化与安全偏好', requiresEncryption: false },
   { id: 'conversations', defaultSelected: true, sensitivity: 'private', description: '会话、消息与已完成的工作记录', requiresEncryption: false },
   { id: 'model.configurations', defaultSelected: true, sensitivity: 'private', description: '模型、服务地址与推理偏好，不含密钥', requiresEncryption: false },
-  { id: 'credentials', defaultSelected: false, sensitivity: 'secret', description: '保存在 FluxAgentCore 中的模型密钥', requiresEncryption: true },
+  { id: 'credentials', defaultSelected: false, sensitivity: 'secret', description: '保存在 FluxAgent 中的模型密钥', requiresEncryption: true },
   { id: 'projects', defaultSelected: true, sensitivity: 'private', description: '项目索引与工作区身份，不含本机路径', requiresEncryption: false },
   { id: 'automations', defaultSelected: false, sensitivity: 'executable', description: '自动化定义；导入后保持禁用', requiresEncryption: false },
   { id: 'memories', defaultSelected: true, sensitivity: 'private', description: '各工作区的用户私有记忆', requiresEncryption: false },
@@ -65,7 +63,7 @@ export interface ArchiveComponentExporter {
 export interface ExportComponentContext {
   profile: LocalProfileRecord
   layout: ProfileStorageLayout
-  conversationDataVersion: 1 | 2
+  conversationDataVersion: 2
   workspaces: WorkspaceBindingRecord[]
   excludedWorkspacePaths: ReadonlySet<string>
   redaction: ExportRedactionPolicy
@@ -94,36 +92,12 @@ async function readJson(path: string, fallback: unknown): Promise<unknown> {
 
 function workspaceForPath(path: string | undefined, workspaces: WorkspaceBindingRecord[]): WorkspaceBindingRecord | undefined {
   if (!path) return undefined
-  if (path.startsWith('turboflux-unbound:')) {
-    const workspaceId = path.slice('turboflux-unbound:'.length)
+  if (path.startsWith('fluxagent-unbound:')) {
+    const workspaceId = path.slice('fluxagent-unbound:'.length)
     return workspaces.find(workspace => workspace.id === workspaceId)
   }
   const normalized = resolve(path)
   return workspaces.find(workspace => workspace.localPath && resolve(workspace.localPath) === normalized)
-}
-
-function stripConversationRuntime(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stripConversationRuntime)
-  if (!value || typeof value !== 'object') return value
-  const result: Record<string, unknown> = {}
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (/^(?:pendingApprovals|approvalRequests|activeToolCalls|activeRuns|abortController|queuedInputs|pendingSteering|steeringInputs|lease|processId|pid)$/u.test(key)) continue
-    if (key === 'queue' || key === 'runtime') continue
-    result[key] = stripConversationRuntime(child)
-  }
-  if (typeof result.status === 'string' && ['pending', 'running', 'waiting', 'paused', 'starting', 'stopping'].includes(result.status)) {
-    result.status = 'partial'
-    result.importedInterrupted = true
-  }
-  return result
-}
-
-function conversationSnapshot(conversation: PersistedConversation, context: ExportComponentContext): unknown {
-  const workspace = workspaceForPath(conversation.workspacePath, context.workspaces)
-  const stripped = stripConversationRuntime(structuredClone(conversation)) as Record<string, unknown>
-  stripped.workspaceId = workspace?.id
-  delete stripped.workspacePath
-  return redactExportValue(stripped, context.redaction)
 }
 
 function portableDraft(draft: ConversationDraftState, context: ExportComponentContext): ConversationDraftState {
@@ -201,8 +175,8 @@ async function snapshotConversations(context: ExportComponentContext, definition
     if (!existsSync(eventRoot)) {
       throw new ProfileArchiveError(
         'ARCHIVE_COMPONENT_INVALID',
-        'Conversation V2 事件目录不存在，已停止导出以避免静默回退旧格式。',
-        '请先完成会话迁移，或使用只读 Legacy Recovery Export。',
+        '会话事件目录不存在。',
+        '请检查资料存储目录。',
       )
     }
     const eventStore = new ConversationEventStoreV2(eventRoot)
@@ -212,13 +186,12 @@ async function snapshotConversations(context: ExportComponentContext, definition
       .sort((left, right) => left.name.localeCompare(right.name))
     const entries: ArchiveEntryInput[] = []
     const index: Array<{ id: string; path: string; interactionPath?: string; eventCount: number; lastSeq: number }> = []
-    const migrationSources = new Set<ArchiveConversationMigrationSource>()
     const eventIds = new Set<string>()
     let eventCount = 0
     for (const file of files) {
       const id = file.name.slice(0, -'.jsonl'.length)
       if (context.conversationIds && !context.conversationIds.has(id)) continue
-      const events = eventStore.readAll(id)
+      const events = redactExportValue(eventStore.readAll(id), context.redaction) as ReturnType<ConversationEventStoreV2['readAll']>
       eventCount += events.length
       for (const event of events) {
         if (event.profileId !== context.profile.id || eventIds.has(event.eventId)) {
@@ -229,9 +202,6 @@ async function snapshotConversations(context: ExportComponentContext, definition
           )
         }
         eventIds.add(event.eventId)
-        if (event.provenance === 'migrated' || event.legacyEventId) migrationSources.add('legacy-v1')
-        if (event.provenance === 'imported') migrationSources.add('profile-archive-v2')
-        if (event.provenance === 'restored' || event.source === 'recovery') migrationSources.add('recovery')
       }
       const path = `components/conversations/events/${encodeURIComponent(id)}.json`
       entries.push(jsonEntry(path, { schemaVersion: 2, conversationId: id, events }))
@@ -256,29 +226,10 @@ async function snapshotConversations(context: ExportComponentContext, definition
           eventCount,
         },
         projections: { included: false, rebuildRequired: true },
-        migrationSources: [...migrationSources].sort(),
       },
     }
   }
-  if (context.conversationDataVersion !== 1) throw new Error('Unsupported conversation data version')
-  const store = new ConversationStore(context.layout.conversationsRoot)
-  const metas = await store.listAsync()
-  const selected = context.conversationIds ? metas.filter(meta => context.conversationIds!.has(meta.id)) : metas
-  const entries: ArchiveEntryInput[] = []
-  const index: Array<{ id: string; path: string; title?: string; updatedAt?: number }> = []
-  const warnings: string[] = []
-  for (const meta of selected) {
-    const conversation = await store.loadAsync(meta.id)
-    if (!conversation) {
-      warnings.push(`会话 ${meta.id} 无法读取，已跳过。`)
-      continue
-    }
-    const path = `components/conversations/items/${encodeURIComponent(meta.id)}.json`
-    entries.push(jsonEntry(path, { schemaVersion: 1, conversation: conversationSnapshot(conversation, context) }))
-    index.push({ id: meta.id, path, title: redactExportText(meta.title || '', context.redaction), updatedAt: meta.updatedAt })
-  }
-  entries.unshift(jsonEntry('components/conversations/index.json', { schemaVersion: 1, items: index }))
-  return { descriptor: descriptor(definition, entries, index.length), entries, warnings }
+  throw new Error('Unsupported conversation data version')
 }
 
 async function snapshotModelConfigurations(context: ExportComponentContext, definition: ArchiveComponentDefinition): Promise<ComponentSnapshot> {

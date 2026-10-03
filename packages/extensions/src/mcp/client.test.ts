@@ -7,20 +7,20 @@ describe('McpClient environment handling', () => {
       command: 'node',
       enabled: true,
       env: {
-        TURBOFLUX_API_KEY: 'explicit-secret',
+        FLUXAGENT_API_KEY: 'explicit-secret',
         CUSTOM_SETTING: 'enabled',
       },
     }, {
       Path: 'C:\\Windows\\System32',
       SystemRoot: 'C:\\Windows',
-      TURBOFLUX_API_KEY: 'parent-secret',
+      FLUXAGENT_API_KEY: 'parent-secret',
       AWS_SECRET_ACCESS_KEY: 'parent-cloud-secret',
       HOME: 'C:\\Users\\admin',
     })
 
     expect(env.Path).toBe('C:\\Windows\\System32')
     expect(env.SystemRoot).toBe('C:\\Windows')
-    expect(env.TURBOFLUX_API_KEY).toBe('explicit-secret')
+    expect(env.FLUXAGENT_API_KEY).toBe('explicit-secret')
     expect(env.CUSTOM_SETTING).toBe('enabled')
     expect(env).not.toHaveProperty('AWS_SECRET_ACCESS_KEY')
     expect(env).not.toHaveProperty('HOME')

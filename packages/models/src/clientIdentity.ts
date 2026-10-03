@@ -20,7 +20,7 @@ function packageVersion(): string {
 }
 
 function clientSurface(environment: NodeJS.ProcessEnv = process.env): string {
-  const value = (environment.FLUXAGENT_CLIENT_SURFACE ?? environment.TURBOFLUX_CLIENT_SURFACE)?.trim().toLowerCase()
+  const value = environment.FLUXAGENT_CLIENT_SURFACE?.trim().toLowerCase()
   return value && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(value) ? value : DEFAULT_SURFACE
 }
 

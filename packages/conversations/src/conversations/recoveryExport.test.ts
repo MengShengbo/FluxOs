@@ -24,7 +24,7 @@ describe('conversation recovery export', () => {
   })
 
   it('writes a non-overwriting read-only recovery bundle', () => {
-    const workspace = mkdtempSync(join(tmpdir(), 'turboflux-recovery-export-'))
+    const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-recovery-export-'))
     directories.push(workspace)
     const target = join(workspace, 'recovery.json')
     const bundle = {

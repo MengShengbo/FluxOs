@@ -4,8 +4,8 @@
  * Each loader reads one common rule or memory file shape, parses it into
  * Memory entries, and returns a MemoryGroup. Supported inputs:
  *
- * - <wsRoot>/.turboflux/memory/rules.md
- * - <wsRoot>/.turboflux/memory/facts.jsonl
+ * - <wsRoot>/.fluxagent/memory/rules.md
+ * - <wsRoot>/.fluxagent/memory/facts.jsonl
  * - <wsRoot>/.cursorrules
  * - <wsRoot>/.cursor/rules/*.md(c)
  * - <wsRoot>/CLAUDE.md, claude.md
@@ -235,7 +235,7 @@ function loadRuleDirectory(
   return groups
 }
 
-function loadTurbofluxFactsJsonl(
+function loadFluxAgentFactsJsonl(
   absPath: string,
   ctx: LoaderContext,
   includeInactive = false,
@@ -299,7 +299,7 @@ function loadTurbofluxFactsJsonl(
     id: `grp_${memoryId(absPath, 0)}`,
     label: 'Project Facts',
     source: relSource,
-    loader: 'turboflux_facts_jsonl',
+    loader: 'fluxagent_facts_jsonl',
     items,
   }
 }
@@ -316,13 +316,13 @@ export function loadAllMemoryGroups(
   const groups: MemoryGroup[] = []
   const loadersAttempted: string[] = []
 
-  loadersAttempted.push('turboflux_md')
-  for (const candidate of ['TURBOFLUX.md', 'turboflux.md', '.turboflux/TURBOFLUX.md']) {
+  loadersAttempted.push('fluxagent_md')
+  for (const candidate of ['FLUXAGENT.md', 'fluxagent.md', '.fluxagent/FLUXAGENT.md']) {
     const group = loadMarkdownRuleFile(
       path.join(workspacePath, candidate),
       'Project Instructions',
-      'turboflux_md',
-      ['turboflux', 'project'],
+      'fluxagent_md',
+      ['fluxagent', 'project'],
       ctx,
     )
     if (group) {
@@ -331,27 +331,27 @@ export function loadAllMemoryGroups(
     }
   }
 
-  loadersAttempted.push('turboflux_rules_md')
-  const privateMemoryRoot = options.privateMemoryRoot ?? path.join(workspacePath, '.turboflux', 'memory')
-  const turbofluxRules = loadMarkdownRuleFile(
+  loadersAttempted.push('fluxagent_rules_md')
+  const privateMemoryRoot = options.privateMemoryRoot ?? path.join(workspacePath, '.fluxagent', 'memory')
+  const fluxagentRules = loadMarkdownRuleFile(
     path.join(privateMemoryRoot, 'rules.md'),
     'Profile Workspace Rules',
-    'turboflux_rules_md',
-    ['turboflux'],
+    'fluxagent_rules_md',
+    ['fluxagent'],
     ctx,
     options.privateMemoryRoot ? 'profile-memory/rules.md' : undefined,
     options.privateMemoryRoot ? 'workspace_private' : 'workspace_shared',
   )
-  if (turbofluxRules) groups.push(turbofluxRules)
+  if (fluxagentRules) groups.push(fluxagentRules)
 
-  loadersAttempted.push('turboflux_facts_jsonl')
-  const turbofluxFacts = loadTurbofluxFactsJsonl(
+  loadersAttempted.push('fluxagent_facts_jsonl')
+  const fluxagentFacts = loadFluxAgentFactsJsonl(
     path.join(privateMemoryRoot, 'facts.jsonl'),
     ctx,
     options.includeInactive === true,
     options.privateMemoryRoot ? 'profile-memory/facts.jsonl' : undefined,
   )
-  if (turbofluxFacts) groups.push(turbofluxFacts)
+  if (fluxagentFacts) groups.push(fluxagentFacts)
 
   loadersAttempted.push('claude_md')
   for (const candidate of ['CLAUDE.md', 'claude.md', '.claude/CLAUDE.md', '.claude/claude.md']) {

@@ -18,7 +18,6 @@ export const packageDependencies = {
   automations: ['contracts', 'platform'],
   workbench: ['contracts', 'platform', 'models', 'tools', 'extensions', 'presentation', 'agent-runtime', 'conversations', 'profiles', 'automations'],
   'remote-protocol': [],
-  'agent-core': ['models', 'platform', 'tools', 'contracts', 'agent-runtime', 'conversations', 'extensions', 'presentation', 'workbench'],
 }
 const browserPackages = new Set(['contracts', 'presentation', 'renderer'])
 const builtin = new Set(builtinModules.map(name => name.replace(/^node:/, '')))
@@ -70,8 +69,7 @@ export function verifyArchitecture(root = repositoryRoot) {
     for (const file of sourceFiles(sourceRoot)) {
       count++
       const source = readFileSync(file, 'utf8'), label = relative(root, file)
-      if (packageId === 'agent-core' && ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true).statements.some(statement => !ts.isExportDeclaration(statement))) failures.push(`${label}: compatibility facade must contain exports only`)
-      if (!['packages/platform/src/profilePaths.ts', 'apps/desktop/main.mjs'].includes(label.replaceAll('\\', '/')) && /homedir\s*\(\s*\)[\s\S]{0,120}['"]\.turboflux['"]/.test(source)) failures.push(`${label}: resolve user storage through ActiveProfilePaths or ProfileStorageLayout`)
+      if (!['packages/platform/src/profilePaths.ts', 'apps/desktop/main.mjs'].includes(label.replaceAll('\\', '/')) && /homedir\s*\(\s*\)[\s\S]{0,120}['"]\.fluxagent['"]/.test(source)) failures.push(`${label}: resolve user storage through ActiveProfilePaths or ProfileStorageLayout`)
       for (const { specifier, typeOnly } of moduleReferences(file, source)) {
         edges++
         if (specifier.startsWith('.')) {
@@ -89,7 +87,6 @@ export function verifyArchitecture(root = repositoryRoot) {
         const target = byName.get(name)
         if (!target) { failures.push(`${label}: unknown workspace ${name}`); continue }
         if (target.kind === 'apps' && target !== workspace) failures.push(`${label}: imports application ${name}`)
-        if (name === '@fluxagentcore/agent-core' && manifest.name !== name) failures.push(`${label}: use domain packages instead of the compatibility facade`)
         const subpath = specifier === name ? '.' : `.${specifier.slice(name.length)}`
         if (!target.manifest.exports?.[subpath]) failures.push(`${label}: package does not export ${specifier}`)
       }

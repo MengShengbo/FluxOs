@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PersistedConversation } from './types'
-import { planConversationV2Migration } from './conversationV2Migration'
+import { planConversationRuntimeEvents } from './conversationRuntimeEvents'
 import { projectConversationEvents } from './conversationProjections'
 import { conversationV2IdFactory } from './conversationV2Ids'
 import { ConversationEventStoreV2 } from './conversationEventStoreV2'
@@ -31,10 +31,10 @@ function legacy(): PersistedConversation {
   }
 }
 
-describe('planConversationV2Migration', () => {
+describe('planConversationRuntimeEvents', () => {
   it('is deterministic and virtualizes known tool paths', () => {
-    const first = planConversationV2Migration('profile-1', legacy())
-    const second = planConversationV2Migration('profile-1', legacy())
+    const first = planConversationRuntimeEvents('profile-1', legacy())
+    const second = planConversationRuntimeEvents('profile-1', legacy())
     expect(first).toEqual(second)
     expect(first.counts).toMatchObject({ turns: 2, messageItems: 2, toolCalls: 1, toolResults: 1, runs: 0, approvals: 0, canonicalEvents: 0 })
     const toolEvent = first.events.find(event => event.type === 'item.created' && event.payload.item.kind === 'tool_call')
@@ -44,10 +44,10 @@ describe('planConversationV2Migration', () => {
   })
 
   it('can append the same migration plan twice without duplicating history', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-v2-migration-'))
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-v2-migration-'))
     try {
       const store = new ConversationEventStoreV2(directory)
-      const plan = planConversationV2Migration('profile-1', legacy())
+      const plan = planConversationRuntimeEvents('profile-1', legacy())
       const first = store.append(plan.events)
       const second = store.append(plan.events)
       expect(first.appended).toBeGreaterThan(0)
@@ -62,7 +62,7 @@ describe('planConversationV2Migration', () => {
   })
 
   it('normalizes unsafe legacy coordinates before writing the V2 journal', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-v2-unsafe-'))
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-v2-unsafe-'))
     try {
       const value = legacy()
       value.turns[0]!.id = 'turn:user:1'
@@ -86,7 +86,7 @@ describe('planConversationV2Migration', () => {
       }]
 
       const store = new ConversationEventStoreV2(directory)
-      store.append(planConversationV2Migration('profile-1', value).events)
+      store.append(planConversationRuntimeEvents('profile-1', value).events)
       const events = store.readAll(value.id)
       expect(events.flatMap(event => [event.eventId, event.runId, event.turnId, event.itemId].filter((id): id is string => Boolean(id)))
         .every(id => /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(id))).toBe(true)
@@ -102,7 +102,7 @@ describe('planConversationV2Migration', () => {
     }
   })
 
-  it('migrates canonical runs, approvals, compaction, work activities, artifacts and recovery semantically', () => {
+  it('projects canonical runs, approvals, compaction, work activities, artifacts and recovery semantically', () => {
     const value = legacy()
     value.turns[1]!.metadata = { workRunId: 'run-1', thinking: { content: 'Checked the implementation.' } }
     value.turns[1]!.toolCalls = [{ id: 'browser-1', name: 'browser__navigate', arguments: { url: 'https://example.com' } }]
@@ -132,7 +132,7 @@ describe('planConversationV2Migration', () => {
     ]
     value.recovery = { interrupted: true, truncatedJournal: false, unresolvedToolCalls: 0 }
 
-    const plan = planConversationV2Migration('profile-1', value)
+    const plan = planConversationRuntimeEvents('profile-1', value)
     const projection = projectConversationEvents(plan.events.map((event, index) => ({ ...event, schemaVersion: 2, seq: index + 1, eventId: event.eventId!, at: event.at! })) as never)
     expect(plan.counts).toMatchObject({ runs: 1, approvals: 2, contextCompactions: 1, plans: 1, artifacts: 1, recoveries: 1, canonicalEvents: 4 })
     expect(plan.warnings).toEqual([])
@@ -150,6 +150,6 @@ describe('planConversationV2Migration', () => {
       expect.objectContaining({ kind: 'recovery' }),
     ]))
     expect(projection.artifacts).toEqual([expect.objectContaining({ artifactId: ids.normalize('artifact', 'artifact-1'), status: 'available' })])
-    expect(plan.events.some(event => event.legacyEventId === 'legacy-run-start')).toBe(true)
+    expect(plan.events.some(event => event.type === 'run.started')).toBe(true)
   })
 })

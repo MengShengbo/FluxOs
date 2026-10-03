@@ -91,7 +91,7 @@ function scanDirectory(basePath: string, source: 'system'): LoadedSkill[] {
 }
 
 export function loadAllSkills(workspacePath: string, userSkillsRoot = getActiveProfilePaths().userSkillsRoot): LoadedSkill[] {
-  const projectSkills = scanDirectory(join(workspacePath, '.turboflux', 'skills'), 'system')
+  const projectSkills = scanDirectory(join(workspacePath, '.fluxagent', 'skills'), 'system')
   const userSkills = scanDirectory(userSkillsRoot, 'system')
 
   // Deduplicate: project skills override user skills with same id

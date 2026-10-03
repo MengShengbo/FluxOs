@@ -220,7 +220,7 @@ export class ProfileArchiveApplicationService {
       } else {
         const archiveError = error instanceof ProfileArchiveError
           ? error
-          : new ProfileArchiveError('IMPORT_ROLLBACK_REQUIRED', '资料导入失败。', 'FluxAgentCore 将在下次启动检查并完成回滚。')
+          : new ProfileArchiveError('IMPORT_ROLLBACK_REQUIRED', '资料导入失败。', 'FluxAgent 将在下次启动检查并完成回滚。')
         operation.snapshot = {
           ...operation.snapshot,
           phase: 'failed',

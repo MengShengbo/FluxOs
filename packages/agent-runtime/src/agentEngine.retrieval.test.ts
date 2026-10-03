@@ -11,7 +11,7 @@ const cleanups: Array<() => void> = []
 afterEach(() => { for (const cleanup of cleanups.splice(0)) cleanup() })
 
 function harness() {
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'turboflux-retrieval-')))
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'fluxagent-retrieval-')))
   const state = new DefaultAgentStateProvider({
     provider: 'custom', apiKey: 'test', baseUrl: 'http://example.test', model: 'test-model', contextWindow: 100_000, maxTokens: 4096,
   }, workspace)

@@ -22,7 +22,7 @@ describe('profile archive benchmark qualification', () => {
 
   it('rejects a Stable run whose fixture is smaller than 1 GiB', () => {
     expect(() => resolveProfileArchiveBenchmarkConfig(['--stable'], {
-      TURBOFLUX_BENCH_BLOB_MIB: '64',
+      FLUXAGENT_BENCH_BLOB_MIB: '64',
     })).toThrow('requires at least 1024 MiB')
   })
 })

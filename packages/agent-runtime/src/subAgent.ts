@@ -464,7 +464,7 @@ export async function runSubAgent(options: RunSubAgentOptions): Promise<SubAgent
       type: 'function',
       function: {
         name: 'write_research_report',
-        description: 'Write a Markdown or JSON research artifact under .turboflux/design-research/. This cannot modify product source files.',
+        description: 'Write a Markdown or JSON research artifact under .fluxagent/design-research/. This cannot modify product source files.',
         parameters: {
           type: 'object',
           properties: {
@@ -1161,8 +1161,8 @@ async function executeSubAgentTool(name: string, args: Record<string, any>, work
     case 'write_research_report': {
       const requestedPath = String(args.path || '').trim().replace(/\\/g, '/')
       const content = String(args.content || '')
-      if (!/^\.turboflux\/design-research\/[a-z0-9._/-]+\.(?:md|json)$/i.test(requestedPath) || requestedPath.includes('/../')) {
-        return { ok: false, output: 'Research reports must use a safe .md or .json path under .turboflux/design-research/.', summary: 'research report path rejected', evidence }
+      if (!/^\.fluxagent\/design-research\/[a-z0-9._/-]+\.(?:md|json)$/i.test(requestedPath) || requestedPath.includes('/../')) {
+        return { ok: false, output: 'Research reports must use a safe .md or .json path under .fluxagent/design-research/.', summary: 'research report path rejected', evidence }
       }
       if (!content.trim() || content.length > 120_000) {
         return { ok: false, output: 'Research report content must contain 1-120000 characters.', summary: 'research report content rejected', evidence }

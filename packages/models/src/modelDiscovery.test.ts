@@ -14,8 +14,8 @@ describe('model discovery', () => {
   let configDir: string
 
   beforeEach(() => {
-    configDir = mkdtempSync(join(tmpdir(), 'turboflux-models-'))
-    vi.stubEnv('TURBOFLUX_CONFIG_DIR', configDir)
+    configDir = mkdtempSync(join(tmpdir(), 'fluxagent-models-'))
+    vi.stubEnv('FLUXAGENT_CONFIG_DIR', configDir)
     vi.resetModules()
   })
 

@@ -12,7 +12,7 @@ afterEach(() => {
 
 describe('AtomicJsonStore', () => {
   it('persists values with an atomic replace and reloads them', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-store-'))
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-store-'))
     directories.push(directory)
     const path = join(directory, 'state.json')
     const validate = (value: unknown): value is { schemaVersion: 1; value: string } => Boolean(value && typeof value === 'object' && (value as any).schemaVersion === 1 && typeof (value as any).value === 'string')
@@ -24,7 +24,7 @@ describe('AtomicJsonStore', () => {
   })
 
   it('moves corrupt data aside and returns a recoverable warning', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'turboflux-store-'))
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-store-'))
     directories.push(directory)
     const path = join(directory, 'state.json')
     writeFileSync(path, '{broken')

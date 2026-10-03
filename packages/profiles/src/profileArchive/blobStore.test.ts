@@ -12,7 +12,7 @@ afterEach(() => {
 
 describe('profile archive content-addressed blobs', () => {
   it('deduplicates identical files by SHA-256 while retaining logical names', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'turboflux-blob-store-'))
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-blob-store-'))
     directories.push(root)
     const firstPath = join(root, 'first.txt')
     const secondPath = join(root, 'second.txt')

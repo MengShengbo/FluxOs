@@ -27,7 +27,7 @@ export interface ProfileWorkspaceRebindResult {
 }
 
 function unboundWorkspacePath(workspaceId: string): string {
-  return `turboflux-unbound:${workspaceId}`
+  return `fluxagent-unbound:${workspaceId}`
 }
 
 function readCollection(path: string, key: string): CollectionDocument | null {

@@ -16,7 +16,7 @@ export interface SubAgentDefinition {
   systemPrompt: string
   /** Optional allowlist of tools exposed to this subagent. */
   allowedTools?: string[]
-  /** Shared runtime tool-round cap. Exhaustion is partial; the legacy adapter may add a tool-free handoff. */
+  /** Shared runtime tool-round cap. Exhaustion produces a partial result. */
   maxTurns: number
   /** Hard cap on parallel tool calls per turn. */
   maxParallel: number
@@ -30,7 +30,7 @@ export interface SubAgentDefinition {
   temperature?: number
   /**
    * Explicit role reasoning override. Shared runtimes inherit the parent when
-   * omitted; the legacy adapter retains its disabled default.
+   * omitted.
    */
   thinking?: SubAgentThinking
 }

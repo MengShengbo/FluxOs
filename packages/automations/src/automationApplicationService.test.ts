@@ -85,7 +85,7 @@ class ApplicationTestPool implements AutomationExecutionPool {
 }
 
 function harness(options: AutomationApplicationServiceOptions = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-automation-application-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-automation-application-'))
   directories.push(root)
   const service = new AutomationService(join(root, 'automations.json'))
   const repository = new AutomationRepository(join(root, 'automations-v3'))
@@ -153,8 +153,8 @@ describe('AutomationApplicationService', () => {
       context: { includeAutomationMemory: true, includePreviousRunSummary: true, fileRefs: ['spec.md'], skillIds: ['reporting'] },
       reliability: { maxRuntimeMinutes: 30, maxToolCalls: 50, maxInputTokens: 20_000, maxOutputTokens: 4_000 },
       delivery: {
-        desktop: ['success', 'failed', 'approval', 'timeout', 'budget', 'recovered'],
-        remoteMobile: ['approval', 'failed', 'timeout', 'budget', 'recovered'],
+        desktop: ['success', 'failed', 'approval'],
+        remoteMobile: ['approval', 'failed'],
         digest: 'immediate',
       },
     })

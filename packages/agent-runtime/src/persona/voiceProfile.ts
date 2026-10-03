@@ -1,5 +1,5 @@
-export const TURBOFLUX_VOICE_PROFILE = {
-  name: 'FluxAgentCore',
+export const FLUXAGENT_VOICE_PROFILE = {
+  name: 'FluxAgent',
   tone: 'professional',
 }
 

@@ -47,14 +47,6 @@
       "types": "./dist/conversations/conversationV2Ids.d.ts",
       "import": "./dist/conversations/conversationV2Ids.js"
     },
-    "./conversations/conversationV2Migration": {
-      "types": "./dist/conversations/conversationV2Migration.d.ts",
-      "import": "./dist/conversations/conversationV2Migration.js"
-    },
-    "./conversations/conversationV2MigrationService": {
-      "types": "./dist/conversations/conversationV2MigrationService.d.ts",
-      "import": "./dist/conversations/conversationV2MigrationService.js"
-    },
     "./conversations/conversationV2Types": {
       "types": "./dist/conversations/conversationV2Types.d.ts",
       "import": "./dist/conversations/conversationV2Types.js"
@@ -106,6 +98,10 @@
     "./privacy/computerPrivacy": {
       "types": "./dist/privacy/computerPrivacy.d.ts",
       "import": "./dist/privacy/computerPrivacy.js"
+    },
+    "./conversations/conversationRuntimeEvents": {
+      "types": "./dist/conversations/conversationRuntimeEvents.d.ts",
+      "import": "./dist/conversations/conversationRuntimeEvents.js"
     }
   },
   "scripts": {

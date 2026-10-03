@@ -15,14 +15,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./legacyProfileMigration": {
-      "types": "./dist/legacyProfileMigration.d.ts",
-      "import": "./dist/legacyProfileMigration.js"
-    },
-    "./legacyProfileRecoveryExport": {
-      "types": "./dist/legacyProfileRecoveryExport.d.ts",
-      "import": "./dist/legacyProfileRecoveryExport.js"
-    },
     "./profileArchive/archiveCrypto": {
       "types": "./dist/profileArchive/archiveCrypto.d.ts",
       "import": "./dist/profileArchive/archiveCrypto.js"
@@ -42,10 +34,6 @@
     "./profileArchive/canonicalJson": {
       "types": "./dist/profileArchive/canonicalJson.d.ts",
       "import": "./dist/profileArchive/canonicalJson.js"
-    },
-    "./profileArchive/componentMigrations": {
-      "types": "./dist/profileArchive/componentMigrations.d.ts",
-      "import": "./dist/profileArchive/componentMigrations.js"
     },
     "./profileArchive/container": {
       "types": "./dist/profileArchive/container.d.ts",
@@ -114,10 +102,6 @@
     "./workspaceBindingService": {
       "types": "./dist/workspaceBindingService.d.ts",
       "import": "./dist/workspaceBindingService.js"
-    },
-    "./workspaceOverlayMigration": {
-      "types": "./dist/workspaceOverlayMigration.d.ts",
-      "import": "./dist/workspaceOverlayMigration.js"
     }
   },
   "scripts": {

@@ -4,3 +4,5 @@ coverage/
 *.tsbuildinfo
 .env*
 *.log
+
+.fluxagent/

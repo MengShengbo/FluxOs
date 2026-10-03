@@ -9,7 +9,7 @@ import { createProfileStorageLayout, workspaceOverlayRoot } from './profileStora
 const roots: string[] = []
 
 function temporaryRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-profiles-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-profiles-'))
   roots.push(root)
   return root
 }

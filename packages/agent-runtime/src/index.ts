@@ -112,4 +112,4 @@ export * from './runtime/sessionRegistry'
 export * from './runtime/systems/index'
 
 export { AgentOrchestrator } from './agentOrchestrator'
-export type { AgentOrchestratorHost, AutomationSubAgentPolicy, LegacySubAgentRunner } from './agentOrchestrator'
+export type { AgentOrchestratorHost, AutomationSubAgentPolicy } from './agentOrchestrator'

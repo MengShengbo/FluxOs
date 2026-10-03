@@ -8,7 +8,7 @@ import { WorkspaceBindingService } from './workspaceBindingService'
 const roots: string[] = []
 
 function setup() {
-  const root = mkdtempSync(join(tmpdir(), 'turboflux-bindings-'))
+  const root = mkdtempSync(join(tmpdir(), 'fluxagent-bindings-'))
   roots.push(root)
   const workspace = join(root, 'project-a')
   mkdirSync(workspace)

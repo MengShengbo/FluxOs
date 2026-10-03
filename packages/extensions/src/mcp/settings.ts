@@ -4,7 +4,7 @@ import type { McpSettings } from './types'
 import { getActiveProfilePaths } from '@fluxagentcore/platform/profilePaths'
 
 export function loadMcpSettings(workspacePath: string): McpSettings {
-  const projectSettings = join(workspacePath, '.turboflux', 'settings.json')
+  const projectSettings = join(workspacePath, '.fluxagent', 'settings.json')
   const globalSettings = getActiveProfilePaths().globalMcpSettingsPath
 
   let merged: McpSettings = { mcpServers: {} }
@@ -29,7 +29,7 @@ export function loadMcpSettings(workspacePath: string): McpSettings {
 }
 
 export function saveProjectMcpSettings(workspacePath: string, settings: McpSettings): void {
-  const settingsDirectory = join(workspacePath, '.turboflux')
+  const settingsDirectory = join(workspacePath, '.fluxagent')
   const settingsPath = join(settingsDirectory, 'settings.json')
   mkdirSync(settingsDirectory, { recursive: true })
   let existing: Record<string, unknown> = {}

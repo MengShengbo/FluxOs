@@ -60,7 +60,7 @@ function secureFile(filePath: string, mode?: number): void {
     }
     chmodSync(filePath, mode)
     const args = [filePath, '/inheritance:r', '/grant:r', `${process.env.USERNAME}:F`]
-    if ((process.env.FLUXAGENT_STRICT_FILE_PERMISSIONS ?? process.env.TURBOFLUX_STRICT_FILE_PERMISSIONS) === '1') {
+    if (process.env.FLUXAGENT_STRICT_FILE_PERMISSIONS === '1') {
       const result = spawnSync('icacls.exe', args, { windowsHide: true, stdio: 'ignore' })
       if (result.error || result.status !== 0) {
         throw result.error ?? new Error(`icacls exited with status ${result.status}`)

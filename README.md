@@ -30,9 +30,9 @@ All ten core packages are MIT licensed, publishable, independently built and tes
 
 ## Compatibility
 
-`FLUXAGENT_*` runtime environment names are accepted alongside legacy `TURBOFLUX_*` names; the new name takes precedence. Existing `.turboflux` data directories and versioned event/archive formats remain supported. These identifiers are compatibility contracts, not active product branding.
+Runtime configuration uses `FLUXAGENT_*` and `.fluxagent` only. Before launch, code and development data move directly to the current format, without old aliases, fallback readers or runtime migration layers. The assistant identifies itself as FluxAgent; FluxAgentCore is its execution kernel.
 
-Profile archives exported by the product use `.fluxagent-profile`; the core container reader accepts both `.fluxagent-profile` and historical `.turboflux-profile` files. The encrypted container format is unchanged.
+Profile archives exported by the product use `.fluxagent-profile`; the core container reader accepts both `.fluxagent-profile` and historical `.fluxagent-profile` files. The encrypted container format is unchanged.
 
 Runtime response mode begins as chat and promotes to task when actual tools are dispatched. No extra model classification round is required.
 

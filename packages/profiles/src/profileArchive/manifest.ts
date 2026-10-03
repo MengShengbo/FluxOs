@@ -13,7 +13,6 @@ const COMPONENT_IDS = new Set<ArchiveComponentId>([
   'plugins.storage', 'mcp.configurations', 'runtime.transcripts', 'captures',
 ])
 const SENSITIVITIES = new Set(['normal', 'private', 'secret', 'executable'])
-const CONVERSATION_MIGRATION_SOURCES = new Set(['legacy-v1', 'profile-archive-v2', 'recovery'])
 const WORKSPACE_ID_PATTERN = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|workspace-[A-Za-z0-9_-]{8,96})$/iu
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -51,9 +50,8 @@ function validConversationData(value: unknown): boolean {
     || !isRecord(value.projections)
     || value.projections.included !== false
     || value.projections.rebuildRequired !== true
-    || !Array.isArray(value.migrationSources)
-    || value.migrationSources.some(source => !CONVERSATION_MIGRATION_SOURCES.has(String(source)))) return false
-  return new Set(value.migrationSources).size === value.migrationSources.length
+) return false
+  return true
 }
 
 export function manifestContentDigest(manifest: Omit<ProfileArchiveManifestV1, 'contentDigest'>): string {
@@ -71,7 +69,7 @@ export function serializeManifest(manifest: ProfileArchiveManifestV1): Buffer {
 
 export function parseManifest(value: unknown): ProfileArchiveManifestV1 {
   if (!isRecord(value) || value.schemaVersion !== PROFILE_ARCHIVE_MANIFEST_VERSION) {
-    throw new ProfileArchiveError('ARCHIVE_UNSUPPORTED_VERSION', '该资料包版本无法由当前 FluxAgentCore 打开。', '请升级 FluxAgentCore 后重试。')
+    throw new ProfileArchiveError('ARCHIVE_UNSUPPORTED_VERSION', '该资料包版本无法由当前 FluxAgent 打开。', '请升级 FluxAgent 后重试。')
   }
   const source = value.source
   const profile = value.profile
@@ -89,7 +87,7 @@ export function parseManifest(value: unknown): ProfileArchiveManifestV1 {
     || !isRecord(profile)
     || typeof profile.sourceProfileId !== 'string'
     || typeof profile.displayName !== 'string'
-    || (value.conversationDataVersion !== undefined && value.conversationDataVersion !== 1 && value.conversationDataVersion !== 2)
+    || (value.conversationDataVersion !== undefined && value.conversationDataVersion !== 2)
     || (conversationComponentVersion === 2 && value.conversationDataVersion !== 2)
     || (value.conversationDataVersion === 2 && (!validConversationData(value.conversationData)
       || conversationComponentVersion !== 2))

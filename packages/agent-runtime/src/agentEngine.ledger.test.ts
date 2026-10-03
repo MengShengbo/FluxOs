@@ -8,7 +8,7 @@ import { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
 import { DefaultAgentStateProvider } from './runtime/stateProvider'
 
 it('returns current file and search facts after compaction removes the original results', async () => {
-  const workspace = mkdtempSync(join(tmpdir(), 'turboflux-ledger-compaction-'))
+  const workspace = mkdtempSync(join(tmpdir(), 'fluxagent-ledger-compaction-'))
   const state = new DefaultAgentStateProvider({ provider: 'custom', apiKey: '', baseUrl: '', model: '', contextWindow: 100_000, maxTokens: 4096 }, workspace)
   const executor = new NodeToolExecutor(workspace)
   const engine = new AgentEngine({ mode: 'vibe', approvalPolicy: 'full', workspacePath: workspace, gitEnabled: false }, executor, state)

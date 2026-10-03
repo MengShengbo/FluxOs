@@ -24,12 +24,12 @@ describe('Conversation V2 identities', () => {
     expect(isConversationV2Id('legacy-compatible-id')).toBe(true)
   })
 
-  it('keeps established non-UUID conversations on their legacy identity generation', () => {
+  it('uses one UUID identity generation for every conversation', () => {
     const legacy = conversationV2IdFactory('conversation-legacy')
     const canonical = conversationV2IdFactory('a47ac10b-58cc-4372-a567-0e02b2c3d479')
-    expect(legacy.canonical).toBe(false)
-    expect(legacy.normalize('turn', 'turn-1')).toBe('turn-1')
-    expect(legacy.scoped('message', 'turn-1')).toBe('message-turn-1')
+    expect(legacy.canonical).toBe(true)
+    expect(isConversationV2Uuid(legacy.normalize('turn', 'turn-1'))).toBe(true)
+    expect(isConversationV2Uuid(legacy.scoped('message', 'turn-1'))).toBe(true)
     expect(canonical.canonical).toBe(true)
     expect(isConversationV2Uuid(canonical.normalize('turn', 'turn-1'))).toBe(true)
   })

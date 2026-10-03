@@ -13,7 +13,7 @@ describe('FluxAgentCore client identity', () => {
   })
 
   it('supports a future desktop surface without another header implementation', () => {
-    const identity = getFluxAgentClientIdentity({ TURBOFLUX_CLIENT_SURFACE: 'desktop' })
+    const identity = getFluxAgentClientIdentity({ FLUXAGENT_CLIENT_SURFACE: 'desktop' })
 
     expect(identity.product).toBe('fluxagent-desktop')
     expect(identity.originator).toBe('fluxagent_desktop')

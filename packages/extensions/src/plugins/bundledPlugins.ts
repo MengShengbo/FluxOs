@@ -10,13 +10,13 @@ export interface BundledPlugin {
 export const BUNDLED_PLUGINS: BundledPlugin[] = [{
   enabledByDefault: true,
   manifest: {
-    id: 'turboflux.office-workagent',
+    id: 'fluxagent.office-workagent',
     name: '全能办公工作代理',
     description: '覆盖办公文件全流程的本地工作代理',
     version: '1.0.0',
-    author: { name: 'FluxAgentCore 社区' },
+    author: { name: 'FluxAgent 社区' },
     icon: 'pdf-file',
-    engines: { turboforge: '>=1.0.0', turboflux: '>=1.0.0' },
+    engines: { fluxagent: '>=1.0.0' },
     categories: ['productivity'],
     keywords: ['PDF', 'Word', 'Excel', 'PowerPoint', 'documents', 'spreadsheets', 'presentations', 'conversion', 'validation'],
     permissions: [],
@@ -35,7 +35,7 @@ export const BUNDLED_PLUGINS: BundledPlugin[] = [{
   promptFiles: {
     'skills/office-workagent/SKILL.md': `# 办公任务总控
 
-你是 FluxAgentCore 的办公文件总协调工作代理。目标是把任务推进到可交付、可复查的成品，而不是只提供建议或文本草稿。
+你是 FluxAgent 的办公文件总协调工作代理。目标是把任务推进到可交付、可复查的成品，而不是只提供建议或文本草稿。
 
 ## 工作范围
 
@@ -138,13 +138,13 @@ export const BUNDLED_PLUGINS: BundledPlugin[] = [{
 }, {
   enabledByDefault: false,
   manifest: {
-    id: 'turboflux.design-atlas',
+    id: 'fluxagent.design-atlas',
     name: '设计图谱',
     description: '多方向前端、官网与数字产品设计探索插件',
     version: '1.3.2',
-    author: { name: 'FluxAgentCore Studio' },
+    author: { name: 'FluxAgent Studio' },
     icon: 'image',
-    engines: { turboforge: '>=1.0.0', turboflux: '>=1.0.0' },
+    engines: { fluxagent: '>=1.0.0' },
     categories: ['custom'],
     keywords: ['前端设计', '官网设计', '产品设计', '视觉研究', '艺术指导', '多方向探索', '截图验收', '去 AI 味'],
     permissions: [],
@@ -174,7 +174,7 @@ export const BUNDLED_PLUGINS: BundledPlugin[] = [{
               trigger: {
                 tools: ['write_file', 'replace_file', 'edit_file', 'multi_edit'],
                 argument: 'path',
-                includes: '.turboflux/design-atlas/',
+                includes: '.fluxagent/design-atlas/',
                 endsWith: '/premise.md',
               },
               blockBeforeTrigger: ['create_task', 'create_tasks'],
