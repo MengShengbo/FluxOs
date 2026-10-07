@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { toolsToOpenAIFormat } from '@fluxos/tools/toolRegistry'
+import { toolsToOpenAIFormat } from '@fluxos/models/toolSchemas'
+import { getToolsForMode } from '@fluxos/tools/toolRegistry'
 import { TurnStrategyPlanner } from './turnStrategy'
 import type { AgentMode, AgentSession, AgentTurn, ToolResult } from '@fluxos/contracts/agentTypes'
 
@@ -20,7 +21,7 @@ function sessionFor(content: string, mode: AgentMode = 'vibe', extraTurns: Agent
 }
 
 function openAiToolNames(mode: AgentMode): string[] {
-  return toolsToOpenAIFormat(mode).map(tool => {
+  return toolsToOpenAIFormat(getToolsForMode(mode)).map(tool => {
     const fn = (tool as { function?: { name?: string } }).function
     return fn?.name || ''
   }).filter(Boolean)
@@ -35,7 +36,7 @@ interface OpenAIToolShape {
 }
 
 function openAiTool(mode: AgentMode, name: string): OpenAIToolShape | undefined {
-  return toolsToOpenAIFormat(mode).find(tool => (
+  return toolsToOpenAIFormat(getToolsForMode(mode)).find(tool => (
     (tool as { function?: { name?: string } }).function?.name === name
   )) as OpenAIToolShape | undefined
 }

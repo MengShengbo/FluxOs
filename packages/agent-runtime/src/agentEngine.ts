@@ -1,3 +1,7 @@
+import { getModelProviderAdapter, exchangeModelRequest } from '@fluxos/models/modelProvider'
+import { toolFailure, type ToolDispatchOutput, fileMutationOutput, type ToolDispatchResult } from './runtime/toolDispatchResult'
+import { ToolOutputReadError, ToolOutputStore } from './runtime/toolOutputStore'
+import type { ToolOperationStore } from '@fluxos/tools/toolOperationStore'
 ﻿import type {
   AgentMode,
   AgentAttachment,
@@ -20,7 +24,7 @@ import { generateSessionId, generateTurnId } from '@fluxos/contracts/agentTypes'
 import { existsSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import type { MemoryKind, MemoryScope } from '@fluxos/contracts/memoryTypes'
-import { browserToolNeedsApproval, describeBrowserPermission, describeBrowserToolActivity, isBuiltInBrowserTool } from '@fluxos/contracts/browserToolPresentation'
+import { describeBrowserPermission, describeBrowserToolActivity, isBuiltInBrowserTool } from '@fluxos/contracts/browserToolPresentation'
 import { computerToolApprovalLevel, describeComputerPermission, describeComputerToolActivity, isBuiltInComputerTool } from '@fluxos/contracts/computerToolPresentation'
 import { buildActivatedSkillsContext, buildSystemPrompt, invalidateStaticPromptCache } from './systemPrompt'
 import { TaskManager, type TaskTreeNode } from './taskManager'
@@ -29,9 +33,9 @@ import type { WorkExecutionSnapshot, WorkStepControlAction } from '@fluxos/contr
 import { CacheMonitor, type CacheBreakResult } from './cacheMonitor'
 import { observeModelCache } from './modelRequestCache'
 import { ModelRequestTracker, type ModelRequestHandle } from './runtime/modelRequestTracker'
-import { toolsToOpenAIFormat, toolsToAnthropicFormat, getToolByName, getToolsForMode, validateToolArgs } from '@fluxos/tools/toolRegistry'
+import { getToolByName, getToolsForMode, validateToolArgs } from '@fluxos/tools/toolRegistry'
 import { applyEdit, stripLineNumberPrefix } from '@fluxos/tools/editHelpers'
-import { applyPatchAdd, applyPatchHunks, parseApplyPatch, type ApplyPatchOperation } from '@fluxos/tools/applyPatch'
+import { executePatch } from './runtime/patchExecution'
 import { canComputeDiff, computeHunks, summarizeHunks } from '@fluxos/presentation/diffCompute'
 import { shouldAutoBackgroundCommand } from '@fluxos/tools/commandExecutionPolicy'
 import { ContextManager } from './contextManager'
@@ -44,23 +48,11 @@ import {
   collectContinuationHandoffFacts,
   CONTINUATION_SUMMARY_SYSTEM_PROMPT,
   continuationSummaryTokenBudget,
-  extractContinuationText,
   validateContinuationSummary,
   type ContinuationWorkspaceSnapshot,
 } from './contextCompaction'
 import { autoCompactThreshold, resolveContextPolicyProfile } from './contextPolicy'
 import { countMessagesTokens, countTurnishTokens } from '@fluxos/models/tokenCounter'
-import { resolveNativeReasoningRequest } from '@fluxos/models/modelRegistry'
-import {
-  downgradeReasoningEffort,
-  extractUnsupportedRequestParam,
-  isReasoningEffortValueError,
-  removeAnthropicCompatibleRequestParam,
-  removeOpenAICompatibleRequestParam,
-  setOpenAIPromptCacheLifetime,
-  setOpenAIChatMaxTokens,
-  shouldOmitSamplingTemperature,
-} from '@fluxos/models/requestCompatibility'
 import { TurnStrategyPlanner, type TurnStrategy } from './turnStrategy'
 import { toolCallSignature } from './toolExecutionLedger'
 import { createDefaultPipeline, type PermissionPipeline } from '@fluxos/tools/permissions'
@@ -71,25 +63,17 @@ import type { McpClient } from '@fluxos/extensions/mcp/client'
 import type { SubAgentDefinition, SubAgentEvent } from '@fluxos/contracts/subAgentTypes'
 import type { WorkflowCheckpointSpec, WorkflowProgressUpdate, WorkflowRunContract, WorkflowSurfaceSpec } from '@fluxos/contracts/workflowSurfaceTypes'
 import { resolvePath, toWorkspaceRelative } from '@fluxos/platform/pathUtils'
-import { normalizeBaseUrl } from '@fluxos/models/normalizeBaseUrl'
-import { createFluxAgentRequestHeaders } from '@fluxos/models/clientIdentity'
 import {
   ModelProtocolRequestError,
   buildModelProtocolUrl,
-  formatProtocolAttempt,
   formatProtocolFailure,
-  looksLikeDeepSeekModel,
-  looksLikeResponsesPreferredModel,
   planModelProtocols,
   protocolLabel,
   shouldFallbackProtocol,
   toProtocolAttempt,
-  toResponsesInput,
-  toResponsesTools,
   type ModelProtocol,
   type ModelProtocolAttempt,
 } from '@fluxos/models/modelProtocol'
-import { resolveRequestMaxTokens } from '@fluxos/models/modelRequestBudget'
 import { dispatchTaskTool, type TaskSystemCreationEvent } from './taskToolDispatcher'
 import { SubAgentRegistry, getAvailableAgentTypes } from './subAgentRegistry'
 import { AgentOrchestrator, type AutomationSubAgentPolicy } from './agentOrchestrator'
@@ -143,8 +127,7 @@ import { AgentRunLifecycle } from './runtime/agentRunLifecycle'
 import { AgentContextCoordinator } from './runtime/agentContextCoordinator'
 import { ToolExecutionCoordinator } from './runtime/toolExecutionCoordinator'
 import { ToolCallLifecycle } from './runtime/toolCallLifecycle'
-import { hasCompleteToolPayloads, isOutputLimitFinishReason } from '@fluxos/models/modelStream'
-import { appendRuntimeContextToLatestUserMessage, normalizeAnthropicToolMessages } from '@fluxos/models/modelMessages'
+import { appendRuntimeContextToLatestUserMessage } from '@fluxos/models/modelMessages'
 import {
   COMPUTER_ERROR_REDACTED,
   COMPUTER_RESULT_REDACTED,
@@ -152,9 +135,6 @@ import {
   redactComputerReservoir,
   redactComputerTurns,
 } from '@fluxos/contracts/computerPrivacy'
-import { AnthropicStreamParser } from '@fluxos/models/providers/anthropicStream'
-import { OpenAIChatStreamParser } from '@fluxos/models/providers/openAIChatStream'
-import { OpenAIResponsesStreamParser } from '@fluxos/models/providers/openAIResponsesStream'
 import { runModelRequest } from '@fluxos/models/modelRequestOrchestrator'
 import type { ToolCallBatch } from './toolCallOrchestrator'
 import {
@@ -163,9 +143,9 @@ import {
 } from './contextCompactionBoundary'
 import { presentRequestError } from '@fluxos/presentation/requestErrorPresentation'
 import { normalizeBuiltInToolArguments } from '@fluxos/tools/toolArgumentNormalization'
-import { contentSearchResult, fileSearchResult, formatRetrievalResult } from '@fluxos/tools/retrievalResults'
+import { codeNavigationResult, contentSearchResult, fileSearchResult, formatCodeNavigation, formatRetrievalResult } from '@fluxos/tools/retrievalResults'
 import type { RetrievalResult, RetrievedResource } from '@fluxos/contracts/retrievalTypes'
-import type { ToolResultData } from '@fluxos/contracts/toolResultData'
+import { commandProcessOutcome, toolInvocationKey, toolRecovery, toolResultExecutionStatus, type CommandProcessOutcome, type ToolResultData } from '@fluxos/contracts/toolResultData'
 import { ModelSurface } from '@fluxos/models/modelSurface'
 import type { ModelSurfaceState } from '@fluxos/contracts/modelSurfaceTypes'
 
@@ -189,18 +169,6 @@ function describeSemanticToolActivity(
 }
 
 function describeSemanticToolPermission(name: string, args: Record<string, unknown>) {
-  if (name === 'capabilities__request') {
-    const capability = args.capability === 'computer' ? '电脑操控' : args.capability === 'browser' ? '内置浏览器' : '可选能力'
-    const requestedReason = typeof args.reason === 'string'
-      ? args.reason.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240)
-      : ''
-    return {
-      title: `启用${capability}`,
-      question: `为当前任务启用${capability}吗？`,
-      reason: requestedReason || `Agent 需要使用${capability}继续完成当前任务。`,
-      runningDetail: `正在启用${capability}`,
-    }
-  }
   return describeComputerPermission(name, args)
     || describeBrowserPermission(name, args)
 }
@@ -264,15 +232,6 @@ function streamToolArgumentPreview(value: string): string {
   if (value.length <= MAX_STREAM_TOOL_ARGUMENT_PREVIEW_CHARS) return value
   return value.slice(-MAX_STREAM_TOOL_ARGUMENT_PREVIEW_CHARS)
 }
-
-interface ToolDispatchResult {
-  output: string
-  attachments?: AgentAttachment[]
-  retrieval?: RetrievalResult
-  data?: ToolResultData
-}
-
-type ToolDispatchOutput = string | ToolDispatchResult
 
 type PromptModuleSnapshot = {
   id: string
@@ -443,12 +402,13 @@ export class AgentEngine {
   private readonly interactiveRequests: ApprovalCoordinator<EngineInteractiveRequest, string>
   private readonly resolvedAskUserResponses = new Map<string, string>()
   private toolCallTaskMap: Map<string, string> = new Map()
+  private commandToolCallSessions = new Map<string, string>()
   private fileBeforeSnapshots: Map<string, string | null> = new Map()
   // Registry of background PTY sessions the agent has spawned via
   // run_command(run_in_background=true). Tracks the command + start time so
   // list_terminals / read_terminal can label them. Foreground commands use
   // the command execution path and do not need a session.
-  private agentBackgroundSessions: Map<string, { command: string; startedAt: number }> = new Map()
+  private agentBackgroundSessions: Map<string, { command: string; startedAt: number; expectedExitCodes: number[] }> = new Map()
   private turnStrategyPlanner: TurnStrategyPlanner = new TurnStrategyPlanner()
   private currentTurnStrategy: TurnStrategy | null = null
   private cachedGitStatus: string | null = null
@@ -484,6 +444,7 @@ export class AgentEngine {
   private conclusionGuardAttempts: number = 0
   private finalDeliveryRetryAttempts: number = 0
   private disabledToolNames: Set<string> = new Set()
+  private readonly toolOutputStore = new ToolOutputStore()
   private pendingAssistantMessageId: string | null = null
   private providerTransientRetryAttempt = 0
   private providerTransientRetryStartedAt = 0
@@ -503,23 +464,40 @@ export class AgentEngine {
   closeChildAgent(agentId: string): Promise<void> { return this.orchestration.close(agentId) }
   retrySubAgentTask(taskId: string): RuntimeTask { return this.orchestration.retrySubAgentTask(taskId) }
   private mcpClient: McpClient | null = null
-  private deferredMcpToolNames = new Set<string>()
+  private loadedMcpToolNames = new Set<string>()
   private activatedRunSkills = new Map<string, NonNullable<AgentConfig['enabledSkills']>[number]>()
   private activeWorkflowContract: WorkflowRunContract | null = null
   private completedWorkflowStages = new Set<string>()
   private workflowProgressHandler: ((update: WorkflowProgressUpdate) => void) | null = null
 
   setMcpClient(client: McpClient): void {
+    this.toolOutputStore.clear()
     this.mcpClient = client
-    this.deferredMcpToolNames.clear()
+    this.loadedMcpToolNames.clear()
   }
 
   enableMcpServerTools(serverName: string): number {
     if (!this.mcpClient) return 0
     const connection = this.mcpClient.getConnection(serverName)
     if (!connection || connection.status !== 'connected') return 0
-    for (const tool of connection.tools) this.deferredMcpToolNames.add(tool.name)
-    return connection.tools.length
+    const allowedNames = new Set(this.availableMcpTools().map(tool => tool.name))
+    const tools = connection.tools.filter(tool => allowedNames.has(tool.name))
+    for (const tool of tools) this.loadedMcpToolNames.add(tool.name)
+    return tools.length
+  }
+
+  private availableMcpTools(): AgentTool[] {
+    if (!this.mcpClient) return []
+    return getMcpAgentTools(this.mcpClient).filter(tool => !this.disabledToolNames.has(tool.name)
+      && (!this.config.allowedTools || this.config.allowedTools.includes(tool.name))
+      && ((this.config.mode !== 'plan' && this.config.capabilityProfile !== 'read-only') || tool.isReadOnly))
+  }
+
+  private modelMcpTools(): AgentTool[] {
+    const tools = this.availableMcpTools()
+    const availableNames = new Set(tools.map(tool => tool.name))
+    for (const name of this.loadedMcpToolNames) if (!availableNames.has(name)) this.loadedMcpToolNames.delete(name)
+    return tools.filter(tool => this.loadedMcpToolNames.has(tool.name))
   }
 
   setEventRecorder(recorder: AgentEventRecorder | null): void {
@@ -531,6 +509,7 @@ export class AgentEngine {
     toolExecutor: ToolExecutor,
     stateProvider: AgentStateProvider,
     subAgentTaskManager?: SubAgentTaskManager,
+    operationServices?: { store: ToolOperationStore; memoryRoot?: string },
   ) {
     this.toolExecutor = toolExecutor
     this.stateProvider = stateProvider
@@ -636,6 +615,27 @@ export class AgentEngine {
       validate: (toolCall, tool) => this.validateToolCall(toolCall, tool),
       authorize: (toolCall, signal) => this.checkToolPermission(toolCall, signal),
       execute: (toolCall, tool, signal) => this.dispatchValidatedTool(toolCall, tool, signal),
+      writeScope: () => ({ workspacePath: this.config.workspacePath, sessionId: this.session.id, memoryRoot: operationServices?.memoryRoot }),
+      ...(operationServices ? { operations: {
+        store: operationServices.store,
+        identity: (call: ToolCall) => {
+          if (call.operationIdentity) {
+            if (call.operationIdentity.sessionId !== this.session.id) throw new Error('Operation belongs to another session')
+            return call.operationIdentity
+          }
+          // Provider call IDs can repeat across requests. The durable assistant
+          // turn is part of the identity; arguments belong in a separate digest.
+          const turns = this.session.turns
+          for (let index = turns.length - 1; index >= 0; index--) {
+            const turn = turns[index]
+            if (turn.role === 'assistant' && turn.toolCalls?.some(candidate => candidate.id === call.id)) {
+              call.operationIdentity = { sessionId: this.session.id, turnId: turn.id, callId: call.id }
+              return call.operationIdentity
+            }
+          }
+          throw new Error('No assistant turn owns this durable tool operation')
+        },
+      } } : {}),
     })
     this.toolExecutionCoordinator = new ToolExecutionCoordinator({
       maxConcurrency: () => this.config.maxParallelToolCalls,
@@ -652,7 +652,7 @@ export class AgentEngine {
         try {
           this.emit({ type: 'tool:result', toolResult: result })
         } finally {
-          this.updateTaskToolCallStatus(toolCall.id, this.getTaskToolStatus(result), result.output, result.name)
+          this.updateTaskToolCallStatus(result)
         }
       },
       onSettled: () => this.emitActiveTaskContext(),
@@ -692,6 +692,7 @@ export class AgentEngine {
       () => this.interactiveRequests.cancelAll('deny'),
       () => this.resolvedAskUserResponses.clear(),
       () => this.modelStreams.clear(),
+      () => this.toolOutputStore.clear(),
       () => this.subAgentTaskManager.destroy(),
       () => this.events.clear(),
     ]) {
@@ -1158,12 +1159,14 @@ export class AgentEngine {
     const suppressRuntimeEvents = options?.emitRuntimeEvents === false
     const releaseEventSuppression = suppressRuntimeEvents ? this.events.suppress() : null
     try {
+    this.toolOutputStore.clear()
     this.contextManager.reset()
     this.cacheMonitor.reset()
     this.warmRequestPrefixes.clear()
     this.session.turns = this.session.turns.filter(t => t.role === 'system')
     this.taskManager.clear()
     this.toolCallTaskMap.clear()
+    this.commandToolCallSessions.clear()
     this.currentRunToolNames = []
     this.currentRunReadFiles.clear()
     this.currentRunSuccessfulReadFiles.clear()
@@ -1183,7 +1186,6 @@ export class AgentEngine {
     this.session.turns = this.sessionRehydrator.rehydrateMessages(messages, {
       systemTurns: this.session.turns,
       taskManager: this.taskManager,
-      isToolOutputFailure: (name, output) => this.isToolOutputFailure(name, output),
     })
 
     // Re-establish a token baseline from the rewound turns so the context bar
@@ -1559,6 +1561,29 @@ export class AgentEngine {
         }
 
         if ((!assistantTurn.toolCalls || assistantTurn.toolCalls.length === 0) && !assistantTurn.content.trim()) {
+          const hasReasoning = Boolean(assistantTurn.metadata?.thinking?.content.trim())
+          if (assistantTurn.metadata?.interruption?.kind === 'stop') {
+            if (hasReasoning) {
+              this.session.turns.push(assistantTurn)
+              newTurns.push(assistantTurn)
+              this.emit({ type: 'turn:complete', turn: assistantTurn })
+            }
+            throw this.runControl.createStopInterruption()
+          }
+          if (hasReasoning || assistantTurn.metadata?.interrupted) {
+            const outputLimit = this.lastModelAttempt?.requestSettings?.maxOutputTokens
+            const outputTokens = this.lastModelAttempt?.usage.output ?? assistantTurn.metadata?.tokens?.output ?? 0
+            const exhaustedOutput = typeof outputLimit === 'number' && outputLimit > 0 && outputTokens >= outputLimit
+            const chinese = /[\u3400-\u9fff]/.test(userMessage)
+            assistantTurn.content = chinese
+              ? `${exhaustedOutput ? `模型已达到本次输出上限（${outputLimit} tokens）` : '模型本轮未生成可用的答复或工具调用'}。${hasReasoning ? '仅收到推理，记录已保留。' : '响应已中断。'}已停止自动重试。可降低推理强度或提高输出上限后继续。`
+              : `${exhaustedOutput ? `The model reached the output limit for this request (${outputLimit} tokens)` : 'The model returned no usable answer or tool call'}. ${hasReasoning ? 'Only reasoning was received and it was preserved.' : 'The response was interrupted.'} Automatic retry stopped. You can lower reasoning effort or raise the output limit before continuing.`
+            assistantTurn.metadata = { ...assistantTurn.metadata, interrupted: true }
+            this.session.turns.push(assistantTurn)
+            newTurns.push(assistantTurn)
+            this.emit({ type: 'turn:complete', turn: assistantTurn })
+            break
+          }
           if (this.finalDeliveryRetryAttempts === 0) {
             this.finalDeliveryRetryAttempts = 1
             const currentUserTurn = [...this.session.turns].reverse().find(turn => turn.role === 'user' && !turn.metadata?.internal && turn.metadata?.workRunId === workRunId)
@@ -1589,6 +1614,11 @@ export class AgentEngine {
         }
         if (unresolvedChildren.length > 0) {
           assistantTurn.metadata = { ...assistantTurn.metadata, internal: true, internalKind: 'subagent_candidate' }
+        }
+        // Bind before publishing the turn/tool proposal. A crash can occur after
+        // intent or side effect but before any tool result reaches the transcript.
+        for (const call of assistantTurn.toolCalls ?? []) {
+          call.operationIdentity = { sessionId: this.session.id, turnId: assistantTurn.id, callId: call.id }
         }
         this.session.turns.push(assistantTurn)
         newTurns.push(assistantTurn)
@@ -1650,13 +1680,13 @@ export class AgentEngine {
         const interactiveCalls = assistantTurn.toolCalls.filter(toolCall => toolCall.name === 'ask_user' || toolCall.name === 'present_workflow')
         let toolResults = await this.executeToolCalls(assistantTurn.toolCalls)
 
-        const errorCount = toolResults.filter(result => result.isError && result.errorKind !== 'abort').length
+        const errorCount = toolResults.filter(result => toolResultExecutionStatus(result) === 'failed').length
         if (errorCount > 0) {
           consecutiveToolErrors++
           if (consecutiveToolErrors >= MAX_CONSECUTIVE_ERRORS) {
-            const retryHint = this.buildToolRetryHint(assistantTurn.toolCalls!, toolResults)
-            if (retryHint) {
-              toolResults = this.attachToolRetryHint(toolResults, retryHint)
+            const toolRetryHint = this.buildToolRetryHint(assistantTurn.toolCalls!, toolResults)
+            if (toolRetryHint) {
+              toolResults = this.attachToolRetryHint(toolResults, toolRetryHint)
               consecutiveToolErrors = 0
             }
           }
@@ -1666,9 +1696,9 @@ export class AgentEngine {
         let repeatedFailure: { toolCall: ToolCall; result: ToolResult; count: number } | null = null
         for (const toolCall of assistantTurn.toolCalls) {
           const result = toolResults.find(item => item.toolCallId === toolCall.id)
-          if (!result?.isError) continue
+          if (!result || toolResultExecutionStatus(result) !== 'failed') continue
           const deterministicFailure = result.errorKind === 'validation'
-            || /^\[reused: identical .* call already failed/i.test(result.output)
+            || (result.data?.kind === 'command' && result.data.process.state === 'exited')
           if (!deterministicFailure) continue
           const signature = toolCallSignature(toolCall)
           const count = (identicalToolFailures.get(signature) || 0) + 1
@@ -2084,64 +2114,16 @@ export class AgentEngine {
     const protocols = planModelProtocols(config.provider, config.defaultModel, config.modelCapabilities?.supportedEndpoints)
     const attempts: ModelProtocolAttempt[] = []
     for (const protocol of protocols) {
-      const url = buildModelProtocolUrl(config.baseUrl, protocol, config.provider)
-      const headers = createFluxAgentRequestHeaders(protocol === 'anthropic_messages'
-        ? {
-            'Content-Type': 'application/json',
-            'x-api-key': config.apiKey,
-            'anthropic-version': '2023-06-01',
-            ...(config.provider === 'anthropic' ? {} : { Authorization: `Bearer ${config.apiKey}` }),
-            ...config.customHeaders,
-          }
-        : {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${config.apiKey}`,
-            ...config.customHeaders,
-          })
-      if (config.provider === 'openrouter') {
-        headers['HTTP-Referer'] = 'https://fluxagent.dev'
-        headers['X-Title'] = 'FluxAgent'
-      }
-
-      const coldBody = protocol === 'anthropic_messages'
-        ? {
-            model: config.defaultModel,
-            system: CONTINUATION_SUMMARY_SYSTEM_PROMPT,
-            messages: [{ role: 'user', content: prompt }],
-            max_tokens: maxTokens,
-          }
-        : protocol === 'openai_responses'
-          ? {
-              model: config.defaultModel,
-              instructions: CONTINUATION_SUMMARY_SYSTEM_PROMPT,
-              input: toResponsesInput([{ role: 'user', content: prompt }]),
-              max_output_tokens: maxTokens,
-              store: false,
-            }
-          : {
-              model: config.defaultModel,
-              messages: [
-                { role: 'system', content: CONTINUATION_SUMMARY_SYSTEM_PROMPT },
-                { role: 'user', content: prompt },
-              ],
-              max_tokens: maxTokens,
-              stream: false,
-            }
-      const warmPrefix = this.warmRequestPrefixes.get(protocol)
-      const body = warmPrefix
-        ? this.buildWarmContinuationBody(warmPrefix.body, protocol, prompt, maxTokens, config)
-        : coldBody
-
-      if (protocol === 'openai_chat') {
-        setOpenAIChatMaxTokens(body, maxTokens, config.provider, config.defaultModel)
-      }
+      const adapter = getModelProviderAdapter(protocol)
+      const { url, headers, body } = adapter.prepareSummary({ config, prompt, maxTokens,
+        systemPrompt: CONTINUATION_SUMMARY_SYSTEM_PROMPT, warmPrefix: this.warmRequestPrefixes.get(protocol)?.body })
 
       const result = await this.sendCompactionAttempt(requestId, protocol, config, url, headers, JSON.stringify(body), {
         signal: this.contextCoordinator.getCompactionSignal() || this.abortController?.signal,
         timeoutMs: CONTEXT_COMPACTION_REQUEST_TIMEOUT_MS,
       })
       if (result.success && result.data) {
-        const text = extractContinuationText(protocol, result.data)
+        const text = adapter.readSummary(result.data).text
         if (text.trim()) return text
         const shapeError = new ModelProtocolRequestError('Continuation summary response omitted text content', {
           protocol,
@@ -2164,30 +2146,6 @@ export class AgentEngine {
     throw new Error(formatProtocolFailure(attempts))
   }
 
-  private buildWarmContinuationBody(
-    prefix: Record<string, unknown>,
-    protocol: ModelProtocol,
-    prompt: string,
-    maxTokens: number,
-    config: APIConfig,
-  ): Record<string, unknown> {
-    const body = JSON.parse(JSON.stringify(prefix)) as Record<string, unknown>
-    if (protocol === 'anthropic_messages') {
-      body.messages = [...((body.messages as unknown[]) || []), { role: 'user', content: prompt }]
-      body.max_tokens = maxTokens
-    } else if (protocol === 'openai_responses') {
-      body.input = [...((body.input as unknown[]) || []), ...toResponsesInput([{ role: 'user', content: prompt }])]
-      body.max_output_tokens = maxTokens
-      body.store = false
-    } else {
-      body.messages = [...((body.messages as unknown[]) || []), { role: 'user', content: prompt }]
-      setOpenAIChatMaxTokens(body, maxTokens, config.provider, config.defaultModel)
-      delete body.stream_options
-    }
-    body.stream = false
-    return body
-  }
-
   private rememberWarmRequestPrefix(protocol: ModelProtocol, body: Record<string, unknown>): void {
     this.warmRequestPrefixes.set(protocol, {
       protocol,
@@ -2200,18 +2158,18 @@ export class AgentEngine {
   }
 
   private buildToolRetryHint(failedToolCalls: ToolCall[], toolResults: ToolResult[]): string | null {
-    const errors = toolResults.filter(r => r.isError)
+    const errors = toolResults.filter(result => toolResultExecutionStatus(result) === 'failed')
     if (errors.length === 0) return null
 
-    const errorSummary = errors.map(e => `- ${e.name}: ${e.output.slice(0, 120)}`).join('\n')
+    const errorSummary = errors.map(e => `- ${e.name}: kind=${e.errorKind ?? 'execution'}; effects=${e.recovery?.effects ?? 'unknown'}; retry=${e.recovery?.retry ?? 'after_inspection'}; ${e.output.slice(0, 120)}`).join('\n')
     const toolNames = [...new Set(failedToolCalls.map(tc => tc.name))].join(', ')
     const editMatchFailed = errors.some(e =>
       (e.name === 'edit_file' || e.name === 'multi_edit')
-      && /(old_string not found|found \d+ occurrences|Match must be exact|multi_edit is atomic)/i.test(e.output)
+      && e.errorKind === 'validation'
     )
     const editGuidance = editMatchFailed
       ? `
-Exact edit matching failed. Do not retry another similar edit_file/multi_edit call against the same snippet.
+Edit validation failed. Do not retry another similar edit_file/multi_edit call against the same snippet without inspecting the cause.
 Use one of these safer paths:
 - For small changes: read the nearest surrounding lines, then use a longer unique old_string with stable context.
 - For broad or fragile changes: use replace_file with the complete final file content.
@@ -2235,20 +2193,17 @@ Before retrying:
 2. Propose a concrete alternative approach — do NOT repeat the same failing call
 3. If a file path was wrong, use search_files or list_directory to find the correct path first
 4. If the error is environmental (missing dependency, permission), report it to the user instead of retrying
-5. After fixing the approach, re-attempt with corrected parameters
+5. Respect each structured recovery condition. Committed, partial or unknown effects require inspection before preparing remaining work; never blindly replay or roll back the original call. A retry hint does not grant permission or override a stop.
 </tool_retry_hint>`
   }
 
-  private attachToolRetryHint(toolResults: ToolResult[], retryHint: string): ToolResult[] {
-    let targetIndex = -1
-    for (let index = toolResults.length - 1; index >= 0; index -= 1) {
-      if (!toolResults[index]?.isError) continue
-      targetIndex = index
-      break
+  private attachToolRetryHint(results: ToolResult[], guidance: string): ToolResult[] {
+    let target = -1
+    for (let index = results.length - 1; index >= 0; index--) {
+      if (toolResultExecutionStatus(results[index]) === 'failed') { target = index; break }
     }
-    if (targetIndex < 0) return toolResults
-    return toolResults.map((result, index) => index === targetIndex
-      ? { ...result, output: `${result.output}\n\n${retryHint}` }
+    return results.map((result, index) => index === target
+      ? { ...result, recovery: { ...(result.recovery ?? toolRecovery(result.errorKind ?? 'execution', 'unknown')), guidance } }
       : result)
   }
 
@@ -2454,17 +2409,8 @@ Before retrying:
       const turn = await runModelRequest({
         protocols: protocolCandidates,
         urlFor: protocol => buildModelProtocolUrl(activeConfig.baseUrl, protocol, activeConfig.provider),
-        invoke: async protocol => {
-          if (protocol === 'anthropic_messages') {
-            const messages = messagesFor('anthropic')
-            const effectiveSystemPrompt = messages.find(m => m.role === 'system' && typeof m.content === 'string')?.content as string | undefined
-            return this.callAnthropicAPI(activeConfig, activeModel, effectiveSystemPrompt || systemPrompt, messages, startTime, turnStrategy)
-          }
-          if (protocol === 'openai_responses') {
-            return this.callOpenAIResponsesAPI(activeConfig, activeModel, messagesFor('openai'), startTime, turnStrategy)
-          }
-          return this.callOpenAICompatibleAPI(activeConfig, activeModel, messagesFor('openai'), startTime, turnStrategy)
-        },
+        invoke: protocol => this.callModelProvider(protocol, activeConfig, activeModel,
+          messagesFor(getModelProviderAdapter(protocol).messageFormat), startTime, turnStrategy),
         isAborted: error => (error as { aborted?: boolean })?.aborted === true
           || this.abortController?.signal.aborted === true
           || this.runControl.isPauseInterruption(error),
@@ -2525,10 +2471,6 @@ Before retrying:
     }
   }
 
-  private usesDeepSeekDefaultToolChoice(config: APIConfig): boolean {
-    return config.provider === 'deepseek' || looksLikeDeepSeekModel(config.defaultModel)
-  }
-
   private latestModelAttempt(): ModelRequestRecord | undefined { return this.lastModelAttempt }
 
   private publishModelUsage(usage: TokenUsage): void {
@@ -2555,13 +2497,28 @@ Before retrying:
     state: () => { sawTerminalEvent: boolean; interrupted?: boolean; streamFailure?: string },
   ): Promise<Result<string>> {
     const previous = this.activeModelAttempt
-    const attempt = this.modelRequestTracker.begin({
+    const beginAttempt = () => this.modelRequestTracker.begin({
       requestId: this.modelRequestId || randomUUID(), runId: this.workExecution.getCurrentRunId() || undefined,
       protocol, provider: config.provider, model: config.defaultModel, purpose: 'turn', serializedBody,
     })
+    let attempt = beginAttempt()
     this.activeModelAttempt = attempt
     try {
-      const result = await this.toolExecutor.streamMessage(url, headers, serializedBody, onLine, options)
+      const result = await this.toolExecutor.streamMessage(url, headers, serializedBody, onLine, {
+        ...options,
+        onAttempt: index => {
+          if (index > 0) {
+            attempt.finish('failed')
+            attempt = beginAttempt()
+            this.activeModelAttempt = attempt
+          }
+          options.onAttempt?.(index)
+        },
+        onRetry: httpStatus => {
+          this.lastModelAttempt = attempt.finish('failed', httpStatus)
+          options.onRetry?.(httpStatus)
+        },
+      })
       const stream = state()
       const status = options.signal?.aborted ? 'interrupted'
         : !result.success || stream.streamFailure ? 'failed'
@@ -2594,20 +2551,18 @@ Before retrying:
           if (index > 0) { attempt.finish('failed'); attempt = beginAttempt() }
           options.onAttempt?.(index)
         },
+        onRetry: httpStatus => {
+          attempt.finish('failed', httpStatus)
+          options.onRetry?.(httpStatus)
+        },
       })
       let status: ModelRequestRecord['status'] = options.signal?.aborted ? 'interrupted' : result.success ? 'completed' : 'failed'
       if (result.success && result.data) {
         try {
-          const payload = JSON.parse(result.data)
-          if (typeof payload.id === 'string') attempt.responseId(payload.id)
-          if (protocol === 'openai_responses') new OpenAIResponsesStreamParser({ onUsage }).handleLine(`data: ${JSON.stringify({ type: 'response.completed', response: payload })}`)
-          else if (protocol === 'openai_chat') new OpenAIChatStreamParser({ onUsage, extractReasoningDelta: () => '' }).handleLine(`data: ${result.data}`)
-          else {
-            const parser = new AnthropicStreamParser({ onUsage, extractReasoningDelta: () => '' })
-            parser.handleLine(`data: ${JSON.stringify({ type: 'message_start', message: payload })}`)
-            parser.handleLine(`data: ${JSON.stringify({ type: 'message_delta', usage: payload.usage })}`)
-          }
-          if (!extractContinuationText(protocol, result.data).trim()) status = 'failed'
+          const response = getModelProviderAdapter(protocol).readSummary(result.data)
+          if (response.responseId) attempt.responseId(response.responseId)
+          for (const usage of response.usage) onUsage(usage)
+          if (!response.structured || !response.text.trim()) status = 'failed'
         } catch { status = 'failed' }
       }
       attempt.finish(status, result.status)
@@ -2630,888 +2585,93 @@ Before retrying:
     }
   }
 
-  private async callAnthropicAPI(
-    config: APIConfig,
-    model: APIModel | null,
-    systemPrompt: string,
-    messages: Array<Record<string, unknown>>,
-    startTime: number,
-    turnStrategy?: TurnStrategy | null,
-  ): Promise<AgentTurn> {
-    const url = buildModelProtocolUrl(config.baseUrl, 'anthropic_messages', config.provider)
-    // Bug 3 fix: token-efficient-tools-2025-02-19 is a Claude 3.7 Sonnet
-    // beta. Sonnet 3.5 / Sonnet 4 / Opus 4 / Haiku-3 reject the header on
-    // some baseUrl proxies and the request 4xx's. Only opt in for models
-    // that documented support, and let custom headers from the caller win
-    // so power users can still force it on or off explicitly.
-    const modelId = (config.defaultModel || '').toLowerCase()
-    const supportsTokenEfficientTools = (
-      modelId.includes('claude-3-7') || modelId.includes('claude-3.7')
-    )
-    const headers: Record<string, string> = createFluxAgentRequestHeaders({
-      'Content-Type': 'application/json',
-      'x-api-key': config.apiKey,
-      'anthropic-version': '2023-06-01',
-      ...(config.provider === 'anthropic' ? {} : { 'Authorization': `Bearer ${config.apiKey}` }),
-      ...(supportsTokenEfficientTools
-        ? { 'anthropic-beta': 'token-efficient-tools-2025-02-19' }
-        : {}),
-      ...config.customHeaders,
-      ...this.nextModelRequestTraceHeaders('anthropic_messages'),
-    })
-
-    // Tool visibility is mode and user-policy based. Runtime failures stay
-    // recoverable and therefore never remove the terminal tool surface.
-    const anthropicTools = toolsToAnthropicFormat(this.config.mode, {
-      disabledTools: this.modelDisabledToolNames(),
-    })
-
-    // Inject MCP tools into Anthropic format
-    if (this.mcpClient) {
-      const mcpTools = getMcpAgentTools(this.mcpClient)
-      for (const tool of mcpTools.sort((a, b) => a.name.localeCompare(b.name))) {
-        if ((this.config.mode === 'plan' || this.config.capabilityProfile === 'read-only') && !tool.isReadOnly) continue
-        anthropicTools.push({
-          name: tool.name,
-          description: tool.description,
-          input_schema: tool.inputSchema || {
-            type: 'object',
-            properties: Object.fromEntries(tool.parameters.map(p => [p.name, { type: p.type, description: p.description }])),
-            required: tool.parameters.filter(p => p.required).map(p => p.name),
-          },
-        })
-      }
-    }
-
-    // CRITICAL FIX: Anthropic only honors the LAST 4 cache_control breakpoints
-    // per request. Previously every tool got cache_control, which (a) burned
-    // all 4 breakpoints on tools, leaving system + history uncached, and
-    // (b) ignored markers on earlier tools. Mark only the LAST tool so the
-    // entire (system) + (tools-as-one-block) prefix is one cache breakpoint.
-    // See: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
-    const cachedTools = anthropicTools.length > 0
-      ? anthropicTools.map((t, i) => i === anthropicTools.length - 1
-          ? { ...(t as object), cache_control: { type: 'ephemeral' } }
-          : t)
-      : anthropicTools
-
-    const maxTokens = resolveRequestMaxTokens(
-      this.config.maxTokens || config.maxTokens,
-      model?.maxOutputTokens ?? config.maxOutputTokens,
-    )
-    const anthropicMaxTokens = maxTokens > 0 ? maxTokens : (model?.maxTokens || 8192)
-    const temperature = this.config.temperature ?? config.temperature ?? 0.7
-    const requestMessages = this.withAnthropicMessageCacheControl(
-      normalizeAnthropicToolMessages(messages.filter(m => m.role !== 'system')),
-    )
-    const requestBody: Record<string, unknown> = {
-      model: config.defaultModel,
-      max_tokens: anthropicMaxTokens,
-      temperature,
-      system: [
-        { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
-      ],
-      messages: requestMessages,
-      stream: true,
-    }
-    const reasoningRequest = resolveNativeReasoningRequest(config.defaultModel, config.reasoning, config.provider, config.modelCapabilities)
-    if (reasoningRequest?.thinking) {
-      const thinking = { ...reasoningRequest.thinking }
-      if (thinking.budget_tokens && thinking.budget_tokens >= anthropicMaxTokens) {
-        thinking.budget_tokens = Math.max(1_024, anthropicMaxTokens - 1)
-      }
-      requestBody.thinking = thinking
-    }
-    if (reasoningRequest?.outputConfig) requestBody.output_config = reasoningRequest.outputConfig
-    if (reasoningRequest?.omitTemperature) delete requestBody.temperature
-    if (cachedTools.length > 0) {
-      requestBody.tools = cachedTools
-      // DeepSeek selects tools automatically when tool_choice is omitted. Keep
-      // Thinking enabled because its Thinking mode rejects named tool choices.
-      if (!this.usesDeepSeekDefaultToolChoice(config)) {
-        requestBody.tool_choice = { type: 'auto' }
-      }
-    }
-    this.emitPromptModuleSnapshot(systemPrompt, anthropicTools, requestMessages)
-    let serializedBody = JSON.stringify(requestBody)
-
-
-
-    this.emit({ type: 'stream:start' })
-
-    const streamParser = new AnthropicStreamParser({
-      extractReasoningDelta: delta => this.extractStructuredReasoningDelta(delta, { allowTypedText: true }),
-      onTextDelta: text => this.emit({ type: 'stream:delta', text }),
-      onReasoningDelta: text => this.emit({ type: 'stream:thinking_delta', text }),
-      onToolCallDelta: toolCall => this.emit({
-        type: 'stream:tool_call_delta',
-        toolCallId: toolCall.id,
-        toolName: toolCall.name,
-        partialJson: streamToolArgumentPreview(toolCall.argumentsJson),
-      }),
-      onUsage: usage => this.publishModelUsage(usage),
-      onResponseId: id => this.activeModelAttempt?.responseId(id),
-    })
-    // Mint the streamId BEFORE the request goes out so abort() (which
-    // can fire from another tick the moment the user clicks "stop")
-    // sees a non-null id that matches the one the main process will use.
-    // Previously we generated this in two unrelated places (here and in
-    // preload's streamMessage), so streamAbort sent a phantom id and the
-    // SSE kept reading bytes + burning API quota until the upstream request
-    // timeout. Pre-allocating threads the same id through both.
-    const operationSignal = this.runControl.getOperationSignal()
-    let receivedStreamData = false
-    let cacheRequestStartedAt = Date.now()
-    const result = await this.modelStreams.run(operationSignal, async streamId => {
-      cacheRequestStartedAt = Date.now()
-      let currentResult = await this.streamModelAttempt('anthropic_messages', config, url, headers, serializedBody, line => streamParser.handleLine(line), {
-        streamId,
-        signal: operationSignal,
-        retry: false,
-      }, () => streamParser.snapshot())
-      receivedStreamData = streamParser.hasReceivedData || currentResult.receivedStreamData === true
-      for (let retry = 0; !currentResult.success && retry < 4; retry += 1) {
-        if (operationSignal?.aborted || receivedStreamData) break
-        if (currentResult.status !== 400 && currentResult.status !== 422) break
-        if (isReasoningEffortValueError(currentResult.error)) {
-          const fallback = downgradeReasoningEffort(requestBody)
-          if (fallback) {
-            this.emit({
-              type: 'notification',
-              level: 'warning',
-              message: `Provider rejected reasoning effort ${fallback.from}; retrying with ${fallback.to}.`,
-            })
-            serializedBody = JSON.stringify(requestBody)
-            cacheRequestStartedAt = Date.now()
-            currentResult = await this.streamModelAttempt('anthropic_messages', config, url, headers, serializedBody, line => streamParser.handleLine(line), {
-              streamId,
-              signal: operationSignal,
-              retry: false,
-            }, () => streamParser.snapshot())
-            receivedStreamData = receivedStreamData || streamParser.hasReceivedData || currentResult.receivedStreamData === true
-            continue
-          }
-        }
-        const unsupportedParam = extractUnsupportedRequestParam(currentResult.error)
-        if (!unsupportedParam || !removeAnthropicCompatibleRequestParam(requestBody, headers, unsupportedParam)) break
-        this.emit({
-          type: 'notification',
-          level: 'warning',
-          message: `Messages endpoint rejected "${unsupportedParam}"; retrying without that optional feature.`,
-        })
-        serializedBody = JSON.stringify(requestBody)
-        cacheRequestStartedAt = Date.now()
-        currentResult = await this.streamModelAttempt('anthropic_messages', config, url, headers, serializedBody, line => streamParser.handleLine(line), {
-          streamId,
-          signal: operationSignal,
-          retry: false,
-        }, () => streamParser.snapshot())
-        receivedStreamData = receivedStreamData || streamParser.hasReceivedData || currentResult.receivedStreamData === true
-      }
-      return currentResult
-    })
-    const cacheResponseReceivedAt = Date.now()
-    const stream = streamParser.snapshot()
-    const textContent = stream.text
-    const reasoningContent = stream.reasoning
-    const rawReasoningBlocks = stream.rawReasoningBlocks
-    const toolCallBlocks = stream.toolCalls
-    const { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens } = stream
-    const sawTerminalEvent = stream.sawTerminalEvent
-    const streamInterrupted = stream.interrupted
-    const streamFailure = stream.streamFailure || (!sawTerminalEvent ? 'Anthropic stream ended before a terminal event' : '')
-    if (!result.success) {
-      if (this.runControl.isPauseSignal(operationSignal)) {
-        return this.createPausedAssistantTurn(textContent, reasoningContent, model, startTime)
-      }
-      if (this.abortController?.signal.aborted) {
-        const interruptedTurn = this.finishInterruptedStream(
-          textContent,
-          reasoningContent,
-          model,
-          startTime,
-          resolveAgentRunInterruption(operationSignal) || interruptionMetadata('stop'),
-        )
-        if (interruptedTurn) return interruptedTurn
-        const err = new Error('aborted') as Error & { aborted?: boolean }
-        err.aborted = true
-        throw err
-      }
-      if (!sawTerminalEvent) {
-        const interruptedTurn = this.finishInterruptedStream(textContent, reasoningContent, model, startTime)
-        if (interruptedTurn) {
-          interruptedTurn.metadata = { ...interruptedTurn.metadata, internalKind: 'request_error', internalError: stream.streamFailure || result.error || 'Anthropic request failed' }
-          return interruptedTurn
-        }
-        throw new ModelProtocolRequestError(stream.streamFailure || result.error || 'Anthropic request failed', {
-          protocol: 'anthropic_messages',
-          url,
-          status: result.status,
-          retryAfterMs: result.retryAfterMs,
-          kind: result.status ? 'http' : 'network',
-          receivedStreamData,
-        })
-      }
-    }
-    if (streamFailure) {
-      const interruptedTurn = this.finishInterruptedStream(textContent, reasoningContent, model, startTime)
-      if (interruptedTurn) {
-        interruptedTurn.metadata = { ...interruptedTurn.metadata, internalKind: 'request_error', internalError: streamFailure }
-        return interruptedTurn
-      }
-      throw new ModelProtocolRequestError(streamFailure, {
-        protocol: 'anthropic_messages',
-        url,
-        kind: 'stream',
-        receivedStreamData,
-      })
-    }
-    if (result.success) this.rememberWarmRequestPrefix('anthropic_messages', requestBody)
-
-    // Assemble final tool calls from accumulated data
-    const toolCalls: ToolCall[] = []
-    for (const block of toolCallBlocks) {
-      let parsedArgs: Record<string, unknown> = {}
-      try {
-        parsedArgs = JSON.parse(block.argumentsJson || '{}')
-      } catch {
-        parsedArgs = {}
-      }
-      toolCalls.push({
-        id: block.id,
-        name: block.name,
-        arguments: parsedArgs,
-      })
-    }
-
-    const contextInputTokens = inputTokens + cacheReadTokens + cacheCreationTokens
-    const tokens = { input: contextInputTokens, output: outputTokens, cached: cacheReadTokens, total: contextInputTokens + outputTokens, source: 'provider' as const }
-    this.session.totalTokens.input += tokens.input
-    this.session.totalTokens.output += tokens.output
-    this.contextManager.updateCurrentContextUsage(tokens.input, tokens.output, cacheReadTokens)
-
-    if (inputTokens > 0 || outputTokens > 0) {
-      this.stateProvider.recordTokenUsage({
-        provider: config.provider,
-        model: config.defaultModel,
-        inputTokens: Math.max(0, inputTokens + cacheCreationTokens),
-        outputTokens,
-        cached: cacheReadTokens,
-        totalInputTokens: inputTokens + cacheReadTokens + cacheCreationTokens,
-      })
-    }
-
-    const cacheDiagnosis = observeModelCache(this.cacheMonitor, {
-      protocol: 'anthropic_messages', provider: config.provider, serializedBody, headers, strategy: turnStrategy?.intent,
-      requestStartedAt: cacheRequestStartedAt, responseReceivedAt: cacheResponseReceivedAt,
-    }, { inputTokens: contextInputTokens, cacheReadTokens, cacheCreationTokens })
-    if (cacheDiagnosis?.broken) {
-      this.publishCacheDiagnostic(cacheDiagnosis)
-    }
-
-    this.emit(streamInterrupted ? { type: 'stream:end', interrupted: true } : { type: 'stream:end' })
-
-    return this.createAssistantTurn(textContent, toolCalls, {
-      model: model?.name,
-      tokens,
-      duration: Date.now() - startTime,
-      mode: this.config.mode,
-      ...(streamInterrupted ? { interrupted: true } : {}),
-      reasoningEnabled: reasoningRequest?.enabled,
-      reasoningEffort: reasoningRequest?.reasoningEffort ?? reasoningRequest?.outputConfig?.effort,
-      thinking: reasoningContent ? {
-        content: reasoningContent,
-        source: 'provider',
-        status: streamInterrupted ? 'interrupted' : 'complete',
-        durationMs: Date.now() - startTime,
-        tokenCount: Math.max(1, Math.ceil(reasoningContent.length / 4)),
-        effort: reasoningRequest?.reasoningEffort ?? reasoningRequest?.outputConfig?.effort,
-      } : undefined,
-      rawReasoningPayload: rawReasoningBlocks.length > 0
-        ? { provider: 'anthropic', blocks: rawReasoningBlocks }
-        : undefined,
-    })
-  }
-
-  private buildOpenAITools(config: APIConfig): object[] {
-    const openaiTools = toolsToOpenAIFormat(this.config.mode, {
-      disabledTools: this.modelDisabledToolNames(),
-      strict: config.provider === 'openai',
-    })
-
-    if (this.mcpClient) {
-      const mcpTools = getMcpAgentTools(this.mcpClient)
-      for (const tool of mcpTools.sort((a, b) => a.name.localeCompare(b.name))) {
-        if ((this.config.mode === 'plan' || this.config.capabilityProfile === 'read-only') && !tool.isReadOnly) continue
-        openaiTools.push({
-          type: 'function',
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.inputSchema || {
-              type: 'object',
-              properties: Object.fromEntries(tool.parameters.map(p => [p.name, { type: p.type, description: p.description }])),
-              required: tool.parameters.filter(p => p.required).map(p => p.name),
-            },
-          },
-        })
-      }
-    }
-    return openaiTools
-  }
-
-  private async callOpenAICompatibleAPI(
+  private async callModelProvider(
+    protocol: ModelProtocol,
     config: APIConfig,
     model: APIModel | null,
     messages: Array<Record<string, unknown>>,
     startTime: number,
     turnStrategy?: TurnStrategy | null,
   ): Promise<AgentTurn> {
-    const url = buildModelProtocolUrl(config.baseUrl, 'openai_chat', config.provider)
-    const headers: Record<string, string> = createFluxAgentRequestHeaders({
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-      ...config.customHeaders,
-      ...this.nextModelRequestTraceHeaders('openai_chat'),
+    const adapter = getModelProviderAdapter(protocol)
+    const request = adapter.prepare({
+      config, model, settings: this.config, messages,
+      systemPrompt: (messages.find(message => message.role === 'system' && typeof message.content === 'string')?.content as string) || '',
+      tools: getToolsForMode(this.config.mode, { disabledTools: this.modelDisabledToolNames() }),
+      externalTools: this.mcpClient ? this.modelMcpTools() : [],
+      traceHeaders: this.nextModelRequestTraceHeaders(protocol),
+      promptCacheKey: (name, tools) => this.buildPromptCacheKey(name, tools),
     })
-
-    if (config.provider === 'openrouter') {
-      headers['HTTP-Referer'] = 'https://fluxagent.dev'
-      headers['X-Title'] = 'FluxAgent'
-    }
-
-    // Tool visibility is mode/policy based. Turn strategy may influence
-    // context hints, but never hides tools from the model. This keeps the
-    // static system/tool prefix stable and avoids intent misclassification
-    // turning an agentic request into a no-tool chat response.
-    const openaiTools = this.buildOpenAITools(config)
-
-    const requestMessages = config.provider === 'openrouter'
-      ? this.withOpenRouterCacheControl(messages)
-      : messages
-
-    const maxTokens = resolveRequestMaxTokens(
-      this.config.maxTokens || config.maxTokens,
-      model?.maxOutputTokens ?? config.maxOutputTokens,
-    )
-    const body: Record<string, unknown> = {
-      model: config.defaultModel,
-      messages: requestMessages,
-      stream: true,
-    }
-    if (!shouldOmitSamplingTemperature(config)) {
-      body.temperature = this.config.temperature ?? config.temperature ?? 0.7
-    }
-    if (maxTokens > 0) setOpenAIChatMaxTokens(body, maxTokens, config.provider, config.defaultModel)
-    const reasoningRequest = resolveNativeReasoningRequest(config.defaultModel, config.reasoning, config.provider, config.modelCapabilities)
-    if (reasoningRequest?.thinking) body.thinking = reasoningRequest.thinking
-    if (reasoningRequest?.reasoningEffort) body.reasoning_effort = reasoningRequest.reasoningEffort
-    if (reasoningRequest?.outputConfig) body.output_config = reasoningRequest.outputConfig
-    if (reasoningRequest?.omitTemperature) delete body.temperature
-    // OpenAI streaming spec: usage is NOT sent unless we opt in via
-    // stream_options.include_usage. Without this, mimo / Kimi / DeepSeek
-    // / OpenRouter / Qwen all return zero token counts, the per-call
-    // record gets dropped by tokenStatsStore's zero-value guard, and
-    // the Settings → Usage panel stays empty no matter how much the
-    // user spends. The OpenAI Cookbook explicitly recommends always
-    // setting this when you stream and care about telemetry.
-    // https://platform.openai.com/docs/api-reference/chat/create#chat-create-stream_options
-    body.stream_options = { include_usage: true }
-    if (openaiTools.length > 0) {
-      body.tools = openaiTools
-      if (!this.usesDeepSeekDefaultToolChoice(config)) {
-        body.tool_choice = 'auto'
-      }
-      // Most OpenAI-compatible providers default this to true, but some
-      // (older Azure deployments, certain proxies) require explicit opt-in
-      // to emit multiple tool_calls in a single assistant turn. Without
-      // parallel_tool_calls=true the model is silently forced into one
-      // tool call per turn, which produces the "thinks→one search→thinks"
-      // loop users see in chat.
-      body.parallel_tool_calls = true
-    }
-    if (config.provider === 'openai' || config.provider === 'kimi' || looksLikeResponsesPreferredModel(config.defaultModel) || /(?:^|[/_.:-])(?:kimi|moonshot)(?:$|[/_.:-])/i.test(config.defaultModel)) {
-      body.prompt_cache_key = this.buildPromptCacheKey(config.defaultModel, openaiTools)
-      setOpenAIPromptCacheLifetime(body, config.defaultModel)
-    }
-    this.emitPromptModuleSnapshot((messages.find(m => m.role === 'system')?.content as string) || '', openaiTools, requestMessages)
-
-
+    this.emitPromptModuleSnapshot(request.prompt.system, request.prompt.tools, request.prompt.messages)
     this.emit({ type: 'stream:start' })
-
-    const streamParser = new OpenAIChatStreamParser({
-      extractReasoningDelta: delta => this.extractStructuredReasoningDelta(delta),
-      onTextDelta: text => this.emit({ type: 'stream:delta', text }),
-      onReasoningDelta: text => this.emit({ type: 'stream:thinking_delta', text }),
-      onToolCallDelta: toolCall => this.emit({
-        type: 'stream:tool_call_delta',
-        toolCallId: toolCall.id,
-        toolName: toolCall.name,
-        partialJson: streamToolArgumentPreview(toolCall.argumentsJson),
-      }),
-      onUsage: usage => this.publishModelUsage(usage),
-      onResponseId: id => this.activeModelAttempt?.responseId(id),
-    })
-    // Same pre-allocation pattern as the Anthropic path — the previous
-    // `Date.now()` was a no-op for abort because preload re-rolled its
-    // own id when sending the request. Now we own the id and forward it
-    // through streamMessage so streamAbort hits the right controller.
     const operationSignal = this.runControl.getOperationSignal()
-    let serializedBody = JSON.stringify(body)
-    let receivedStreamData = false
-    let cacheRequestStartedAt = Date.now()
-    const result = await this.modelStreams.run(operationSignal, async streamId => {
-      cacheRequestStartedAt = Date.now()
-      let currentResult = await this.streamModelAttempt('openai_chat', config, url, headers, serializedBody, line => streamParser.handleLine(line), {
-        streamId,
-        signal: operationSignal,
-        retry: false,
-      }, () => streamParser.snapshot())
-      receivedStreamData = streamParser.hasReceivedData || currentResult.receivedStreamData === true
-      for (let retry = 0; !currentResult.success && retry < 4; retry += 1) {
-        if (operationSignal?.aborted) break
-        if (currentResult.status !== 400) break
-        if (isReasoningEffortValueError(currentResult.error)) {
-          const fallback = downgradeReasoningEffort(body)
-          if (fallback) {
-            this.emit({
-              type: 'notification',
-              level: 'warning',
-              message: `Provider rejected reasoning effort ${fallback.from}; retrying with ${fallback.to}.`,
-            })
-            serializedBody = JSON.stringify(body)
-            cacheRequestStartedAt = Date.now()
-            currentResult = await this.streamModelAttempt('openai_chat', config, url, headers, serializedBody, line => streamParser.handleLine(line), {
-              streamId,
-              signal: operationSignal,
-              retry: false,
-            }, () => streamParser.snapshot())
-            receivedStreamData = receivedStreamData || streamParser.hasReceivedData || currentResult.receivedStreamData === true
-            continue
-          }
-        }
-        const unsupportedParam = extractUnsupportedRequestParam(currentResult.error)
-        if (!unsupportedParam || !removeOpenAICompatibleRequestParam(body, unsupportedParam)) break
-        this.emit({
-          type: 'notification',
-          level: 'warning',
-          message: `Provider rejected "${unsupportedParam}"; retrying without that request parameter.`,
-        })
-        serializedBody = JSON.stringify(body)
-        cacheRequestStartedAt = Date.now()
-        currentResult = await this.streamModelAttempt('openai_chat', config, url, headers, serializedBody, line => streamParser.handleLine(line), {
-          streamId,
-          signal: operationSignal,
-          retry: false,
-        }, () => streamParser.snapshot())
-        receivedStreamData = receivedStreamData || streamParser.hasReceivedData || currentResult.receivedStreamData === true
-      }
-      return currentResult
-    })
-    const cacheResponseReceivedAt = Date.now()
-    if (result.success) this.rememberWarmRequestPrefix('openai_chat', body)
-    const stream = streamParser.snapshot()
-    let textContent = stream.text
-    const reasoningContent = stream.reasoning
-    let toolCallEntries = stream.toolCalls
-    const { inputTokens, outputTokens, reasoningTokens, cacheReadTokens, cacheMissTokens } = stream
-    const sawTerminalEvent = stream.sawTerminalEvent
-    const streamInterrupted = stream.interrupted
+    const exchange = await this.modelStreams.run(operationSignal, streamId => exchangeModelRequest(adapter, request, {
+      signal: operationSignal, streamId,
+      callbacks: {
+        onTextDelta: text => {
+          this.activeModelAttempt?.outputChunk('answer', text.length > 0)
+          this.emit({ type: 'stream:delta', text })
+        },
+        onReasoningDelta: text => {
+          this.activeModelAttempt?.outputChunk('reasoning', text.length > 0)
+          this.emit({ type: 'stream:thinking_delta', text })
+        },
+        onToolCallDelta: call => {
+          this.activeModelAttempt?.outputChunk('tool', Boolean(call.name || call.argumentsJson))
+          this.emit({ type: 'stream:tool_call_delta', toolCallId: call.id, toolName: call.name,
+            partialJson: streamToolArgumentPreview(call.argumentsJson) })
+        },
+        onUsage: usage => this.publishModelUsage(usage),
+        onResponseId: id => this.activeModelAttempt?.responseId(id),
+      },
+      notify: message => this.emit({ type: 'notification', level: 'warning', message }),
+      send: (prepared, serialized, onLine, options, state) => this.streamModelAttempt(
+        protocol, config, prepared.url, prepared.headers, serialized, onLine, options, state),
+    }))
+    const { stream, result } = exchange
     if (!result.success) {
       if (this.runControl.isPauseSignal(operationSignal)) {
-        return this.createPausedAssistantTurn(textContent, reasoningContent, model, startTime)
+        return this.createPausedAssistantTurn(stream.text, stream.reasoning, model, startTime)
       }
       if (this.abortController?.signal.aborted) {
-        const interruptedTurn = this.finishInterruptedStream(
-          textContent,
-          reasoningContent,
-          model,
-          startTime,
-          resolveAgentRunInterruption(operationSignal) || interruptionMetadata('stop'),
-        )
-        if (interruptedTurn) return interruptedTurn
-        const err = new Error('aborted') as Error & { aborted?: boolean }
-        err.aborted = true
-        throw err
-      }
-      if (!sawTerminalEvent) {
-        const interruptedTurn = this.finishInterruptedStream(textContent, reasoningContent, model, startTime)
-        if (interruptedTurn) {
-          interruptedTurn.metadata = { ...interruptedTurn.metadata, internalKind: 'request_error', internalError: result.error || 'Model request failed' }
-          return interruptedTurn
-        }
-        throw new ModelProtocolRequestError(result.error || 'Model request failed', {
-          protocol: 'openai_chat',
-          url,
-          status: result.status,
-          retryAfterMs: result.retryAfterMs,
-          kind: result.status ? 'http' : 'network',
-          receivedStreamData,
-        })
+        const turn = this.finishInterruptedStream(stream.text, stream.reasoning, model, startTime,
+          resolveAgentRunInterruption(operationSignal) || interruptionMetadata('stop'))
+        if (turn) return turn
+        const error = new Error('aborted') as Error & { aborted?: boolean }
+        error.aborted = true
+        throw error
       }
     }
-    if (!sawTerminalEvent) {
-      const parsedTextTools = parseTextToolCalls(textContent)
-      const hasVisibleText = Boolean(stripTextToolCallMarkup(textContent, { stripIncomplete: true }))
-      const completeToolPayloads = hasCompleteToolPayloads(
-        toolCallEntries.map(entry => ({ name: entry.name, argumentsJson: entry.argumentsJson })),
-      )
-      if (!hasVisibleText && !completeToolPayloads && parsedTextTools.toolCalls.length === 0) {
-        throw new ModelProtocolRequestError('Model stream ended before a terminal event', {
-          protocol: 'openai_chat',
-          url,
-          kind: 'response_shape',
-          receivedStreamData,
-        })
+    const completion = adapter.complete(exchange)
+    if (completion.rememberRequest) this.rememberWarmRequestPrefix(protocol, request.body)
+    if (completion.failure) {
+      const { error, reportAsRequestError, preservePartial } = completion.failure
+      const turn = preservePartial ? this.finishInterruptedStream(completion.text, completion.reasoning, model, startTime) : null
+      if (turn) {
+        if (reportAsRequestError) turn.metadata = { ...turn.metadata, internalKind: 'request_error', internalError: error.message }
+        return turn
       }
-      if (!completeToolPayloads) toolCallEntries = []
-      if (parsedTextTools.containsToolMarkup && parsedTextTools.toolCalls.length === 0) {
-        textContent = stripTextToolCallMarkup(textContent, { stripIncomplete: true })
-      }
+      throw error
     }
-
-    // Assemble final tool calls
-    const toolCalls: ToolCall[] = []
-    for (const entry of toolCallEntries) {
-      let parsedArgs: Record<string, unknown> = {}
-      try {
-        parsedArgs = JSON.parse(entry.argumentsJson || '{}')
-      } catch {
-        parsedArgs = {}
-      }
-      toolCalls.push({
-        id: entry.id,
-        name: entry.name,
-        arguments: parsedArgs,
-      })
-    }
-
-    // Some OpenAI-compatible routes stream tool calls as text markup instead
-    // of standard delta.tool_calls. Convert those into real tool calls and
-    // keep the markup out of the assistant transcript.
-    const textToolCalls = parseTextToolCalls(textContent)
-    if (textToolCalls.containsToolMarkup) {
-      textContent = textToolCalls.cleanedText
-      if (toolCalls.length === 0 && textToolCalls.toolCalls.length > 0) {
-        toolCalls.push(...textToolCalls.toolCalls)
-      }
-    }
-
-    const tokens = { input: inputTokens, output: outputTokens, cached: cacheReadTokens, total: inputTokens + outputTokens, source: 'provider' as const }
+    const { tokens, interrupted, reasoning, toolCalls, text } = completion
     this.session.totalTokens.input += tokens.input
     this.session.totalTokens.output += tokens.output
-    this.contextManager.updateCurrentContextUsage(tokens.input, tokens.output, cacheReadTokens)
-
-    if (inputTokens > 0 || outputTokens > 0) {
-      this.stateProvider.recordTokenUsage({
-        provider: config.provider,
-        model: config.defaultModel,
-        inputTokens: cacheMissTokens ?? Math.max(0, inputTokens - cacheReadTokens),
-        outputTokens,
-        cached: cacheReadTokens,
-        totalInputTokens: inputTokens,
-      })
-    }
-
+    this.contextManager.updateCurrentContextUsage(tokens.input, tokens.output, tokens.cached)
+    if (completion.shouldRecordUsage) this.stateProvider.recordTokenUsage({ provider: config.provider, model: config.defaultModel, ...completion.usage })
     const cacheDiagnosis = observeModelCache(this.cacheMonitor, {
-      protocol: 'openai_chat', provider: config.provider, serializedBody, headers, strategy: turnStrategy?.intent,
-      requestStartedAt: cacheRequestStartedAt, responseReceivedAt: cacheResponseReceivedAt,
-    }, { inputTokens, cacheReadTokens })
-    if (cacheDiagnosis?.broken) {
-      this.publishCacheDiagnostic(cacheDiagnosis)
-    }
-
-    this.emit(streamInterrupted ? { type: 'stream:end', interrupted: true } : { type: 'stream:end' })
-
-    return this.createAssistantTurn(textContent, toolCalls, {
-      model: model?.name,
-      tokens,
-      duration: Date.now() - startTime,
-      mode: this.config.mode,
-      ...(streamInterrupted ? { interrupted: true } : {}),
-      reasoningEnabled: reasoningRequest?.enabled,
-      reasoningEffort: reasoningRequest?.reasoningEffort ?? reasoningRequest?.outputConfig?.effort,
-      thinking: reasoningContent ? {
-        content: reasoningContent,
-        source: 'provider',
-        status: streamInterrupted ? 'interrupted' : 'complete',
-        durationMs: Date.now() - startTime,
-        tokenCount: reasoningTokens || Math.max(1, Math.ceil(reasoningContent.length / 4)),
-        effort: reasoningRequest?.reasoningEffort ?? reasoningRequest?.outputConfig?.effort,
-      } : undefined,
-      // Store reasoning_content so it can be passed back in subsequent turns.
-      // OpenAI-compatible providers (e.g. mimo, DeepSeek-R1) require the
-      // reasoning_content from the previous assistant message to be echoed
-      // back verbatim, otherwise they return a 400 "Param Incorrect" error.
-      rawReasoningPayload: reasoningContent
-        ? { provider: 'openai-compatible', blocks: [], reasoningContent }
-        : undefined,
-    })
-  }
-
-  private async callOpenAIResponsesAPI(
-    config: APIConfig,
-    model: APIModel | null,
-    messages: Array<Record<string, unknown>>,
-    startTime: number,
-    turnStrategy?: TurnStrategy | null,
-  ): Promise<AgentTurn> {
-    const protocol: ModelProtocol = 'openai_responses'
-    const url = buildModelProtocolUrl(config.baseUrl, protocol, config.provider)
-    const headers: Record<string, string> = createFluxAgentRequestHeaders({
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-      ...config.customHeaders,
-      ...this.nextModelRequestTraceHeaders('openai_responses'),
-    })
-    if (config.provider === 'openrouter') {
-      headers['HTTP-Referer'] = 'https://fluxagent.dev'
-      headers['X-Title'] = 'FluxAgent'
-    }
-
-    const chatTools = this.buildOpenAITools(config)
-    const responseTools = toResponsesTools(chatTools)
-    const instructions = messages
-      .filter(message => message.role === 'system' || message.role === 'developer')
-      .map(message => typeof message.content === 'string' ? message.content : '')
-      .filter(Boolean)
-      .join('\n\n')
-    const input = toResponsesInput(messages)
-    const maxTokens = resolveRequestMaxTokens(
-      this.config.maxTokens || config.maxTokens,
-      model?.maxOutputTokens ?? config.maxOutputTokens,
-    )
-    const body: Record<string, unknown> = {
-      model: config.defaultModel,
-      instructions,
-      input,
-      stream: true,
-      store: false,
-    }
-    if (looksLikeResponsesPreferredModel(config.defaultModel)) {
-      body.text = { verbosity: 'low' }
-    }
-    if (!shouldOmitSamplingTemperature(config)) {
-      body.temperature = this.config.temperature ?? config.temperature ?? 0.7
-    }
-    if (maxTokens > 0) body.max_output_tokens = maxTokens
-    const reasoningRequest = resolveNativeReasoningRequest(config.defaultModel, config.reasoning, config.provider, config.modelCapabilities)
-    const reasoningEffort = reasoningRequest?.reasoningEffort ?? reasoningRequest?.outputConfig?.effort
-    if (reasoningEffort) body.reasoning = { effort: reasoningEffort, summary: 'detailed' }
-    if (reasoningRequest?.omitTemperature) delete body.temperature
-    if (responseTools.length > 0) {
-      body.tools = responseTools
-      // Keep the tools prefix identical for every request.
-      if (!this.usesDeepSeekDefaultToolChoice(config)) {
-        body.tool_choice = 'auto'
-      }
-      body.parallel_tool_calls = true
-    }
-    if (config.provider === 'openai' || config.provider === 'kimi' || looksLikeResponsesPreferredModel(config.defaultModel) || /(?:^|[/_.:-])(?:kimi|moonshot)(?:$|[/_.:-])/i.test(config.defaultModel)) {
-      body.prompt_cache_key = this.buildPromptCacheKey(config.defaultModel, responseTools)
-      setOpenAIPromptCacheLifetime(body, config.defaultModel)
-    }
-
-    this.emitPromptModuleSnapshot(instructions, responseTools, input)
-
-
-    this.emit({ type: 'stream:start' })
-    const streamParser = new OpenAIResponsesStreamParser({
-      onTextDelta: text => this.emit({ type: 'stream:delta', text }),
-      onReasoningDelta: text => this.emit({ type: 'stream:thinking_delta', text }),
-      onToolCallDelta: toolCall => this.emit({
-        type: 'stream:tool_call_delta',
-        toolCallId: toolCall.id,
-        toolName: toolCall.name,
-        partialJson: streamToolArgumentPreview(toolCall.argumentsJson),
-      }),
-      onUsage: usage => this.publishModelUsage(usage),
-      onResponseId: id => this.activeModelAttempt?.responseId(id),
-    })
-    const operationSignal = this.runControl.getOperationSignal()
-
-    let serializedBody = JSON.stringify(body)
-    let receivedStreamData = false
-    let cacheRequestStartedAt = Date.now()
-    const result = await this.modelStreams.run(operationSignal, async streamId => {
-      cacheRequestStartedAt = Date.now()
-      let currentResult = await this.streamModelAttempt('openai_responses', config, url, headers, serializedBody, line => streamParser.handleLine(line), {
-        streamId,
-        signal: operationSignal,
-        retry: false,
-      }, () => streamParser.snapshot())
-      receivedStreamData = streamParser.hasReceivedData || currentResult.receivedStreamData === true
-      for (let retry = 0; !currentResult.success && retry < 4; retry += 1) {
-        if (operationSignal?.aborted || currentResult.status !== 400 || receivedStreamData) break
-        if (isReasoningEffortValueError(currentResult.error)) {
-          const fallback = downgradeReasoningEffort(body)
-          if (fallback) {
-            this.emit({
-              type: 'notification',
-              level: 'warning',
-              message: `Responses endpoint rejected reasoning effort ${fallback.from}; retrying with ${fallback.to}.`,
-            })
-            serializedBody = JSON.stringify(body)
-            cacheRequestStartedAt = Date.now()
-            currentResult = await this.streamModelAttempt('openai_responses', config, url, headers, serializedBody, line => streamParser.handleLine(line), {
-              streamId,
-              signal: operationSignal,
-              retry: false,
-            }, () => streamParser.snapshot())
-            receivedStreamData = receivedStreamData || streamParser.hasReceivedData || currentResult.receivedStreamData === true
-            continue
-          }
-        }
-        const unsupportedParam = extractUnsupportedRequestParam(currentResult.error)
-        if (!unsupportedParam || !removeOpenAICompatibleRequestParam(body, unsupportedParam)) break
-        this.emit({
-          type: 'notification',
-          level: 'warning',
-          message: `Responses endpoint rejected "${unsupportedParam}"; retrying without that request parameter.`,
-        })
-        serializedBody = JSON.stringify(body)
-        cacheRequestStartedAt = Date.now()
-        currentResult = await this.streamModelAttempt('openai_responses', config, url, headers, serializedBody, line => streamParser.handleLine(line), {
-          streamId,
-          signal: operationSignal,
-          retry: false,
-        }, () => streamParser.snapshot())
-        receivedStreamData = receivedStreamData || streamParser.hasReceivedData || currentResult.receivedStreamData === true
-      }
-      return currentResult
-    })
-    const cacheResponseReceivedAt = Date.now()
-    if (result.success) this.rememberWarmRequestPrefix(protocol, body)
-    const stream = streamParser.snapshot()
-    let textContent = stream.text
-    const reasoningContent = stream.reasoning
-    let toolCallEntries = stream.toolCalls
-    const { inputTokens, outputTokens, reasoningTokens, cacheReadTokens } = stream
-    const sawTerminalEvent = stream.sawTerminalEvent
-    const streamFailure = stream.streamFailure
-    if (!result.success) {
-      if (this.runControl.isPauseSignal(operationSignal)) {
-        return this.createPausedAssistantTurn(textContent, reasoningContent, model, startTime)
-      }
-      if (this.abortController?.signal.aborted) {
-        const interruptedTurn = this.finishInterruptedStream(
-          textContent,
-          reasoningContent,
-          model,
-          startTime,
-          resolveAgentRunInterruption(operationSignal) || interruptionMetadata('stop'),
-        )
-        if (interruptedTurn) return interruptedTurn
-        const aborted = new Error('aborted') as Error & { aborted?: boolean }
-        aborted.aborted = true
-        throw aborted
-      }
-      if (!sawTerminalEvent) {
-        const interruptedTurn = this.finishInterruptedStream(textContent, reasoningContent, model, startTime)
-        if (interruptedTurn) {
-          interruptedTurn.metadata = { ...interruptedTurn.metadata, internalKind: 'request_error', internalError: result.error || 'Responses request failed' }
-          return interruptedTurn
-        }
-        throw new ModelProtocolRequestError(result.error || 'Responses request failed', {
-          protocol,
-          url,
-          status: result.status,
-          retryAfterMs: result.retryAfterMs,
-          kind: result.status ? 'http' : 'network',
-          receivedStreamData,
-        })
-      }
-    }
-    if (streamFailure) {
-      const interruptedTurn = this.finishInterruptedStream(textContent, reasoningContent, model, startTime)
-      if (interruptedTurn) {
-        if (isOutputLimitFinishReason(streamFailure)) return interruptedTurn
-        interruptedTurn.metadata = { ...interruptedTurn.metadata, internalKind: 'request_error', internalError: streamFailure }
-        return interruptedTurn
-      }
-      throw new ModelProtocolRequestError(streamFailure, {
-        protocol,
-        url,
-        kind: 'stream',
-        receivedStreamData,
-      })
-    }
-    if (!sawTerminalEvent) {
-      const parsedTextTools = parseTextToolCalls(textContent)
-      const hasVisibleText = Boolean(stripTextToolCallMarkup(textContent, { stripIncomplete: true }))
-      const completeToolPayloads = hasCompleteToolPayloads(toolCallEntries.map(entry => ({
-        name: entry.name,
-        argumentsJson: entry.argumentsJson,
-      })))
-      if (!hasVisibleText && !completeToolPayloads && parsedTextTools.toolCalls.length === 0) {
-        throw new ModelProtocolRequestError('Responses stream ended before a terminal event', {
-          protocol,
-          url,
-          kind: 'response_shape',
-          receivedStreamData,
-        })
-      }
-      if (!completeToolPayloads) toolCallEntries = []
-      if (parsedTextTools.containsToolMarkup && parsedTextTools.toolCalls.length === 0) {
-        textContent = stripTextToolCallMarkup(textContent, { stripIncomplete: true })
-      }
-    }
-
-    const toolCalls: ToolCall[] = []
-    for (const entry of toolCallEntries) {
-      let parsedArguments: Record<string, unknown> = {}
-      try {
-        parsedArguments = JSON.parse(entry.argumentsJson || '{}')
-      } catch {
-        parsedArguments = {}
-      }
-      toolCalls.push({ id: entry.id, name: entry.name, arguments: parsedArguments })
-    }
-    const textToolCalls = parseTextToolCalls(textContent)
-    if (textToolCalls.containsToolMarkup) {
-      textContent = textToolCalls.cleanedText
-      if (toolCalls.length === 0 && textToolCalls.toolCalls.length > 0) toolCalls.push(...textToolCalls.toolCalls)
-    }
-
-    const tokens = { input: inputTokens, output: outputTokens, cached: cacheReadTokens, total: inputTokens + outputTokens, source: 'provider' as const }
-    this.session.totalTokens.input += tokens.input
-    this.session.totalTokens.output += tokens.output
-    this.contextManager.updateCurrentContextUsage(tokens.input, tokens.output, cacheReadTokens)
-    if (inputTokens > 0 || outputTokens > 0) {
-      this.stateProvider.recordTokenUsage({
-        provider: config.provider,
-        model: config.defaultModel,
-        inputTokens: Math.max(0, inputTokens - cacheReadTokens),
-        outputTokens,
-        cached: cacheReadTokens,
-        totalInputTokens: inputTokens,
-      })
-    }
-    const cacheDiagnosis = observeModelCache(this.cacheMonitor, {
-      protocol, provider: config.provider, serializedBody, headers, strategy: turnStrategy?.intent,
-      requestStartedAt: cacheRequestStartedAt, responseReceivedAt: cacheResponseReceivedAt,
-    }, { inputTokens, cacheReadTokens })
+      protocol, provider: config.provider, serializedBody: exchange.serializedBody, headers: request.headers, strategy: turnStrategy?.intent,
+      requestStartedAt: exchange.requestStartedAt, responseReceivedAt: exchange.responseReceivedAt,
+    }, completion.cache)
     if (cacheDiagnosis?.broken) this.publishCacheDiagnostic(cacheDiagnosis)
-    this.emit({ type: 'stream:end' })
-
-    return this.createAssistantTurn(textContent, toolCalls, {
-      model: model?.name,
-      tokens,
-      duration: Date.now() - startTime,
-      mode: this.config.mode,
-      reasoningEnabled: reasoningRequest?.enabled,
-      reasoningEffort,
-      thinking: reasoningContent ? {
-        content: reasoningContent,
-        source: 'provider',
-        status: 'complete',
-        durationMs: Date.now() - startTime,
-        tokenCount: reasoningTokens || Math.max(1, Math.ceil(reasoningContent.length / 4)),
-        effort: reasoningEffort,
-      } : undefined,
-      rawReasoningPayload: reasoningContent
-        ? { provider: 'openai-compatible', blocks: [], reasoningContent }
-        : undefined,
+    this.emit(interrupted ? { type: 'stream:end', interrupted: true } : { type: 'stream:end' })
+    const effort = request.reasoning?.reasoningEffort ?? request.reasoning?.outputConfig?.effort
+    return this.createAssistantTurn(text, toolCalls, {
+      model: model?.name, tokens, duration: Date.now() - startTime, mode: this.config.mode,
+      ...(interrupted ? { interrupted: true } : {}),
+      reasoningEnabled: request.reasoning?.enabled, reasoningEffort: effort,
+      thinking: reasoning ? { content: reasoning, source: 'provider', status: interrupted ? 'interrupted' : 'complete',
+        durationMs: Date.now() - startTime, tokenCount: completion.reasoningTokenCount, effort } : undefined,
+      rawReasoningPayload: completion.rawReasoningPayload,
     })
   }
 
@@ -3720,116 +2880,6 @@ Before retrying:
     return this.session.turns
   }
 
-  private withAnthropicMessageCacheControl(messages: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
-    return this.withRecentMessageCacheControl(messages, 2)
-  }
-
-  private withOpenRouterCacheControl(messages: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
-    const withSystemCache = messages.map((message, index) => {
-      if (index !== 0 || message.role !== 'system' || typeof message.content !== 'string') {
-        return message
-      }
-      return {
-        ...message,
-        content: [{
-          type: 'text',
-          text: message.content,
-          cache_control: { type: 'ephemeral' },
-        }],
-      }
-    })
-    return this.withLastMessageCacheControl(withSystemCache)
-  }
-
-  private withLastMessageCacheControl(messages: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
-    return this.withRecentMessageCacheControl(messages, 1)
-  }
-
-  private withRecentMessageCacheControl(
-    messages: Array<Record<string, unknown>>,
-    maxMessages: number,
-  ): Array<Record<string, unknown>> {
-    const result: Array<Record<string, unknown>> = messages.map(message => ({
-      ...message,
-      content: Array.isArray(message.content) ? [...message.content] : message.content,
-    }))
-
-    let marked = 0
-    for (let i = result.length - 1; i >= 0; i--) {
-      if (result[i].role === 'system') continue
-      result[i] = this.addCacheControlToMessage(result[i])
-      marked += 1
-      if (marked >= maxMessages) break
-    }
-
-    return result
-  }
-
-  private addCacheControlToMessage(message: Record<string, unknown>): Record<string, unknown> {
-    const cacheControl = { type: 'ephemeral' }
-    const content = message.content
-
-    if (typeof content === 'string') {
-      return {
-        ...message,
-        content: [{
-          type: 'text',
-          text: content,
-          cache_control: cacheControl,
-        }],
-      }
-    }
-
-    if (Array.isArray(content)) {
-      const blocks = content.map(block => (
-        block && typeof block === 'object'
-          ? { ...(block as Record<string, unknown>) }
-          : block
-      ))
-
-      for (let i = blocks.length - 1; i >= 0; i--) {
-        const block = blocks[i]
-        if (!block || typeof block !== 'object') continue
-        const type = (block as Record<string, unknown>).type
-        if (message.role === 'assistant' && (type === 'thinking' || type === 'redacted_thinking')) {
-          continue
-        }
-        blocks[i] = {
-          ...(block as Record<string, unknown>),
-          cache_control: cacheControl,
-        }
-        return {
-          ...message,
-          content: blocks,
-        }
-      }
-    }
-
-    return message
-  }
-
-  private extractStructuredReasoningDelta(delta: unknown, options?: { allowTypedText?: boolean }): string {
-    if (!delta || typeof delta !== 'object') return ''
-    const value = delta as Record<string, unknown>
-    const candidates = [
-      value.reasoning_content,
-      value.reasoning,
-      value.reasoning_text,
-      value.thinking,
-      value.thought,
-    ]
-
-    if (options?.allowTypedText && typeof value.type === 'string' && /reason|think|thought|analysis/i.test(value.type)) {
-      candidates.push(value.text)
-    }
-
-    for (const candidate of candidates) {
-      if (typeof candidate === 'string' && candidate.trim()) {
-        return candidate
-      }
-    }
-    return ''
-  }
 
   /**
    * Pull the latest workspace memory snapshot from the main process.
@@ -3951,7 +3001,6 @@ Support claims with inspected source text. Use known paths directly, or locate c
   }
 
   private recordSuccessfulToolUsage(name: string, args: Record<string, unknown>, output: string): void {
-    if (this.isToolOutputFailure(name, output)) return
     if ((name === 'read_file' || name === 'read_file_full') && typeof args.path === 'string') {
       this.currentRunSuccessfulReadFiles.add(args.path)
     }
@@ -3972,20 +3021,6 @@ Support claims with inspected source text. Use known paths directly, or locate c
     }
   }
 
-  private isToolOutputFailure(name: string, output: string): boolean {
-    const trimmed = output.trim()
-    if ((name === 'read_file' || name === 'read_file_full') && !/^Error(?:\s|\(|:)/.test(trimmed)) return false
-    return /^Error(?:\s|\(|:)/.test(trimmed)
-      || /^Tool execution error:/i.test(trimmed)
-      || /^Unknown tool:/i.test(trimmed)
-  }
-
-  private getTaskToolStatus(result: ToolResult): 'completed' | 'error' | 'cancelled' {
-    if (result.interruption) return 'cancelled'
-    const trimmed = result.output.trim()
-    if (/^(Cancelled|Aborted):/i.test(trimmed)) return 'cancelled'
-    return result.isError ? 'error' : 'completed'
-  }
 
   /**
    * Walk the existing session.turns and re-record each historical tool call
@@ -3997,7 +3032,7 @@ Support claims with inspected source text. Use known paths directly, or locate c
     for (const turn of this.session.turns) {
       if (turn.role !== 'tool_result' || !turn.toolResults) continue
       for (const result of turn.toolResults) {
-        resultsByCallId.set(result.toolCallId, result)
+        resultsByCallId.set(toolInvocationKey(result.toolCallId, result.operationIdentity), result)
       }
     }
 
@@ -4005,7 +3040,7 @@ Support claims with inspected source text. Use known paths directly, or locate c
       if (turn.role !== 'assistant' || !turn.toolCalls || turn.toolCalls.length === 0) continue
       for (const tc of turn.toolCalls) {
         this.recordToolUsage(tc.name, tc.arguments)
-        const result = resultsByCallId.get(tc.id)
+        const result = resultsByCallId.get(toolInvocationKey(tc.id, tc.operationIdentity))
         if (result && !result.isError) {
           this.recordSuccessfulToolUsage(tc.name, tc.arguments, result.output || '')
         }
@@ -4018,17 +3053,7 @@ Support claims with inspected source text. Use known paths directly, or locate c
     const operationSignal = this.runControl.getOperationSignal()
 
     for (const toolCall of toolCalls) {
-      toolCall.arguments = normalizeBuiltInToolArguments(toolCall.name, toolCall.arguments, {
-        workspacePath: this.stateProvider.getWorkspace()?.path || this.config.workspacePath || '',
-        resolvePath: (basePath, path) => this.resolvePath(basePath, path),
-        isFile: path => {
-          try {
-            return existsSync(path) && statSync(path).isFile()
-          } catch {
-            return false
-          }
-        },
-      })
+      toolCall.arguments = normalizeBuiltInToolArguments(toolCall.name, toolCall.arguments)
     }
 
     try {
@@ -4093,7 +3118,7 @@ Support claims with inspected source text. Use known paths directly, or locate c
     const triggerCall = toolCalls.find(toolCall => this.workflowCheckpointTriggerMatches(checkpoint, toolCall))
     if (!triggerCall) return undefined
     const result = toolResults.find(candidate => candidate.toolCallId === triggerCall.id)
-    return result && !result.isError && !this.isToolOutputFailure(result.name, result.output) ? checkpoint : undefined
+    return result && toolResultExecutionStatus(result) === 'completed' ? checkpoint : undefined
   }
 
   private async presentAutomaticWorkflowCheckpoint(checkpoint: WorkflowCheckpointSpec, workRunId: string): Promise<void> {
@@ -4155,29 +3180,32 @@ Support claims with inspected source text. Use known paths directly, or locate c
 
   private linkToolCallToActiveTask(toolCall: ToolCall): void {
     const path = this.extractToolCallPath(toolCall)
+    const invocationId = toolInvocationKey(toolCall.id, toolCall.operationIdentity)
     const linkedTaskId = this.taskManager.addToolCallToActiveTask({
-      toolCallId: toolCall.id,
+      toolCallId: invocationId,
       toolName: toolCall.name,
       status: 'running',
       path,
     })
     if (linkedTaskId) {
-      this.toolCallTaskMap.set(toolCall.id, linkedTaskId)
+      this.toolCallTaskMap.set(invocationId, linkedTaskId)
     }
     this.workExecution.startTool(toolCall, linkedTaskId || undefined, path)
     this.emitWorkExecution()
   }
 
-  private updateTaskToolCallStatus(
-    toolCallId: string,
-    status: 'completed' | 'error' | 'cancelled',
-    result?: string,
-    toolName?: string,
-  ): void {
-    const safeResult = result !== undefined && toolName && isBuiltInComputerTool(toolName)
+  private updateTaskToolCallStatus(result: ToolResult): void {
+    const { name: toolName } = result
+    const toolCallId = toolInvocationKey(result.toolCallId, result.operationIdentity)
+    const executionStatus = toolResultExecutionStatus(result)
+    const status = executionStatus === 'failed' ? 'error' : executionStatus
+    const safeResult = isBuiltInComputerTool(toolName)
       ? status === 'completed' ? COMPUTER_RESULT_REDACTED : COMPUTER_ERROR_REDACTED
-      : result
+      : result.output
     const taskId = this.toolCallTaskMap.get(toolCallId)
+    if (result.data?.kind === 'command' && result.data.sessionId) {
+      this.commandToolCallSessions.set(toolCallId, result.data.sessionId)
+    }
     try {
       if (taskId) {
         this.taskManager.updateToolCallStatus(taskId, toolCallId, status, safeResult)
@@ -4185,8 +3213,15 @@ Support claims with inspected source text. Use known paths directly, or locate c
         const activeCtx = this.taskManager.getActiveTaskContext()
         if (activeCtx) this.taskManager.updateToolCallStatus(activeCtx.taskId, toolCallId, status, safeResult)
       }
+      if (result.data?.kind === 'command' && result.data.sessionId) {
+        for (const [priorId, sessionId] of this.commandToolCallSessions) {
+          if (priorId === toolCallId || sessionId !== result.data.sessionId) continue
+          const priorTaskId = this.toolCallTaskMap.get(priorId)
+          if (priorTaskId) this.taskManager.updateToolCallStatus(priorTaskId, priorId, status, safeResult)
+        }
+      }
     } finally {
-      this.workExecution.finishTool({ toolCallId, name: toolName || '', output: safeResult || '', isError: status !== 'completed', errorKind: status === 'cancelled' ? 'abort' : undefined })
+      this.workExecution.finishTool({ ...result, output: safeResult })
       this.emitWorkExecution()
     }
   }
@@ -4253,14 +3288,17 @@ Support claims with inspected source text. Use known paths directly, or locate c
   }
 
   private async executeSingleTool(toolCall: ToolCall, operationSignal = this.runControl.getOperationSignal()): Promise<ToolResult> {
-    const result = await this.toolCallLifecycle.execute(toolCall, operationSignal)
-    if (!result.isError) {
+    const result = this.boundToolResult(toolCall, await this.toolCallLifecycle.execute(toolCall, operationSignal))
+    if (toolResultExecutionStatus(result) === 'completed') {
       this.recordSuccessfulToolUsage(toolCall.name, toolCall.arguments, result.output)
     }
     return result
   }
 
   private validateToolCall(toolCall: ToolCall, tool: AgentTool): ToolResult | undefined {
+    const denied = this.permissions.getExplicitDeny(toolCall.name, toolCall.arguments)
+    if (denied) return { toolCallId: toolCall.id, name: toolCall.name,
+      output: `Error: Blocked by permission policy. ${denied.reason || 'Operation not permitted'}`, isError: true, errorKind: 'permission' }
     const workflowGuard = this.workflowBlockedToolMessage(toolCall)
     if (workflowGuard) {
       return {
@@ -4320,7 +3358,32 @@ Support claims with inspected source text. Use known paths directly, or locate c
     }
   }
 
-  private async dispatchValidatedTool(toolCall: ToolCall, tool: AgentTool, operationSignal?: AbortSignal): Promise<ToolResult> {
+  private boundToolResult(toolCall: ToolCall, result: ToolResult): ToolResult {
+    const { output, data } = result
+    const configuredResultLimit = (this.resolveToolDefinition(toolCall.name) as EnhancedToolDef | undefined)?.maxResultSizeChars
+    const maxResultChars = Number.isFinite(configuredResultLimit)
+      ? Math.max(2_000, Number(configuredResultLimit))
+      : DEFAULT_TOOL_RESULT_MAX_CHARS
+    if (output.length <= maxResultChars) return result
+    // Computer evidence has a stricter persistence policy. A generic reader
+    // must not turn its ephemeral payload into an ordinary persisted result.
+    const privateComputerOutput = isBuiltInComputerTool(toolCall.name)
+    const storedSource = !privateComputerOutput ? this.toolOutputStore.save(output, toolCall, this.outputSourceScope()) : undefined
+    const sourceNotice = storedSource
+      ? ` Read the immutable original using read_tool_result(source_id="${storedSource.id}", offset=0); expiresAt=${storedSource.expiresAt}.`
+      : privateComputerOutput ? ' Computer evidence is ephemeral and is not retained by the generic source reader. Observe the application again.'
+      : ' No full output snapshot was retained within the source budget. Use a narrower query or the original file/log reader.'
+    const truncationNotice = data?.kind === 'patch'
+      ? `\n… <patch path listing truncated: ${output.length} chars total; full receipt retained in the tool result. Counts and status above are complete. Inspect files before preparing remaining changes; do not blindly retry this patch.${sourceNotice}>`
+      : `\n… <output truncated: ${output.length} UTF-16 chars total; model result budget is ${maxResultChars} chars.${sourceNotice}>`
+    let previewChars = Math.max(1, maxResultChars - truncationNotice.length)
+    if (output.charCodeAt(previewChars - 1) >= 0xd800 && output.charCodeAt(previewChars - 1) <= 0xdbff
+      && output.charCodeAt(previewChars) >= 0xdc00 && output.charCodeAt(previewChars) <= 0xdfff) previewChars -= 1
+    if (storedSource) { storedSource.endOffset = previewChars; storedSource.nextOffset = previewChars }
+    return { ...result, output: `${output.slice(0, previewChars)}${truncationNotice}`, ...(storedSource ? { outputSource: storedSource } : {}) }
+  }
+
+  private async dispatchValidatedTool(toolCall: ToolCall, _tool: AgentTool, operationSignal?: AbortSignal): Promise<ToolResult> {
     this.recordToolUsage(toolCall.name, toolCall.arguments)
 
     const executionArgs = toolCall.name === 'run_command'
@@ -4332,26 +3395,20 @@ Support claims with inspected source text. Use known paths directly, or locate c
     const retrieval = typeof dispatchResult === 'string' ? undefined : dispatchResult.retrieval
     const data = typeof dispatchResult === 'string' ? undefined : dispatchResult.data
 
-    const configuredResultLimit = (tool as EnhancedToolDef).maxResultSizeChars
-    const maxResultChars = Number.isFinite(configuredResultLimit)
-      ? Math.max(2_000, Number(configuredResultLimit))
-      : DEFAULT_TOOL_RESULT_MAX_CHARS
-    const truncationNotice = `\n… <output truncated: ${output.length} chars total; model result budget is ${maxResultChars} chars. Use a narrower query or read_file with offset/limit.>`
-    const previewChars = Math.max(1, maxResultChars - truncationNotice.length)
-    const truncatedOutput = output.length > maxResultChars
-      ? `${output.slice(0, previewChars)}${truncationNotice}`
-      : output
-
-    const isOutputFailure = this.isToolOutputFailure(toolCall.name, truncatedOutput)
+    const isOutputFailure = typeof dispatchResult === 'string' ? false : dispatchResult.isError
     const result: ToolResult = {
       toolCallId: toolCall.id,
       name: toolCall.name,
-      output: truncatedOutput,
+      output,
       isError: isOutputFailure,
       ...(retrieval ? { retrieval } : {}),
       ...(data ? { data } : {}),
       ...(attachments?.length ? { attachments: attachments.map(attachment => ({ ...attachment })) } : {}),
-      ...(isOutputFailure ? { errorKind: this.classifyToolErrorKind(truncatedOutput) } : {}),
+      ...(typeof dispatchResult !== 'string' && dispatchResult.outputSource ? { outputSource: dispatchResult.outputSource } : {}),
+      ...(typeof dispatchResult === 'string' ? {} : {
+        ...(dispatchResult.errorKind ? { errorKind: dispatchResult.errorKind } : {}),
+        ...(dispatchResult.recovery ? { recovery: dispatchResult.recovery } : {}),
+      }),
     }
 
     // Build change summary for file write/edit/delete operations.
@@ -4460,20 +3517,13 @@ Support claims with inspected source text. Use known paths directly, or locate c
     return result
   }
 
-  private classifyToolErrorKind(output: string): ToolResult['errorKind'] {
-    if (/timed out|timeout/i.test(output)) return 'timeout'
-    if (/permission|denied|blocked by .*policy|requires an explicit permission/i.test(output)) return 'permission'
-    if (/required|invalid|unexpected parameter|unknown tool|not available in .* mode|patch (?:must|contains|exceeds)|patch line|hunk|context is ambiguous/i.test(output)) return 'validation'
-    return 'execution'
-  }
-
   private async checkToolPermission(toolCall: ToolCall, operationSignal = this.runControl.getOperationSignal()): Promise<ToolResult | null> {
-    const computerApprovalLevel = computerToolApprovalLevel(toolCall.name, toolCall.arguments)
-    if (browserToolNeedsApproval(toolCall.name) === false || computerApprovalLevel === 'none') return null
+    const context = { trustedHostTool: this.resolveToolDefinition(toolCall.name)?.access.source === 'host' }
+    const computerApprovalLevel = context.trustedHostTool ? computerToolApprovalLevel(toolCall.name, toolCall.arguments) : null
     const permissionArgs = toolCall.name === 'run_command'
       ? { ...toolCall.arguments, approved: false }
       : toolCall.arguments
-    const result = this.permissions.check(toolCall.name, permissionArgs)
+    const result = this.permissions.check(toolCall.name, permissionArgs, context)
 
     if (result.verdict === 'allow') return null
 
@@ -4490,8 +3540,8 @@ Support claims with inspected source text. Use known paths directly, or locate c
     const command = typeof toolCall.arguments.command === 'string'
       ? toolCall.arguments.command
       : undefined
-    const semanticPermission = describeSemanticToolPermission(toolCall.name, toolCall.arguments)
-    const isComputerAction = isBuiltInComputerTool(toolCall.name)
+    const semanticPermission = context.trustedHostTool ? describeSemanticToolPermission(toolCall.name, toolCall.arguments) : undefined
+    const isComputerAction = context.trustedHostTool && isBuiltInComputerTool(toolCall.name)
     const response = await this.interactiveRequests.request({
       id: toolCall.id,
       kind: 'permission',
@@ -4533,9 +3583,9 @@ Support claims with inspected source text. Use known paths directly, or locate c
     }
 
     if (decision === 'allow-run') {
-      this.permissions.grantRun(toolCall.name, toolCall.arguments)
+      this.permissions.grantRun(toolCall.name, toolCall.arguments, context)
     } else if (decision === 'allow-session') {
-      this.permissions.grantSession(toolCall.name, toolCall.arguments)
+      this.permissions.grantSession(toolCall.name, toolCall.arguments, context)
     }
 
     if (this.interactiveRequests.getSnapshot().pendingCount === 0) {
@@ -4564,6 +3614,10 @@ Support claims with inspected source text. Use known paths directly, or locate c
     return 'deny'
   }
 
+  private outputSourceScope(): string {
+    return JSON.stringify([this.session.id, this.stateProvider.getWorkspace()?.path ?? this.config.workspacePath])
+  }
+
   private async dispatchTool(name: string, args: Record<string, unknown>, toolCallId: string, operationSignal = this.runControl.getOperationSignal()): Promise<ToolDispatchOutput> {
     if (this.orchestration.handles(name)) return this.orchestration.dispatchTool(name, args, operationSignal)
     const workspace = this.stateProvider.getWorkspace()
@@ -4577,10 +3631,38 @@ Support claims with inspected source text. Use known paths directly, or locate c
     if (taskResult !== undefined) return taskResult
 
     switch (name) {
+      case 'read_tool_result': {
+        try {
+          const page = this.toolOutputStore.read(String(args.source_id), Number(args.offset ?? 0), Number(args.limit ?? 12_000), this.outputSourceScope(), sourceCall => {
+            const sourceTool = this.resolveToolDefinition(sourceCall.name)
+            if (!sourceTool) throw new ToolOutputReadError('permission', 'The source tool is no longer available')
+            const denied = this.validateToolCall(sourceCall, sourceTool)
+            if (denied) throw new ToolOutputReadError(denied.errorKind ?? 'permission', denied.output)
+          })
+          return { ...page, isError: false }
+        } catch (error) {
+          if (error instanceof ToolOutputReadError) return toolFailure(error.message, error.errorKind, 'none')
+          throw error
+        }
+      }
       case 'read_file':
       case 'read_file_full': {
         const filePath = this.resolvePath(basePath, args.path as string)
         const isFullRead = name === 'read_file_full'
+        if (!isFullRead && args.byte_offset != null) {
+          if (!this.toolExecutor.readFileBytes) return toolFailure('This executor does not support bounded byte reads', 'environment', 'none')
+          const result = await this.toolExecutor.readFileBytes(filePath, {
+            offset: Number(args.byte_offset), maxBytes: Number(args.byte_limit ?? 16 * 1024),
+            ...(args.source_version != null ? { version: String(args.source_version) } : {}), signal: operationSignal,
+          })
+          if (!result.success || !result.data) return toolFailure(result.error || 'Unable to read byte range', result.errorKind ?? 'environment', 'none')
+          const { content, ...byteRange } = result.data
+          const scope = this.toWorkspaceRelative(basePath, filePath)
+          const retrieval: RetrievalResult = { operation: 'read_file', scope,
+            resources: [{ path: scope, kind: 'file', state: 'read', preview: content }],
+            totalIsExact: true, truncated: byteRange.nextOffset !== undefined, byteRange }
+          return { isError: false, retrieval, output: `[UTF-8 bytes ${byteRange.offset}..${byteRange.endOffset} of ${byteRange.totalBytes}; end exclusive; source_version=${byteRange.version}${byteRange.nextOffset === undefined ? '; end of source' : `; continue read_file byte_offset=${byteRange.nextOffset} with the same source_version`}]\n${content}` }
+        }
         const offset = isFullRead ? 1 : args.offset as number | undefined
         const requestedLimit = isFullRead ? undefined : args.limit as number | undefined
         const limit = Math.max(1, Math.min(MODEL_READ_MAX_LINES, Math.floor(requestedLimit ?? (isFullRead ? MODEL_READ_MAX_LINES : DEFAULT_MODEL_READ_LINES))))
@@ -4659,20 +3741,20 @@ Support claims with inspected source text. Use known paths directly, or locate c
             preview: slice.join('\n'), textTruncated: partialLine }],
           totalIsExact: !truncated, truncated,
           ...(!partialLine && truncated ? { nextOffset: startLine + returnedLines } : {}),
-          ...(partialLine ? { warning: 'The returned line is only a preview; line-based continuation cannot resume within it.' } : {}),
+          ...(partialLine ? { warning: 'The returned line is only a preview; restart with read_file byte_offset=0, then use returned byte offsets and source_version.' } : {}),
         }
 
         // Moderate files should fit in one model round. Very large files retain
         // an explicit continuation hint so callers can jump to a searched range.
         if (truncated) {
           if (partialLine) {
-            return { retrieval, output: `[line ${startLine} exceeds the ${Math.floor(maxBytes / 1024)} KiB model read budget; showing a bounded preview only. Line-based continuation cannot resume inside this line. Use search_content for a precise anchor or a structured log/task reader for JSONL records.]\n${content}` }
+            return { isError: false, retrieval, output: `[line ${startLine} exceeds the ${Math.floor(maxBytes / 1024)} KiB model read budget; showing a bounded preview only. Restart raw text reading with read_file byte_offset=0, then use returned byte offsets and source_version. Do not use line offsets to continue inside a line.]\n${content}` }
           }
           const nextOffset = startLine + returnedLines
           const knownTotal = totalLines ? ` of ${totalLines}` : ''
-          return { retrieval, output: `[lines ${startLine}-${startLine - 1 + returnedLines}${knownTotal}; bounded to ${limit} lines / ${Math.floor(maxBytes / 1024)} KiB; call read_file with offset=${nextOffset}, limit=${Math.min(limit, 400)} to continue, or search for a precise range]\n${content}` }
+          return { isError: false, retrieval, output: `[lines ${startLine}-${startLine - 1 + returnedLines}${knownTotal}; bounded to ${limit} lines / ${Math.floor(maxBytes / 1024)} KiB; call read_file with offset=${nextOffset}, limit=${Math.min(limit, 400)} to continue, or search for a precise range]\n${content}` }
         }
-        return { retrieval, output: content }
+        return { isError: false, retrieval, output: content }
       }
 
       case 'write_file': {
@@ -4682,14 +3764,14 @@ Support claims with inspected source text. Use known paths directly, or locate c
           source: 'ai',
           label: 'AI write_file',
         })
-        return result.success ? `File written: ${args.path}` : `Error: ${result.error}`
+        return fileMutationOutput(result, `File written: ${args.path}`)
       }
 
       case 'replace_file': {
         const filePath = this.resolvePath(basePath, args.path as string)
         const existing = await this.toolExecutor.readFile(filePath)
         if (!existing.success) {
-          return `Error: replace_file requires an existing file - ${existing.error || 'file not found'}`
+          return toolFailure(`Error: replace_file requires an existing file - ${existing.error || 'file not found'}`, 'validation', 'none')
         }
         await this.captureBeforeSnapshot(filePath)
         const result = await this.toolExecutor.writeFile(filePath, args.content as string, {
@@ -4697,14 +3779,14 @@ Support claims with inspected source text. Use known paths directly, or locate c
           label: 'AI replace_file',
           expectedHash: hashText(existing.data || ''),
         })
-        return result.success ? `File replaced: ${args.path}` : `Error: ${result.error}`
+        return fileMutationOutput(result, `File replaced: ${args.path}`)
       }
 
       case 'edit_file': {
         const filePath = this.resolvePath(basePath, args.path as string)
         await this.captureBeforeSnapshot(filePath)
         const readResult = await this.toolExecutor.readFile(filePath)
-        if (!readResult.success) return `Error: unable to read file - ${readResult.error}`
+        if (!readResult.success) return toolFailure(`Error: unable to read file - ${readResult.error}`, 'execution', 'none')
 
         let content = readResult.data!
         const oldContent = stripLineNumberPrefix(args.old_content as string)
@@ -4712,7 +3794,7 @@ Support claims with inspected source text. Use known paths directly, or locate c
         const replaceAll = args.replace_all === true
 
         const editResult = applyEdit(content, oldContent, newContent, replaceAll, args.path as string)
-        if ('error' in editResult) return `Error: ${editResult.error}`
+        if ('error' in editResult) return toolFailure(`Error: ${editResult.error}`, 'validation', 'none')
         content = editResult.content
 
         const writeResult = await this.toolExecutor.writeFile(filePath, content, {
@@ -4720,37 +3802,35 @@ Support claims with inspected source text. Use known paths directly, or locate c
           label: 'AI edit_file',
           expectedHash: hashText(readResult.data || ''),
         })
-        return writeResult.success
-          ? `File edited: ${args.path}${replaceAll ? ` (${editResult.replacements} replacements)` : ''}`
-          : `Error: ${writeResult.error}`
+        return fileMutationOutput(writeResult, `File edited: ${args.path}${replaceAll ? ` (${editResult.replacements} replacements)` : ''}`)
       }
 
       case 'multi_edit': {
         const filePath = this.resolvePath(basePath, args.path as string)
         const rawEdits = args.edits
         if (!Array.isArray(rawEdits) || rawEdits.length === 0) {
-          return `Error: edits must be a non-empty array`
+          return toolFailure(`Error: edits must be a non-empty array`, 'validation', 'none')
         }
         await this.captureBeforeSnapshot(filePath)
         const readResult = await this.toolExecutor.readFile(filePath)
-        if (!readResult.success) return `Error: unable to read file - ${readResult.error}`
+        if (!readResult.success) return toolFailure(`Error: unable to read file - ${readResult.error}`, 'execution', 'none')
 
         let content = readResult.data!
         const summary: string[] = []
         for (let i = 0; i < rawEdits.length; i += 1) {
           const edit = rawEdits[i] as Record<string, unknown>
           if (!edit || typeof edit !== 'object') {
-            return `Error: edit #${i + 1} is not an object`
+            return toolFailure(`Error: edit #${i + 1} is not an object`, 'validation', 'none')
           }
-          const oldContent = stripLineNumberPrefix(edit.old_string as string)
-          const newContent = stripLineNumberPrefix(edit.new_string as string)
+          if (typeof edit.old_string !== 'string' || typeof edit.new_string !== 'string') {
+            return toolFailure(`Error: edit #${i + 1} requires string old_string and new_string`, 'validation', 'none')
+          }
+          const oldContent = stripLineNumberPrefix(edit.old_string)
+          const newContent = stripLineNumberPrefix(edit.new_string)
           const replaceAll = edit.replace_all === true
-          if (typeof oldContent !== 'string' || typeof newContent !== 'string') {
-            return `Error: edit #${i + 1} is missing old_string or new_string`
-          }
           const stepResult = applyEdit(content, oldContent, newContent, replaceAll, `${args.path} (edit #${i + 1})`)
           if ('error' in stepResult) {
-            return `Error: ${stepResult.error}. No edits applied (multi_edit is atomic).`
+            return toolFailure(`Error: ${stepResult.error}. No edits applied (multi_edit is atomic).`, 'validation', 'none')
           }
           content = stepResult.content
           summary.push(`#${i + 1}${replaceAll ? ` ×${stepResult.replacements}` : ''}`)
@@ -4761,168 +3841,16 @@ Support claims with inspected source text. Use known paths directly, or locate c
           label: 'AI multi_edit',
           expectedHash: hashText(readResult.data || ''),
         })
-        return writeResult.success
-          ? `File edited: ${args.path} (${rawEdits.length} edits applied: ${summary.join(', ')})`
-          : `Error: ${writeResult.error}`
+        return fileMutationOutput(writeResult, `File edited: ${args.path} (${rawEdits.length} edits applied: ${summary.join(', ')})`)
       }
 
-      case 'apply_patch': {
-        let operations: ApplyPatchOperation[]
-        try {
-          operations = parseApplyPatch(args.patch as string)
-        } catch (error) {
-          return `Error: ${error instanceof Error ? error.message : String(error)}`
-        }
-
-        type PreparedPatch = {
-          operation: ApplyPatchOperation
-          sourcePath: string
-          sourceRelativePath: string
-          sourceContent: string | null
-          sourceHash?: string
-          targetPath?: string
-          targetRelativePath?: string
-          targetHash?: string
-          nextContent?: string
-        }
-
-        const prepared: PreparedPatch[] = []
-        const touchedPaths = new Set<string>()
-        const readExisting = async (filePath: string, label: string): Promise<{ content: string | null; hash?: string; error?: string }> => {
-          const result = await this.toolExecutor.readFile(filePath)
-          if (result.success) {
-            const content = result.data ?? ''
-            return { content, hash: hashText(content) }
-          }
-          const error = result.error || 'file not found'
-          if (/not found|no such file|does not exist/i.test(error)) return { content: null }
-          return { content: null, error: `${label}: ${error}` }
-        }
-
-        for (const operation of operations) {
-          const sourcePath = this.resolvePath(basePath, operation.path)
-          const sourceRelativePath = this.toWorkspaceRelative(basePath, sourcePath)
-          const sourceKey = sourcePath.toLowerCase()
-          if (touchedPaths.has(sourceKey)) return `Error: patch touches the same file more than once: ${operation.path}`
-          touchedPaths.add(sourceKey)
-          const source = await readExisting(sourcePath, `Unable to inspect ${operation.path}`)
-          if (source.error) return `Error: ${source.error}`
-
-          if (operation.kind === 'add') {
-            prepared.push({
-              operation,
-              sourcePath,
-              sourceRelativePath,
-              sourceContent: source.content,
-              sourceHash: source.hash,
-              nextContent: applyPatchAdd(operation.content),
-            })
-            continue
-          }
-
-          if (source.content === null) return `Error: ${operation.kind} requires an existing file: ${operation.path}`
-          if (operation.kind === 'delete') {
-            prepared.push({ operation, sourcePath, sourceRelativePath, sourceContent: source.content, sourceHash: source.hash })
-            continue
-          }
-
-          let nextContent: string
-          try {
-            nextContent = applyPatchHunks(source.content, operation.hunks, operation.path)
-          } catch (error) {
-            return `Error: ${error instanceof Error ? error.message : String(error)}`
-          }
-
-          if (!operation.moveTo) {
-            prepared.push({ operation, sourcePath, sourceRelativePath, sourceContent: source.content, sourceHash: source.hash, nextContent })
-            continue
-          }
-
-          const targetPath = this.resolvePath(basePath, operation.moveTo)
-          const targetRelativePath = this.toWorkspaceRelative(basePath, targetPath)
-          const targetKey = targetPath.toLowerCase()
-          if (targetKey === sourceKey) return `Error: move destination must differ from source: ${operation.moveTo}`
-          if (touchedPaths.has(targetKey)) return `Error: patch touches the same file more than once: ${operation.moveTo}`
-          touchedPaths.add(targetKey)
-          const target = await readExisting(targetPath, `Unable to inspect ${operation.moveTo}`)
-          if (target.error) return `Error: ${target.error}`
-          prepared.push({
-            operation,
-            sourcePath,
-            sourceRelativePath,
-            sourceContent: source.content,
-            sourceHash: source.hash,
-            targetPath,
-            targetRelativePath,
-            targetHash: target.hash,
-            nextContent,
-          })
-        }
-
-        for (const item of prepared) {
-          await this.captureBeforeSnapshot(item.sourcePath)
-          if (item.targetPath) await this.captureBeforeSnapshot(item.targetPath)
-        }
-
-        const summaries: string[] = []
-        for (const item of prepared) {
-          const operation = item.operation
-          if (operation.kind === 'add') {
-            const writeResult = await this.toolExecutor.writeFile(item.sourcePath, item.nextContent || '', {
-              source: 'ai',
-              label: 'AI apply_patch add',
-              ...(item.sourceHash ? { expectedHash: item.sourceHash } : { expectNotExists: true }),
-            })
-            if (!writeResult.success) return `Error: ${writeResult.error}`
-            summaries.push(`A ${item.sourceRelativePath}`)
-            continue
-          }
-
-          if (operation.kind === 'delete') {
-            const deleteResult = await this.toolExecutor.deleteFile(item.sourcePath, { expectedHash: item.sourceHash })
-            if (!deleteResult.success) return `Error: ${deleteResult.error}`
-            summaries.push(`D ${item.sourceRelativePath}`)
-            continue
-          }
-
-          if (item.targetPath) {
-            if (item.nextContent === item.sourceContent && this.toolExecutor.moveFile) {
-              const moveResult = await this.toolExecutor.moveFile(item.sourcePath, item.targetPath, {
-                expectedHash: item.sourceHash,
-                ...(item.targetHash ? { expectedDestinationHash: item.targetHash } : {}),
-              })
-              if (!moveResult.success) return `Error: ${moveResult.error}`
-              summaries.push(`M ${item.targetRelativePath}`)
-              continue
-            }
-            const writeTarget = await this.toolExecutor.writeFile(item.targetPath, item.nextContent || '', {
-              source: 'ai',
-              label: 'AI apply_patch move',
-              ...(item.targetHash ? { expectedHash: item.targetHash } : { expectNotExists: true }),
-            })
-            if (!writeTarget.success) return `Error: ${writeTarget.error}`
-            const deleteSource = await this.toolExecutor.deleteFile(item.sourcePath, { expectedHash: item.sourceHash })
-            if (!deleteSource.success) return `Error: move completed at ${item.targetRelativePath}, but source cleanup failed: ${deleteSource.error}`
-            summaries.push(`M ${item.targetRelativePath}`)
-            continue
-          }
-
-          const writeResult = await this.toolExecutor.writeFile(item.sourcePath, item.nextContent || '', {
-            source: 'ai',
-            label: 'AI apply_patch update',
-            expectedHash: item.sourceHash,
-          })
-          if (!writeResult.success) return `Error: ${writeResult.error}`
-          summaries.push(`M ${item.sourceRelativePath}`)
-        }
-
-        return `Patch applied. Updated files:\n${summaries.join('\n')}`
-      }
+      case 'apply_patch':
+        return executePatch(args.patch as string, basePath, this.toolExecutor, path => this.captureBeforeSnapshot(path), operationSignal)
 
       case 'list_directory': {
         const dirPath = this.resolvePath(basePath, args.path as string)
         const result = await this.toolExecutor.listTree(dirPath, { maxDepth: args.recursive ? 3 : 1, maxEntriesPerDirectory: 100, maxNodes: 300 })
-        if (!result.success) return `Error: ${result.error}`
+        if (!result.success) return toolFailure(`Error: ${result.error}`, 'execution', 'none')
 
         const formatTree = (node: TreeNode, depth = 0): string => {
           const indent = '  '.repeat(depth)
@@ -4948,21 +3876,35 @@ Support claims with inspected source text. Use known paths directly, or locate c
           operation: 'list_directory', scope: this.toWorkspaceRelative(basePath, dirPath) || '.', resources,
           totalIsExact: !result.data?.truncated, truncated: result.data?.truncated === true,
         }
-        return { retrieval, output: `${result.data ? formatTree(result.data) : 'Empty directory'}${retrieval.truncated ? '\nListing is bounded; inspect a specific subdirectory for remaining entries.' : ''}` }
+        return { isError: false, retrieval, output: `${result.data ? formatTree(result.data) : 'Empty directory'}${retrieval.truncated ? '\nListing is bounded; inspect a specific subdirectory for remaining entries.' : ''}` }
       }
 
       case 'search_files': {
         const dirPath = args.path ? this.resolvePath(basePath, args.path as string) : basePath
         const result = await this.toolExecutor.searchFiles(args.pattern as string, dirPath, {
-          offset: args.offset as number | undefined, limit: args.head_limit as number | undefined,
+          cursor: (args.cursor ?? undefined) as string | undefined, offset: (args.offset ?? undefined) as number | undefined, limit: (args.head_limit ?? undefined) as number | undefined,
           includeIgnored: args.include_ignored === true, signal: operationSignal,
         })
-        if (!result.success) return `Error: ${result.error}`
+        if (!result.success) return toolFailure(`Error: ${result.error}`, result.errorKind ?? 'execution', 'none')
         const retrieval = fileSearchResult(result.data || { matches: [] }, this.toWorkspaceRelative(basePath, dirPath) || '.', String(args.pattern), path => this.toWorkspaceRelative(basePath, path))
-        return { retrieval, output: formatRetrievalResult(retrieval) }
+        return { isError: false, retrieval, output: formatRetrievalResult(retrieval) }
+      }
+
+      case 'code_navigation': {
+        if (!this.toolExecutor.navigateCode) return toolFailure('Semantic navigation is not available in this executor; use search_content for text evidence', 'environment', 'none')
+        const response = await this.toolExecutor.navigateCode({ operation: args.operation as 'definition' | 'references' | 'diagnostics',
+          path: this.resolvePath(basePath, args.path as string),
+          line: (args.line ?? undefined) as number | undefined, column: (args.column ?? undefined) as number | undefined,
+          projectPath: args.project_path ? this.resolvePath(basePath, args.project_path as string) : undefined,
+          sourceVersion: (args.source_version ?? undefined) as string | undefined, projectVersion: (args.project_version ?? undefined) as string | undefined,
+          offset: (args.offset ?? undefined) as number | undefined, limit: (args.limit ?? undefined) as number | undefined, signal: operationSignal })
+        if (!response.success || !response.data) return toolFailure(response.error ?? 'Navigation returned no result', response.errorKind ?? 'environment', 'none')
+        const retrieval = codeNavigationResult(response.data, path => this.toWorkspaceRelative(response.data!.workspaceRoot, path))
+        return { isError: false, retrieval, output: formatCodeNavigation(retrieval) }
       }
 
       case 'search_content': {
+        if (args.cursor && !this.toolExecutor.searchContentPage) return toolFailure('Search cursor continuation is not supported by this executor', 'environment', 'none')
         const dirPath = args.path ? this.resolvePath(basePath, args.path as string) : basePath
         const filePattern = (args.file_pattern || args.glob) as string | undefined
         // Default to case-insensitive (grep -i ergonomics). Models can opt back
@@ -4970,33 +3912,33 @@ Support claims with inspected source text. Use known paths directly, or locate c
         const caseSensitive = args.case_sensitive === true
         const result = this.toolExecutor.searchContentPage
           ? await this.toolExecutor.searchContentPage(args.pattern as string, dirPath, filePattern, !caseSensitive, {
-              offset: args.offset as number | undefined,
-              limit: args.head_limit as number | undefined,
-              contextBefore: args.context_before as number | undefined,
-              contextAfter: args.context_after as number | undefined,
+              cursor: (args.cursor ?? undefined) as string | undefined, offset: (args.offset ?? undefined) as number | undefined,
+              limit: (args.head_limit ?? undefined) as number | undefined,
+              contextBefore: (args.context_before ?? undefined) as number | undefined,
+              contextAfter: (args.context_after ?? undefined) as number | undefined,
               multiline: args.multiline === true,
-              fileType: args.file_type as string | undefined,
+              fileType: (args.file_type ?? undefined) as string | undefined,
               fixedStrings: args.fixed_strings === true,
               includeIgnored: args.include_ignored === true,
-              outputMode: args.output_mode as 'content' | 'files' | 'count' | undefined,
+              outputMode: (args.output_mode ?? undefined) as 'content' | 'files' | 'count' | undefined,
               signal: operationSignal,
             })
           : await this.toolExecutor.searchContent(args.pattern as string, dirPath, filePattern, !caseSensitive)
-        if (!result.success) return `Error: ${result.error}`
+        if (!result.success) return toolFailure(`Error: ${result.error}`, result.errorKind ?? 'execution', 'none')
         const page = this.toolExecutor.searchContentPage
           ? result.data as import('@fluxos/contracts/toolExecutor').SearchContentPage
           : { hits: Array.isArray(result.data) ? result.data : [], truncated: false, offset: 0, limit: 50, totalMatches: Array.isArray(result.data) ? result.data.length : 0 }
         const retrieval = contentSearchResult(page, this.toWorkspaceRelative(basePath, dirPath) || '.', String(args.pattern), path => this.toWorkspaceRelative(basePath, path))
-        return { retrieval, output: formatRetrievalResult(retrieval) }
+        return { isError: false, retrieval, output: formatRetrievalResult(retrieval) }
       }
 
 
       case 'web_search': {
         if (typeof this.toolExecutor.webSearch !== 'function') {
-          return 'Error: web_search is not available in this runtime'
+          return toolFailure('Error: web_search is not available in this runtime', 'environment', 'none')
         }
         const query = String(args.query || '').trim()
-        if (!query) return 'Error: query is required'
+        if (!query) return toolFailure('Error: query is required', 'validation', 'none')
         const response = await this.toolExecutor.webSearch({
           query,
           additional_queries: args.additional_queries,
@@ -5007,39 +3949,42 @@ Support claims with inspected source text. Use known paths directly, or locate c
           exclude_domains: args.exclude_domains,
           depth: args.depth,
         })
-        if (!response.success) return `Error: ${response.error || 'web search failed'}`
+        if (!response.success) return toolFailure(`Error: ${response.error || 'web search failed'}`, 'execution', 'none')
         const data = response.data
-        if (!data) return `Error: web search returned no data`
-        return { output: this.formatWebSearchResults(data), data: { kind: 'web_search', response: data } }
+        if (!data) return toolFailure(`Error: web search returned no data`, 'execution', 'none')
+        return { isError: false, output: this.formatWebSearchResults(data), data: { kind: 'web_search', response: data } }
       }
 
       case 'read_web_source': {
-        if (!this.toolExecutor.readWebSource) return 'Error: saved webpage access is unavailable'
+        if (!this.toolExecutor.readWebSource) return toolFailure('Error: saved webpage access is unavailable', 'environment', 'none')
         const result = await this.toolExecutor.readWebSource({ source_id: String(args.source_id), offset: args.offset as number | undefined, limit: args.limit as number | undefined, query: args.query as string | undefined })
-        return result.success ? JSON.stringify(result.data) : 'Error: ' + result.error
+        return result.success ? JSON.stringify(result.data) : toolFailure('Error: ' + result.error, 'execution', 'none')
       }
       case 'web_fetch': {
         if (typeof this.toolExecutor.webFetch !== 'function') {
-          return 'Error: web_fetch is not available in this runtime'
+          return toolFailure('Error: web_fetch is not available in this runtime', 'environment', 'none')
         }
         const urls = Array.isArray(args.urls) ? args.urls.map(String).filter(Boolean) : []
-        if (urls.length === 0) return 'Error: urls is required'
+        if (urls.length === 0) return toolFailure('Error: urls is required', 'validation', 'none')
         const response = await this.toolExecutor.webFetch({ urls, max_chars: args.max_chars, signal: this.runControl.getOperationSignal() })
-        if (!response.success) return `Error: ${response.error || 'web page fetch failed'}`
-        if (!response.data) return 'Error: web page fetch returned no data'
-        return { output: this.formatWebFetchResults(response.data), data: { kind: 'web_fetch', response: response.data } }
+        if (!response.success) return toolFailure(`Error: ${response.error || 'web page fetch failed'}`, 'execution', 'none')
+        if (!response.data) return toolFailure('Error: web page fetch returned no data', 'execution', 'none')
+        return { isError: false, output: this.formatWebFetchResults(response.data), data: { kind: 'web_fetch', response: response.data } }
       }
 
       case 'tool_search': {
         if (!this.mcpClient) return 'No MCP tools are connected.'
         const query = String(args.query || '').trim()
-        if (!query) return 'Error: query is required'
+        if (!query) return toolFailure('Error: query is required', 'validation', 'none')
         const limit = typeof args.limit === 'number' ? args.limit : 8
-        const matches = this.mcpClient.searchTools(query, limit)
-        for (const match of matches) this.deferredMcpToolNames.add(match.name)
+        const allowedNames = new Set(this.availableMcpTools().map(tool => tool.name))
+        const matches = this.mcpClient.searchTools(query, limit, { allowedNames }).filter(tool => allowedNames.has(tool.name))
+        for (const match of matches) this.loadedMcpToolNames.add(match.name)
         const data: ToolResultData = { kind: 'items', items: matches.map(tool => ({ title: tool.name, description: tool.description, path: tool.serverName })) }
-        if (matches.length === 0) return { data, output: `No connected tool metadata matched ${JSON.stringify(query)}. Try the provider's tool name, terminology, or an English translation. Do not assume unrelated tools are relevant.` }
-        return { data, output: JSON.stringify({
+        if (matches.length === 0) return { isError: false, data, output: `No connected tool metadata matched ${JSON.stringify(query)}. Try the provider's tool name, terminology, or an English translation. Do not assume unrelated tools are relevant.` }
+        return { isError: false, data, output: JSON.stringify({
+          matching: 'lexical_with_curated_aliases',
+          guidance: 'Metadata matches are candidates, not semantic confidence or authorization. Verify the description and schema before calling; use provider terminology to refine weak matches.',
           tools: matches.map(tool => ({
             name: tool.name,
             server: tool.serverName,
@@ -5050,7 +3995,7 @@ Support claims with inspected source text. Use known paths directly, or locate c
       }
 
       case 'list_memories': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const limit = typeof args.limit === 'number' ? args.limit : undefined
         const response = await this.toolExecutor.memoryQuery({
           workspacePath: basePath,
@@ -5063,20 +4008,20 @@ Support claims with inspected source text. Use known paths directly, or locate c
             : undefined,
           limit,
         })
-        if (!response.success) return `Error: ${response.error || 'memory query failed'}`
+        if (!response.success) return toolFailure(`Error: ${response.error || 'memory query failed'}`, 'execution', 'none')
         const items = response.data?.items || []
-        if (items.length === 0) return { output: 'No memories matched the filter.', data: { kind: 'items', items: [] } }
+        if (items.length === 0) return { isError: false, output: 'No memories matched the filter.', data: { kind: 'items', items: [] } }
         const lines = items.map((item: { id: string; kind: string; confidence: string | number; text: string; source: string; tags?: string[] }) => {
           const tagBits = item.tags?.length ? ` [${item.tags.slice(0, 3).join(', ')}]` : ''
           return `- ${item.id} (${item.kind}, ${item.confidence}) ${item.text}\n  source: ${item.source}${tagBits}`
         })
-        return { output: `Found ${items.length} memor${items.length === 1 ? 'y' : 'ies'}:\n${lines.join('\n')}`, data: { kind: 'items', items: items.map((item: { text: string; source: string }) => ({ title: item.text, path: item.source })) } }
+        return { isError: false, output: `Found ${items.length} memor${items.length === 1 ? 'y' : 'ies'}:\n${lines.join('\n')}`, data: { kind: 'items', items: items.map((item: { text: string; source: string }) => ({ title: item.text, path: item.source })) } }
       }
 
       case 'remember': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const text = args.text as string
-        if (!text || typeof text !== 'string') return 'Error: text parameter is required'
+        if (!text || typeof text !== 'string') return toolFailure('Error: text parameter is required', 'validation', 'none')
         // Handle tags: accept array or comma-separated string
         let tags: string[] | undefined
         if (Array.isArray(args.tags)) {
@@ -5092,36 +4037,36 @@ Support claims with inspected source text. Use known paths directly, or locate c
           confidence: typeof args.confidence === 'string' ? args.confidence : undefined,
           conversationId: this.config.conversationId || this.stateProvider.getConversationId() || undefined,
         })
-        if (!result.success) return `Error: ${result.error || 'remember failed'}`
+        if (!result.success) return toolFailure(`Error: ${result.error || 'remember failed'}`, 'execution', 'unknown')
         if (result.data?.deduplicated) return `Memory updated (deduplicated with existing entry): ${result.data.id}`
         return `Memory stored: ${result.data?.id}`
       }
 
       case 'forget': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const id = args.id as string
-        if (!id || typeof id !== 'string') return 'Error: id parameter is required'
+        if (!id || typeof id !== 'string') return toolFailure('Error: id parameter is required', 'validation', 'none')
         const reason = typeof args.reason === 'string' ? args.reason : undefined
         const result = await this.toolExecutor.memoryForget({
           workspacePath: basePath,
           id,
           reason,
         })
-        if (!result.success) return `Error: ${result.error || 'forget failed'}`
+        if (!result.success) return toolFailure(`Error: ${result.error || 'forget failed'}`, 'execution', 'unknown')
         return `Memory forgotten: ${id}`
       }
 
       case 'git_status': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const ready = await this.initializeGit(true)
         if (!ready || !this.gitState.snapshot) {
-          return `Error: ${this.gitState.error || 'workspace is not a readable Git repository'}`
+          return toolFailure(`Error: ${this.gitState.error || 'workspace is not a readable Git repository'}`, 'environment', 'none')
         }
-        return { output: formatGitSnapshotForTool(this.gitState.snapshot), data: { kind: 'repository', snapshot: structuredClone(this.gitState.snapshot) } }
+        return { isError: false, output: formatGitSnapshotForTool(this.gitState.snapshot), data: { kind: 'repository', snapshot: structuredClone(this.gitState.snapshot) } }
       }
 
       case 'git_diff': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const result = await fetchGitDiff(
           basePath,
           this.toolExecutor,
@@ -5129,49 +4074,49 @@ Support claims with inspected source text. Use known paths directly, or locate c
           args.path as string | undefined,
           args.context_lines as number | undefined,
         )
-        return result.ok ? result.output || 'No tracked changes.' : `Error: ${result.error}`
+        return result.ok ? result.output || 'No tracked changes.' : toolFailure(`Error: ${result.error}`, 'execution', 'none')
       }
 
       case 'git_log': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const result = await fetchGitLog(basePath, this.toolExecutor, args.limit as number | undefined, args.path as string | undefined)
-        return result.ok ? result.output || 'No commits found.' : `Error: ${result.error}`
+        return result.ok ? result.output || 'No commits found.' : toolFailure(`Error: ${result.error}`, 'execution', 'none')
       }
 
       case 'git_show': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const result = await fetchGitShow(basePath, this.toolExecutor, args.revision as string, args.path as string | undefined)
-        return result.ok ? result.output || 'No output.' : `Error: ${result.error}`
+        return result.ok ? result.output || 'No output.' : toolFailure(`Error: ${result.error}`, 'execution', 'none')
       }
 
       case 'git_stage': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const result = await this.runGitOperation('stage', () => gitStagePaths(basePath, args.paths as string[], this.toolExecutor))
-        return result.ok ? result.output || 'Paths staged.' : `Error: ${result.error}`
+        return result.ok ? result.output || 'Paths staged.' : toolFailure(`Error: ${result.error}`, 'execution', 'unknown')
       }
 
       case 'git_commit': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const result = await this.runGitOperation('commit', () => gitCommit(basePath, args.message as string, this.toolExecutor, args.paths as string[] | undefined))
-        if (!result.ok) return `Error: ${result.error}`
+        if (!result.ok) return toolFailure(`Error: ${result.error}`, 'execution', 'unknown')
         if (result.nothingToCommit) return 'Nothing to commit.'
         return `${result.hash ? `Commit ${result.hash}` : 'Commit created'}${result.output ? `\n${result.output}` : ''}`
       }
 
       case 'git_create_branch': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const result = await this.runGitOperation('create-branch', () => gitCreateBranch(basePath, args.name as string, this.toolExecutor, args.start_point as string | undefined))
-        return result.ok ? result.output || 'Branch created.' : `Error: ${result.error}`
+        return result.ok ? result.output || 'Branch created.' : toolFailure(`Error: ${result.error}`, 'execution', 'unknown')
       }
 
       case 'git_switch_branch': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const result = await this.runGitOperation('switch-branch', () => gitSwitchBranch(basePath, args.name as string, this.toolExecutor))
-        return result.ok ? result.output || 'Branch switched.' : `Error: ${result.error}`
+        return result.ok ? result.output || 'Branch switched.' : toolFailure(`Error: ${result.error}`, 'execution', 'unknown')
       }
 
       case 'git_stash': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const action = args.action as 'list' | 'push' | 'apply' | 'pop'
         const operation = () => gitStash(basePath, action, this.toolExecutor, {
           message: args.message as string | undefined,
@@ -5179,44 +4124,51 @@ Support claims with inspected source text. Use known paths directly, or locate c
           stash: args.stash as string | undefined,
         })
         const result = action === 'list' ? await operation() : await this.runGitOperation(`stash-${action}`, operation)
-        return result.ok ? result.output || 'Stash operation completed.' : `Error: ${result.error}`
+        return result.ok ? result.output || 'Stash operation completed.' : toolFailure(`Error: ${result.error}`, 'execution', 'unknown')
       }
 
       case 'git_push': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const result = await this.runGitOperation('push', () => gitPush(basePath, this.toolExecutor, {
           remote: args.remote as string | undefined,
           branch: args.branch as string | undefined,
           setUpstream: args.set_upstream === true,
         }))
-        return result.ok ? result.output || 'Push completed.' : `Error: ${result.error}`
+        return result.ok ? result.output || 'Push completed.' : toolFailure(`Error: ${result.error}`, 'execution', 'unknown')
       }
 
       case 'git_restore': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const result = await this.runGitOperation('restore', () => gitRestorePaths(
           basePath,
           args.paths as string[],
           this.toolExecutor,
           args.source as string | undefined,
         ))
-        return result.ok ? result.output || 'Paths restored.' : `Error: ${result.error}`
+        return result.ok ? result.output || 'Paths restored.' : toolFailure(`Error: ${result.error}`, 'execution', 'unknown')
       }
 
       case 'git_revert': {
-        if (!basePath) return 'Error: no workspace selected'
+        if (!basePath) return toolFailure('Error: no workspace selected', 'environment', 'none')
         const result = await this.runGitOperation('revert', () => gitRevertCommit(basePath, args.revision as string, this.toolExecutor))
-        if (!result.ok) return `Error: ${result.error}`
+        if (!result.ok) return toolFailure(`Error: ${result.error}`, 'execution', 'unknown')
         return `${result.hash ? `Revert commit ${result.hash}` : 'Revert commit created'}${result.output ? `\n${result.output}` : ''}`
       }
 
       case 'run_command': {
+        const expectedExitCodes = Array.isArray(args.expected_exit_codes) ? args.expected_exit_codes as number[] : [0]
         const cwd = args.cwd ? this.resolvePath(basePath, args.cwd as string) : basePath
-        const env = args.env as Record<string, string> | undefined
+        const env = args.env == null ? undefined : Object.fromEntries(
+          (args.env as Array<{ name: string; value: string }>).map(entry => [entry.name, entry.value]),
+        )
         const timeout = args.timeout as number | undefined
         const approved = args.approved === true
         const runInBackground = args.run_in_background === true
         const foregroundCommand = args.command as string
+        const commandFailure = (output: string, errorKind: NonNullable<ToolResult['errorKind']> = 'execution'): ToolDispatchResult => ({
+          ...toolFailure(output, errorKind, errorKind === 'validation' ? 'none' : 'unknown'),
+          data: { kind: 'command', command: foregroundCommand, cwd, stdout: '', process: { state: 'execution_failed' }, expectedExitCodes },
+        })
         const foregroundWasExplicit = Object.prototype.hasOwnProperty.call(args, 'run_in_background')
           && args.run_in_background === false
         const autoBackground = !runInBackground
@@ -5224,18 +4176,18 @@ Support claims with inspected source text. Use known paths directly, or locate c
           && shouldAutoBackgroundCommand(foregroundCommand)
         const useBackground = runInBackground || autoBackground
         const displayTitle = typeof args.display_title === 'string' ? args.display_title.trim() : ''
-        const displayKind = args.display_kind as RuntimeTaskPresentationKind | undefined
         const displayDetail = typeof args.display_detail === 'string' ? args.display_detail.trim() : undefined
         const previewUrl = typeof args.preview_url === 'string' ? normalizeLocalPreviewUrl(args.preview_url) : undefined
-        if (!displayTitle || !displayKind) {
-          return 'Error: run_command requires display_kind and display_title so the user can understand the work in progress.'
-        }
         if (args.preview_url && !previewUrl) {
-          return 'Error: preview_url must be an http(s) localhost URL.'
+          return commandFailure('Error: preview_url must be an http(s) localhost URL.', 'validation')
+        }
+        const displayKind = (args.display_kind as RuntimeTaskPresentationKind | undefined) || (previewUrl ? 'service' : 'work')
+        const defaultTitles: Record<RuntimeTaskPresentationKind, string> = {
+          work: '执行工作步骤', install: '安装项目依赖', build: '构建项目', check: '检查执行结果', service: '运行本地服务', export: '导出工作结果',
         }
         const presentation: RuntimeTaskPresentation = {
           kind: displayKind,
-          title: displayTitle,
+          title: displayTitle || defaultTitles[displayKind],
           detail: displayDetail,
           previewUrl,
         }
@@ -5244,47 +4196,54 @@ Support claims with inspected source text. Use known paths directly, or locate c
           const command = foregroundCommand
           const validation = await this.toolExecutor.validateCommand?.(command, cwd)
           if (validation && !validation.success) {
-            return `Error: ${validation.error || 'command validation failed'}`
+            return { ...commandFailure(`Error: ${validation.error || 'command validation failed'}`, validation.errorKind ?? 'validation'),
+              recovery: validation.recovery ?? toolRecovery(validation.errorKind ?? 'validation', 'none') }
           }
 
           const directResult = this.toolExecutor.startBackgroundCommand
-            ? await this.toolExecutor.startBackgroundCommand(command, cwd, env, approved, presentation)
+            ? await this.toolExecutor.startBackgroundCommand(command, cwd, env, approved, presentation, expectedExitCodes, operationSignal)
             : undefined
-          const ptyResult = directResult || await this.toolExecutor.ptyCreate?.({ cwd, env, presentation })
+          const ptyResult = directResult || await this.toolExecutor.ptyCreate?.({ cwd, env, presentation, expectedExitCodes, signal: operationSignal })
           const sessionId = ptyResult?.data?.sessionId
           if (!sessionId) {
-            return `Error: failed to spawn agent terminal${ptyResult?.error ? ` — ${ptyResult.error}` : ''}`
+            return { ...commandFailure(`Error: failed to spawn agent terminal${ptyResult?.error ? ` — ${ptyResult.error}` : ''}`, ptyResult?.errorKind ?? 'execution'),
+              ...(ptyResult?.recovery ? { recovery: ptyResult.recovery } : {}) }
           }
           const terminalLogPath = ptyResult.data?.session?.logPath
           if (!directResult) {
+            if (operationSignal?.aborted) {
+              await this.toolExecutor.ptyKill?.(sessionId)
+              return { ...commandFailure('Background launch cancelled before stdin dispatch', 'abort'), recovery: toolRecovery('abort', 'unknown') }
+            }
             const writeResult = await this.toolExecutor.ptyWrite?.(sessionId, `${command}\n`)
             if (!writeResult?.success) {
               await this.toolExecutor.ptyKill?.(sessionId)
               await this.emitTerminalSessions()
-              return `Error: failed to start background command — ${writeResult?.error || 'unknown error'}`
+              return commandFailure(`Error: failed to start background command — ${writeResult?.error || 'unknown error'}`)
             }
           }
-          this.agentBackgroundSessions.set(sessionId, { command, startedAt: Date.now() })
+          this.agentBackgroundSessions.set(sessionId, { command, startedAt: Date.now(), expectedExitCodes: [...expectedExitCodes] })
           await this.emitTerminalSessions()
           const prefix = autoBackground
             ? 'Long-running command automatically moved to the background.'
             : 'Background command started.'
           const waitHint = autoBackground
-            ? '\nWait for an exited session with code 0 before running dependent commands.'
+            ? `\nWait for an exited session with an expected code (${expectedExitCodes.join(', ')}) before running dependent commands.`
             : ''
           return {
+            isError: false,
             output: `${prefix} Agent terminal: ${sessionId}\nCommand: ${command}${terminalLogPath ? `\nLog: ${terminalLogPath}` : ''}\nUse read_terminal(session_id="${sessionId}") to view output, write_terminal to send stdin, or kill_terminal to stop.${waitHint}`,
-            data: { kind: 'command', command, cwd, stdout: '', sessionId, status: 'running' },
+            data: { kind: 'command', command, cwd, stdout: '', sessionId, process: { state: 'running' }, expectedExitCodes },
           }
         }
 
         // Foreground: exec-based path for one-shot commands
         try {
-          const result = await this.toolExecutor.runCommand(foregroundCommand, cwd, env, timeout, approved, operationSignal)
+          const result = await this.toolExecutor.runCommand(foregroundCommand, cwd, env, timeout, approved, operationSignal, expectedExitCodes, presentation)
           const commandOutput = result.data
           const data: ToolResultData = { kind: 'command', command: foregroundCommand, cwd,
-            stdout: commandOutput?.stdout || '', stderr: commandOutput?.stderr, error: result.error, exitCode: commandOutput?.exitCode,
-            status: result.success ? 'completed' : 'failed', truncated: commandOutput?.truncated, timedOut: commandOutput?.timedOut }
+            stdout: commandOutput?.stdout || '', stderr: commandOutput?.stderr, error: result.error,
+            process: commandProcessOutcome(result), expectedExitCodes, truncated: commandOutput?.truncated }
           const outputSections: string[] = []
           if (commandOutput?.stdout) outputSections.push(`stdout:\n${commandOutput.stdout}`)
           if (commandOutput?.stderr) outputSections.push(`stderr:\n${commandOutput.stderr}`)
@@ -5297,26 +4256,28 @@ Support claims with inspected source text. Use known paths directly, or locate c
             commandOutput?.aborted ? 'aborted' : '',
           ].filter(Boolean).join(', ')
           if (!result.success) {
-            return { data, output: `Error (${statusDetails})${result.error ? `: ${result.error}` : ''}\n${formattedOutput}` }
+            return { data, isError: true, errorKind: commandOutput?.aborted ? 'abort' : commandOutput?.timedOut ? 'timeout' : result.errorKind ?? 'execution',
+              ...(result.recovery ? { recovery: result.recovery } : {}), output: `Error (${statusDetails})${result.error ? `: ${result.error}` : ''}\n${formattedOutput}` }
           }
           const exitStatus = typeof commandOutput?.exitCode === 'number'
             ? `Process exited with code ${commandOutput.exitCode}`
+            : commandOutput?.exitSignal ? `Process exited with signal ${commandOutput.exitSignal}`
             : 'Process finished without an exit code'
-          return { data, output: `${exitStatus}\n${formattedOutput}` }
+          return { data, isError: false, output: `${exitStatus}\n${formattedOutput}` }
         } catch (e) {
-          return `Error executing command: ${e instanceof Error ? e.message : String(e)}`
+          return commandFailure(`Error executing command: ${e instanceof Error ? e.message : String(e)}`)
         }
       }
 
       case 'read_terminal': {
         const sessionId = args.session_id as string
-        if (!sessionId) return `Error: session_id is required`
+        if (!sessionId) return toolFailure(`Error: session_id is required`, 'validation', 'none')
         const tail = typeof args.tail_lines === 'number' ? args.tail_lines : 200
         const sinceSeq = typeof args.since_seq === 'number' ? args.since_seq : 0
         const result = await this.toolExecutor.ptyGetBuffer?.(sessionId, sinceSeq)
-        if (!result?.success) return `Error: ${result?.error || 'failed to read terminal buffer'}`
+        if (!result?.success) return toolFailure(`Error: ${result?.error || 'failed to read terminal buffer'}`, 'execution', 'none')
         await this.emitTerminalSessions()
-        const session = result.session as { status: string; exitCode?: number; cwd: string; logPath?: string } | undefined
+        const session = result.session
         const chunks = (result.chunks || []) as Array<{ seq: number; data: string }>
         const combined = chunks.map((c: { data: string }) => c.data).join('')
         // Strip ANSI escapes for model readability — terminal UI keeps them.
@@ -5334,7 +4295,7 @@ Support claims with inspected source text. Use known paths directly, or locate c
           ? ` • since_seq=${sinceSeq} • new_chunks=${chunks.length}`
           : ''
         const statusLine = session
-          ? `[session ${sessionId} • status=${session.status}${typeof session.exitCode === 'number' ? ` • exit=${session.exitCode}` : ''} • cwd=${session.cwd}${session.logPath ? ` • log=${session.logPath}` : ''} • last_seq=${lastSeq}${sinceNotice}]`
+          ? `[session ${sessionId} • status=${session.status}${typeof session.exitCode === 'number' ? ` • exit=${session.exitCode}` : ''}${session.exitSignal ? ` • signal=${session.exitSignal}` : ''}${session.stopped ? ' • stopped' : ''} • cwd=${session.cwd}${session.logPath ? ` • log=${session.logPath}` : ''} • last_seq=${lastSeq}${sinceNotice}]`
           : `[session ${sessionId} • last_seq=${lastSeq}${sinceNotice}]`
         const omittedNotice = (result.omittedBytes || 0) > 0
           ? `[${result.omittedBytes} earlier output byte(s) omitted from memory; full output remains in the session log]\n`
@@ -5342,25 +4303,36 @@ Support claims with inspected source text. Use known paths directly, or locate c
         const body = chunks.length === 0 && sinceSeq > 0
           ? '[no new output since last read]'
           : `${omittedNotice}${truncatedNotice}${tailed.join('\n')}`
-        return { output: `${statusLine}\n${body}`, data: { kind: 'command', sessionId, command: this.agentBackgroundSessions.get(sessionId)?.command,
-          cwd: session?.cwd, stdout: tailed.join('\n'), exitCode: session?.exitCode, status: session?.status,
+        const process: CommandProcessOutcome = session?.stopped
+          ? { state: 'aborted', exitCode: session.exitCode ?? null, ...(session.exitSignal ? { signal: session.exitSignal } : {}) }
+          : session?.status === 'running' || session?.status === 'starting'
+          ? { state: 'running' }
+          : session?.exitSignal ? { state: 'signaled', signal: session.exitSignal }
+          : typeof session?.exitCode === 'number' ? { state: 'exited', exitCode: session.exitCode }
+          : { state: 'unknown' }
+        const launchData = [...this.session.turns].reverse().flatMap(turn => turn.toolResults || [])
+          .map(result => result.data).find(data => data?.kind === 'command' && data.sessionId === sessionId)
+        const expectedExitCodes = this.agentBackgroundSessions.get(sessionId)?.expectedExitCodes
+          ?? (launchData?.kind === 'command' ? launchData.expectedExitCodes : session?.expectedExitCodes ?? [0])
+        return { isError: false, output: `${statusLine}\n${body}`, data: { kind: 'command', sessionId, command: this.agentBackgroundSessions.get(sessionId)?.command ?? session?.command ?? (launchData?.kind === 'command' ? launchData.command : undefined),
+          cwd: session?.cwd, stdout: tailed.join('\n'), process, expectedExitCodes,
           truncated: Boolean(truncatedNotice || omittedNotice) } }
       }
 
       case 'write_terminal': {
         const sessionId = args.session_id as string
         const data = args.data as string
-        if (!sessionId) return `Error: session_id is required`
-        if (typeof data !== 'string' || data.length === 0) return `Error: data is required`
+        if (!sessionId) return toolFailure(`Error: session_id is required`, 'validation', 'none')
+        if (typeof data !== 'string' || data.length === 0) return toolFailure(`Error: data is required`, 'validation', 'none')
         const result = await this.toolExecutor.ptyWrite?.(sessionId, data)
-        if (!result?.success) return `Error: ${result?.error || 'failed to write terminal stdin'}`
+        if (!result?.success) return toolFailure(`Error: ${result?.error || 'failed to write terminal stdin'}`, 'execution', 'unknown')
         await this.emitTerminalSessions()
         return `Wrote ${Buffer.byteLength(data)} byte(s) to terminal ${sessionId}.`
       }
 
       case 'kill_terminal': {
         const sessionId = args.session_id as string
-        if (!sessionId) return `Error: session_id is required`
+        if (!sessionId) return toolFailure(`Error: session_id is required`, 'validation', 'none')
         // Try interrupting the current command first (Ctrl+C semantics);
         // fall back to killing the session entirely if the model passes
         // hard=true (or interrupt fails).
@@ -5387,16 +4359,16 @@ Support claims with inspected source text. Use known paths directly, or locate c
           await this.emitTerminalSessions()
           return `Terminal ${sessionId} terminated.`
         }
-        return `Error: failed to kill terminal ${sessionId} — ${killed?.error || 'unknown error'}`
+        return toolFailure(`Error: failed to kill terminal ${sessionId} — ${killed?.error || 'unknown error'}`, 'execution', 'unknown')
       }
 
       case 'list_terminals': {
         const result = await this.toolExecutor.ptyList?.()
-        if (!result?.success) return `Error: ${result?.error || 'failed to list terminals'}`
+        if (!result?.success) return toolFailure(`Error: ${result?.error || 'failed to list terminals'}`, 'execution', 'none')
         const rawSessions = (result.sessions || []) as Array<{ isAgentSession?: boolean; id: string; status: string; exitCode?: number; cwd: string; logPath?: string; command?: string; title?: string }>
         const sessions = rawSessions.filter(s => s.isAgentSession || this.agentBackgroundSessions.has(s.id))
         await this.emitTerminalSessions()
-        if (sessions.length === 0) return { output: 'No agent terminal sessions active.', data: { kind: 'items', items: [] } }
+        if (sessions.length === 0) return { isError: false, output: 'No agent terminal sessions active.', data: { kind: 'items', items: [] } }
         const lines = sessions.map(s => {
           const meta = this.agentBackgroundSessions.get(s.id)
           const command = meta?.command || s.command || s.title
@@ -5405,7 +4377,7 @@ Support claims with inspected source text. Use known paths directly, or locate c
           const log = s.logPath ? ` • log=${s.logPath}` : ''
           return `- ${s.id} • ${s.status}${exit} • cwd=${s.cwd}${log}${cmd}`
         })
-        return { output: `${sessions.length} agent terminal session(s):\n${lines.join('\n')}`, data: { kind: 'items', items: sessions.map(session => ({
+        return { isError: false, output: `${sessions.length} agent terminal session(s):\n${lines.join('\n')}`, data: { kind: 'items', items: sessions.map(session => ({
           title: this.agentBackgroundSessions.get(session.id)?.command || session.command || session.title || session.id,
           status: session.status, path: session.cwd,
         })) } }
@@ -5414,14 +4386,14 @@ Support claims with inspected source text. Use known paths directly, or locate c
       case 'delete_file': {
         const filePath = this.resolvePath(basePath, args.path as string)
         const existing = await this.toolExecutor.readFile(filePath)
-        if (!existing.success) return `Error: unable to read file before deletion - ${existing.error}`
+        if (!existing.success) return toolFailure(`Error: unable to read file before deletion - ${existing.error}`, 'execution', 'none')
         await this.captureBeforeSnapshot(filePath)
         const result = await this.toolExecutor.deleteFile(filePath, {
           source: 'ai',
           label: 'AI delete_file',
           expectedHash: hashText(existing.data || ''),
         })
-        return result.success ? `File deleted: ${args.path}` : `Error: ${result.error}`
+        return fileMutationOutput(result, `File deleted: ${args.path}`)
       }
 
       case 'present_workflow': {
@@ -5429,21 +4401,21 @@ Support claims with inspected source text. Use known paths directly, or locate c
         const stage = String(args.stage || '').trim()
         const title = String(args.title || '').trim()
         const question = String(args.question || '').trim()
-        if (!workflow || !stage || !title || !question) return 'Error: workflow, stage, title, and question are required'
-        if (workflow.length > 160 || stage.length > 160 || title.length > 240 || question.length > 2_000) return 'Error: workflow surface text exceeds the allowed length'
-        if (String(args.detail || '').length > 2_000 || String(args.exploration_id || '').length > 160) return 'Error: workflow surface metadata exceeds the allowed length'
+        if (!workflow || !stage || !title || !question) return toolFailure('Error: workflow, stage, title, and question are required', 'validation', 'none')
+        if (workflow.length > 160 || stage.length > 160 || title.length > 240 || question.length > 2_000) return toolFailure('Error: workflow surface text exceeds the allowed length', 'validation', 'none')
+        if (String(args.detail || '').length > 2_000 || String(args.exploration_id || '').length > 160) return toolFailure('Error: workflow surface metadata exceeds the allowed length', 'validation', 'none')
         const contract = this.activeWorkflowContract
-        if (!contract) return 'Error: no active plugin workflow is available for this run'
-        if (contract.workflow !== workflow) return `Error: workflow ${workflow} is not active for this run`
-        if (contract.stages?.length && !contract.stages.includes(stage)) return `Error: workflow stage ${stage} is not declared by ${workflow}`
-        if (this.completedWorkflowStages.has(stage)) return `Error: workflow stage ${stage} has already been resolved`
+        if (!contract) return toolFailure('Error: no active plugin workflow is available for this run', 'environment', 'none')
+        if (contract.workflow !== workflow) return toolFailure(`Error: workflow ${workflow} is not active for this run`, 'validation', 'none')
+        if (contract.stages?.length && !contract.stages.includes(stage)) return toolFailure(`Error: workflow stage ${stage} is not declared by ${workflow}`, 'validation', 'none')
+        if (this.completedWorkflowStages.has(stage)) return toolFailure(`Error: workflow stage ${stage} has already been resolved`, 'validation', 'none')
         const pendingCheckpoint = this.pendingAutomaticWorkflowCheckpoint()
         if (pendingCheckpoint && contract.stages?.length) {
           const requestedIndex = contract.stages.indexOf(stage)
           const pendingIndex = contract.stages.indexOf(pendingCheckpoint.stage)
-          if (requestedIndex > pendingIndex) return `Error: workflow checkpoint ${pendingCheckpoint.stage} must be resolved before ${stage}`
+          if (requestedIndex > pendingIndex) return toolFailure(`Error: workflow checkpoint ${pendingCheckpoint.stage} must be resolved before ${stage}`, 'validation', 'none')
         }
-        if (args.choices !== undefined && (!Array.isArray(args.choices) || args.choices.length > 40)) return 'Error: workflow choices are invalid'
+        if (args.choices !== undefined && (!Array.isArray(args.choices) || args.choices.length > 40)) return toolFailure('Error: workflow choices are invalid', 'validation', 'none')
         const choices = Array.isArray(args.choices)
           ? args.choices.flatMap((choice: any) => {
               if (!choice || typeof choice !== 'object') return []
@@ -5453,9 +4425,9 @@ Support claims with inspected source text. Use known paths directly, or locate c
               return id && id.length <= 80 && label && label.length <= 240 && detail.length <= 2_000 ? [{ id, label, detail: detail || undefined }] : []
             })
           : undefined
-        if (Array.isArray(args.choices) && choices?.length !== args.choices.length) return 'Error: workflow choices contain invalid fields'
-        if (choices && new Set(choices.map(choice => choice.id)).size !== choices.length) return 'Error: workflow choice ids must be unique'
-        if (args.directions !== undefined && (!Array.isArray(args.directions) || args.directions.length > 20)) return 'Error: workflow directions are invalid'
+        if (Array.isArray(args.choices) && choices?.length !== args.choices.length) return toolFailure('Error: workflow choices contain invalid fields', 'validation', 'none')
+        if (choices && new Set(choices.map(choice => choice.id)).size !== choices.length) return toolFailure('Error: workflow choice ids must be unique', 'validation', 'none')
+        if (args.directions !== undefined && (!Array.isArray(args.directions) || args.directions.length > 20)) return toolFailure('Error: workflow directions are invalid', 'validation', 'none')
         const directions = Array.isArray(args.directions)
           ? args.directions.flatMap((direction: any) => {
               if (!direction || typeof direction !== 'object') return []
@@ -5475,20 +4447,20 @@ Support claims with inspected source text. Use known paths directly, or locate c
                 : []
             })
           : undefined
-        if (Array.isArray(args.directions) && directions?.length !== args.directions.length) return 'Error: workflow directions contain invalid fields'
-        if (directions && new Set(directions.map(direction => direction.id)).size !== directions.length) return 'Error: workflow direction ids must be unique'
+        if (Array.isArray(args.directions) && directions?.length !== args.directions.length) return toolFailure('Error: workflow directions contain invalid fields', 'validation', 'none')
+        if (directions && new Set(directions.map(direction => direction.id)).size !== directions.length) return toolFailure('Error: workflow direction ids must be unique', 'validation', 'none')
         const input = args.input && typeof args.input === 'object' ? args.input as Record<string, unknown> : undefined
-        if (args.input !== undefined && !input) return 'Error: workflow input is invalid'
+        if (args.input !== undefined && !input) return toolFailure('Error: workflow input is invalid', 'validation', 'none')
         const inputType = input ? String(input.type || '') : ''
         const inputMin = input && Number.isFinite(Number(input.min)) ? Number(input.min) : undefined
         const inputMax = input && Number.isFinite(Number(input.max)) ? Number(input.max) : undefined
-        if (input && !['number', 'text'].includes(inputType)) return 'Error: workflow input type is invalid'
-        if (inputType === 'number' && inputMin !== undefined && inputMax !== undefined && inputMin > inputMax) return 'Error: workflow input range is invalid'
+        if (input && !['number', 'text'].includes(inputType)) return toolFailure('Error: workflow input type is invalid', 'validation', 'none')
+        if (inputType === 'number' && inputMin !== undefined && inputMax !== undefined && inputMin > inputMax) return toolFailure('Error: workflow input range is invalid', 'validation', 'none')
         const renderer = String(args.renderer || '')
-        if (renderer === 'choice' && !choices?.length) return 'Error: choice workflow surfaces require choices'
-        if (renderer === 'gallery' && (!directions?.length || directions.some(direction => !direction.screenshotPath))) return 'Error: gallery workflow surfaces require workspace screenshots'
-        if (renderer === 'count' && !choices?.length && inputType !== 'number') return 'Error: count workflow surfaces require choices or a number input'
-        if (!choices?.length && !directions?.length && !input) return 'Error: workflow surface has no interactive content'
+        if (renderer === 'choice' && !choices?.length) return toolFailure('Error: choice workflow surfaces require choices', 'validation', 'none')
+        if (renderer === 'gallery' && (!directions?.length || directions.some(direction => !direction.screenshotPath))) return toolFailure('Error: gallery workflow surfaces require workspace screenshots', 'validation', 'none')
+        if (renderer === 'count' && !choices?.length && inputType !== 'number') return toolFailure('Error: count workflow surfaces require choices or a number input', 'validation', 'none')
+        if (!choices?.length && !directions?.length && !input) return toolFailure('Error: workflow surface has no interactive content', 'validation', 'none')
         const ui: WorkflowSurfaceSpec = {
           workflow,
           stage,
@@ -5551,9 +4523,9 @@ Support claims with inspected source text. Use known paths directly, or locate c
       case 'use_skill': {
         const skillId = String(args.skill_id || '').trim()
         const reason = args.reason as string | undefined
-        if (!skillId) return 'Error: skill_id is required'
+        if (!skillId) return toolFailure('Error: skill_id is required', 'validation', 'none')
         const skill = this.config.enabledSkills?.find(candidate => candidate.id === skillId || candidate.name === skillId || candidate.command === skillId)
-        if (!skill) return `Error: skill "${skillId}" is not enabled for this session`
+        if (!skill) return toolFailure(`Error: skill "${skillId}" is not enabled for this session`, 'permission', 'none')
         const alreadyActive = this.activatedRunSkills.has(skill.id)
         this.activatedRunSkills.set(skill.id, skill)
         if (alreadyActive) return `Skill already active for this task: ${skill.name || skill.id}`
@@ -5572,13 +4544,14 @@ Support claims with inspected source text. Use known paths directly, or locate c
               itemId: toolCallId,
             },
           })
-          if (result.isError) throw new Error(result.output)
           return {
+            isError: result.isError,
+            ...(result.isError ? { errorKind: 'execution' as const } : {}),
             output: result.output,
             attachments: result.attachments,
           }
         }
-        return `Unknown tool: ${name}`
+        return toolFailure(`Unknown tool: ${name}`, 'validation', 'none')
     }
   }
 
@@ -5704,7 +4677,7 @@ Support claims with inspected source text. Use known paths directly, or locate c
     return {
       id: generateTurnId(),
       role: 'tool_result',
-      content: results.map(r => `${r.name}: ${r.isError ? '[failed]' : '[ok]'} ${(r.output || '').slice(0, 500)}`).join('\n\n'),
+      content: results.map(r => `${r.name}: [${toolResultExecutionStatus(r)}] ${(r.output || '').slice(0, 500)}`).join('\n\n'),
       timestamp: Date.now(),
       toolResults: results,
       metadata: workRunId ? { workRunId } : undefined,

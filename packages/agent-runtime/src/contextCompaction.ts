@@ -1,3 +1,4 @@
+import { toolInvocationKey, toolResultExecutionStatus } from '@fluxos/contracts/toolResultData'
 import type { AgentTurn, ContextPolicyMode, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import type {
   ContextHandoff,
@@ -5,7 +6,6 @@ import type {
   ContextHandoffFileOperation,
 } from '@fluxos/contracts/stateTypes'
 import { compressToolResult } from './tokenCompressor'
-import type { ModelProtocol } from '@fluxos/models/modelProtocol'
 
 export interface ContinuationWorkspaceSnapshot {
   workspacePath?: string | null
@@ -140,7 +140,8 @@ function operationFromTool(call: ToolCall): ContextHandoffFileOperation | null {
 
 function resultStatus(result?: ToolResult): 'success' | 'error' | 'unknown' {
   if (!result) return 'unknown'
-  return result.isError ? 'error' : 'success'
+  const status = toolResultExecutionStatus(result)
+  return status === 'running' ? 'unknown' : status === 'completed' ? 'success' : 'error'
 }
 
 function stringifyWorkspaceValue(value: unknown, maxChars: number): string | undefined {
@@ -157,7 +158,7 @@ export function collectContinuationHandoffFacts(
   const turns = [...oldTurns, ...recentTurns]
   const resultByCallId = new Map<string, ToolResult>()
   for (const turn of turns) {
-    for (const result of turn.toolResults || []) resultByCallId.set(result.toolCallId, result)
+    for (const result of turn.toolResults || []) resultByCallId.set(toolInvocationKey(result.toolCallId, result.operationIdentity), result)
   }
 
   const currentRequirements = turns
@@ -191,7 +192,7 @@ export function collectContinuationHandoffFacts(
   const decisions: ContextHandoffFacts['decisions'] = []
   for (const turn of turns) {
     for (const call of turn.toolCalls || []) {
-      const result = resultByCallId.get(call.id)
+      const result = resultByCallId.get(toolInvocationKey(call.id, call.operationIdentity))
       const path = pathFromToolCall(call)
       const operation = operationFromTool(call)
       if (path && operation) recordFile(path, operation, call.name, resultStatus(result))
@@ -227,7 +228,7 @@ export function collectContinuationHandoffFacts(
         const operation = operationFromValue(result.changeSummary.operation) || operationFromValue(result.name) || 'edit'
         recordFile(result.changeSummary.path, operation, result.name, resultStatus(result))
       }
-      if (result.isError) {
+      if (toolResultExecutionStatus(result) === 'failed') {
         errors.push({
           toolCallId: result.toolCallId,
           tool: result.name,
@@ -304,7 +305,7 @@ function renderTurn(turn: AgentTurn, index: number, compressLargeResults = true)
       const compressed = compressLargeResults && output.length > 48_000
         ? compressToolResult(result.name, output, { maxChars: 80_000 }).compressed
         : output
-      parts.push(`<tool_result call_id="${result.toolCallId}" name="${result.name}" error="${result.isError ? 'true' : 'false'}">\n${compressed}\n</tool_result>`)
+      parts.push(`<tool_result call_id="${result.toolCallId}" name="${result.name}" error="${result.isError ? 'true' : 'false'}" execution="${toolResultExecutionStatus(result)}">\n${compressed}\n</tool_result>`)
       if (result.changeSummary) parts.push(`<change_summary>${safeJson(result.changeSummary, 4_000)}</change_summary>`)
     }
     parts.push('</tool_results>')
@@ -598,39 +599,6 @@ export function validateContinuationSummary(value: string, requiredAnchors: stri
     missingAnchors,
     text,
   }
-}
-
-export function extractContinuationText(protocol: ModelProtocol, payload: unknown): string {
-  let value: any = payload
-  if (typeof value === 'string') {
-    try {
-      value = JSON.parse(value)
-    } catch {
-      return value.trim()
-    }
-  }
-  if (!value || typeof value !== 'object') return ''
-
-  if (protocol === 'anthropic_messages') {
-    return Array.isArray(value.content)
-      ? value.content.filter((part: any) => typeof part?.text === 'string').map((part: any) => part.text).join('')
-      : ''
-  }
-  if (protocol === 'openai_responses') {
-    if (typeof value.output_text === 'string') return value.output_text
-    return Array.isArray(value.output)
-      ? value.output.flatMap((item: any) => Array.isArray(item?.content) ? item.content : [])
-        .filter((part: any) => typeof part?.text === 'string')
-        .map((part: any) => part.text)
-        .join('')
-      : ''
-  }
-  const content = value.choices?.[0]?.message?.content
-  return typeof content === 'string'
-    ? content
-    : Array.isArray(content)
-      ? content.filter((part: any) => typeof part?.text === 'string').map((part: any) => part.text).join('')
-      : ''
 }
 
 export const CONTINUATION_SUMMARY_SYSTEM_PROMPT = 'You compile a faithful continuation state for an AI coding agent. Return the requested XML only.'

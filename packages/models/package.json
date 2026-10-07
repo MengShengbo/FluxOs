@@ -23,10 +23,6 @@
       "types": "./dist/config.d.ts",
       "import": "./dist/config.js"
     },
-    "./credentialStore": {
-      "types": "./dist/credentialStore.d.ts",
-      "import": "./dist/credentialStore.js"
-    },
     "./modelDiscovery": {
       "types": "./dist/modelDiscovery.d.ts",
       "import": "./dist/modelDiscovery.js"
@@ -86,6 +82,22 @@
     "./tokenCounter": {
       "types": "./dist/tokenCounter.d.ts",
       "import": "./dist/tokenCounter.js"
+    },
+    "./toolSchemas": {
+      "types": "./dist/toolSchemas.d.ts",
+      "import": "./dist/toolSchemas.js"
+    },
+    "./modelTurnMessages": {
+      "types": "./dist/modelTurnMessages.d.ts",
+      "import": "./dist/modelTurnMessages.js"
+    },
+    "./modelResponseText": {
+      "types": "./dist/modelResponseText.d.ts",
+      "import": "./dist/modelResponseText.js"
+    },
+    "./modelProvider": {
+      "types": "./dist/modelProvider.d.ts",
+      "import": "./dist/modelProvider.js"
     }
   },
   "scripts": {

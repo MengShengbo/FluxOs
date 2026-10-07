@@ -1,3 +1,4 @@
+import { extractModelResponseText } from '@fluxos/models/modelResponseText'
 import { describe, expect, it } from 'vitest'
 import type { AgentTurn } from '@fluxos/contracts/agentTypes'
 import {
@@ -8,7 +9,6 @@ import {
   buildDeterministicContinuationSummary,
   collectContinuationHandoffFacts,
   continuationSummaryTokenBudget,
-  extractContinuationText,
   validateContinuationSummary,
 } from './contextCompaction'
 
@@ -168,8 +168,8 @@ describe('context compaction compiler', () => {
   })
 
   it('extracts text from raw JSON responses for all supported protocols', () => {
-    expect(extractContinuationText('openai_chat', JSON.stringify({ choices: [{ message: { content: 'chat summary' } }] }))).toBe('chat summary')
-    expect(extractContinuationText('openai_responses', JSON.stringify({ output_text: 'responses summary' }))).toBe('responses summary')
-    expect(extractContinuationText('anthropic_messages', JSON.stringify({ content: [{ type: 'text', text: 'anthropic summary' }] }))).toBe('anthropic summary')
+    expect(extractModelResponseText('openai_chat', JSON.stringify({ choices: [{ message: { content: 'chat summary' } }] }))).toBe('chat summary')
+    expect(extractModelResponseText('openai_responses', JSON.stringify({ output_text: 'responses summary' }))).toBe('responses summary')
+    expect(extractModelResponseText('anthropic_messages', JSON.stringify({ content: [{ type: 'text', text: 'anthropic summary' }] }))).toBe('anthropic summary')
   })
 })

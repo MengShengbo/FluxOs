@@ -1,0 +1,1149 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`provider wire parity frozen before adapter extraction > anthropic_messages / anthropic / claude-3-7-sonnet / custom=false 1`] = `
+{
+  "reasoningEffort": undefined,
+  "reasoningEnabled": true,
+  "request": {
+    "body": {
+      "max_tokens": 4096,
+      "messages": [
+        {
+          "content": [
+            {
+              "cache_control": {
+                "type": "ephemeral",
+              },
+              "text": "fixture input",
+              "type": "text",
+            },
+          ],
+          "role": "user",
+        },
+      ],
+      "model": "claude-3-7-sonnet",
+      "stream": true,
+      "system": [
+        {
+          "cache_control": {
+            "type": "ephemeral",
+          },
+          "text": "fixture system",
+          "type": "text",
+        },
+      ],
+      "thinking": {
+        "budget_tokens": 4095,
+        "type": "enabled",
+      },
+      "tool_choice": {
+        "type": "auto",
+      },
+      "tools": [
+        {
+          "description": "Read a numbered line range, up to 200 lines by default within a strict byte budget. For giant lines or exact UTF-8 text, use byte_offset=0, then returned byte offsets and source_version. Byte mode preserves raw line endings and never splits a character. Do not mix byte mode with line offset/limit. Numbered snippets can be pasted directly into edit_file or multi_edit.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "byte_limit": {
+                "description": "Byte budget in byte mode; default 16384, maximum 32768.",
+                "maximum": 32768,
+                "minimum": 4,
+                "type": "integer",
+              },
+              "byte_offset": {
+                "description": "Zero-based UTF-8 byte offset; enables raw byte mode. Start at 0, then use nextOffset.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer",
+              },
+              "limit": {
+                "description": "Number of lines to read. Defaults to 200, maximum 2000.",
+                "type": "number",
+              },
+              "offset": {
+                "description": "Starting line number (1-based). Defaults to 1.",
+                "type": "number",
+              },
+              "path": {
+                "description": "File path (relative to workspace root)",
+                "minLength": 1,
+                "type": "string",
+              },
+              "source_version": {
+                "description": "Version returned by the first byte page; required for nonzero byte_offset. Changed files are rejected.",
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string",
+              },
+            },
+            "required": [
+              "path",
+            ],
+            "type": "object",
+          },
+          "name": "read_file",
+        },
+        {
+          "cache_control": {
+            "type": "ephemeral",
+          },
+          "description": "Apply a structured patch with add, update, move, or delete file operations. Hunks follow original source order. Use @@ <exact source line> to advance past a literal anchor, and *** End of File to require the final source suffix. Ambiguous matches fail; add exact context. All hunks are preflighted and file contents checked before writes. Multi-file writes are not atomic. Results report committed, pending and unknown effects with the failure stage. After partial/unknown outcomes, inspect current files and apply only the remaining changes; never blindly retry or roll back the full patch.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "patch": {
+                "description": "Patch text wrapped in '*** Begin Patch' and '*** End Patch'. Update hunks use '@@' or '@@ <exact source line>'; context lines start with a space, removals with '-', additions with '+'. Optional '*** End of File' ends the file's last hunk. Do not supply a unified diff or Markdown fence.",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "patch",
+            ],
+            "type": "object",
+          },
+          "name": "apply_patch",
+        },
+      ],
+    },
+    "headers": {
+      "Content-Type": "application/json",
+      "User-Agent": "fluxagent-cli/1.0.1 (platform; arch)",
+      "anthropic-beta": "token-efficient-tools-2025-02-19",
+      "anthropic-version": "2023-06-01",
+      "originator": "fluxagent_cli",
+      "x-api-key": "fixture-key",
+      "x-app": "fluxagent-cli",
+      "x-client-app": "fluxagent-cli",
+      "x-client-request-id": "<generated-request-id>",
+      "x-fixture": "value",
+      "x-fluxagent-conversation-id": "<generated-conversation-id>",
+      "x-fluxagent-protocol": "anthropic_messages",
+      "x-fluxagent-round": "1",
+    },
+    "url": "http://fixture.invalid/v1/messages",
+  },
+  "text": "fixture answer",
+  "tokens": {
+    "cached": 5,
+    "input": 27,
+    "output": 3,
+    "source": "provider",
+    "total": 30,
+  },
+  "toolCalls": [],
+}
+`;
+
+exports[`provider wire parity frozen before adapter extraction > anthropic_messages / custom / claude-sonnet-4-6 / custom=false 1`] = `
+{
+  "reasoningEffort": "high",
+  "reasoningEnabled": true,
+  "request": {
+    "body": {
+      "max_tokens": 4096,
+      "messages": [
+        {
+          "content": [
+            {
+              "cache_control": {
+                "type": "ephemeral",
+              },
+              "text": "fixture input",
+              "type": "text",
+            },
+          ],
+          "role": "user",
+        },
+      ],
+      "model": "claude-sonnet-4-6",
+      "output_config": {
+        "effort": "high",
+      },
+      "stream": true,
+      "system": [
+        {
+          "cache_control": {
+            "type": "ephemeral",
+          },
+          "text": "fixture system",
+          "type": "text",
+        },
+      ],
+      "thinking": {
+        "type": "adaptive",
+      },
+      "tool_choice": {
+        "type": "auto",
+      },
+      "tools": [
+        {
+          "description": "Read a numbered line range, up to 200 lines by default within a strict byte budget. For giant lines or exact UTF-8 text, use byte_offset=0, then returned byte offsets and source_version. Byte mode preserves raw line endings and never splits a character. Do not mix byte mode with line offset/limit. Numbered snippets can be pasted directly into edit_file or multi_edit.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "byte_limit": {
+                "description": "Byte budget in byte mode; default 16384, maximum 32768.",
+                "maximum": 32768,
+                "minimum": 4,
+                "type": "integer",
+              },
+              "byte_offset": {
+                "description": "Zero-based UTF-8 byte offset; enables raw byte mode. Start at 0, then use nextOffset.",
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer",
+              },
+              "limit": {
+                "description": "Number of lines to read. Defaults to 200, maximum 2000.",
+                "type": "number",
+              },
+              "offset": {
+                "description": "Starting line number (1-based). Defaults to 1.",
+                "type": "number",
+              },
+              "path": {
+                "description": "File path (relative to workspace root)",
+                "minLength": 1,
+                "type": "string",
+              },
+              "source_version": {
+                "description": "Version returned by the first byte page; required for nonzero byte_offset. Changed files are rejected.",
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string",
+              },
+            },
+            "required": [
+              "path",
+            ],
+            "type": "object",
+          },
+          "name": "read_file",
+        },
+        {
+          "cache_control": {
+            "type": "ephemeral",
+          },
+          "description": "Apply a structured patch with add, update, move, or delete file operations. Hunks follow original source order. Use @@ <exact source line> to advance past a literal anchor, and *** End of File to require the final source suffix. Ambiguous matches fail; add exact context. All hunks are preflighted and file contents checked before writes. Multi-file writes are not atomic. Results report committed, pending and unknown effects with the failure stage. After partial/unknown outcomes, inspect current files and apply only the remaining changes; never blindly retry or roll back the full patch.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "patch": {
+                "description": "Patch text wrapped in '*** Begin Patch' and '*** End Patch'. Update hunks use '@@' or '@@ <exact source line>'; context lines start with a space, removals with '-', additions with '+'. Optional '*** End of File' ends the file's last hunk. Do not supply a unified diff or Markdown fence.",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "patch",
+            ],
+            "type": "object",
+          },
+          "name": "apply_patch",
+        },
+      ],
+    },
+    "headers": {
+      "Authorization": "Bearer fixture-key",
+      "Content-Type": "application/json",
+      "User-Agent": "fluxagent-cli/1.0.1 (platform; arch)",
+      "anthropic-version": "2023-06-01",
+      "originator": "fluxagent_cli",
+      "x-api-key": "fixture-key",
+      "x-app": "fluxagent-cli",
+      "x-client-app": "fluxagent-cli",
+      "x-client-request-id": "<generated-request-id>",
+      "x-fixture": "value",
+      "x-fluxagent-conversation-id": "<generated-conversation-id>",
+      "x-fluxagent-protocol": "anthropic_messages",
+      "x-fluxagent-round": "1",
+    },
+    "url": "http://fixture.invalid/v1/messages",
+  },
+  "text": "fixture answer",
+  "tokens": {
+    "cached": 5,
+    "input": 27,
+    "output": 3,
+    "source": "provider",
+    "total": 30,
+  },
+  "toolCalls": [],
+}
+`;
+
+exports[`provider wire parity frozen before adapter extraction > openai_chat / deepseek / deepseek-reasoner / custom=false 1`] = `
+{
+  "reasoningEffort": "high",
+  "reasoningEnabled": true,
+  "request": {
+    "body": {
+      "max_tokens": 4096,
+      "messages": [
+        {
+          "content": "fixture system",
+          "role": "system",
+        },
+        {
+          "content": "fixture input",
+          "role": "user",
+        },
+      ],
+      "model": "deepseek-reasoner",
+      "parallel_tool_calls": true,
+      "reasoning_effort": "high",
+      "stream": true,
+      "stream_options": {
+        "include_usage": true,
+      },
+      "thinking": {
+        "type": "enabled",
+      },
+      "tools": [
+        {
+          "function": {
+            "description": "Read a numbered line range, up to 200 lines by default within a strict byte budget. For giant lines or exact UTF-8 text, use byte_offset=0, then returned byte offsets and source_version. Byte mode preserves raw line endings and never splits a character. Do not mix byte mode with line offset/limit. Numbered snippets can be pasted directly into edit_file or multi_edit.",
+            "name": "read_file",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "byte_limit": {
+                  "description": "Byte budget in byte mode; default 16384, maximum 32768.",
+                  "maximum": 32768,
+                  "minimum": 4,
+                  "type": "integer",
+                },
+                "byte_offset": {
+                  "description": "Zero-based UTF-8 byte offset; enables raw byte mode. Start at 0, then use nextOffset.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer",
+                },
+                "limit": {
+                  "description": "Number of lines to read. Defaults to 200, maximum 2000.",
+                  "type": "number",
+                },
+                "offset": {
+                  "description": "Starting line number (1-based). Defaults to 1.",
+                  "type": "number",
+                },
+                "path": {
+                  "description": "File path (relative to workspace root)",
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "source_version": {
+                  "description": "Version returned by the first byte page; required for nonzero byte_offset. Changed files are rejected.",
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string",
+                },
+              },
+              "required": [
+                "path",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
+        {
+          "function": {
+            "description": "Apply a structured patch with add, update, move, or delete file operations. Hunks follow original source order. Use @@ <exact source line> to advance past a literal anchor, and *** End of File to require the final source suffix. Ambiguous matches fail; add exact context. All hunks are preflighted and file contents checked before writes. Multi-file writes are not atomic. Results report committed, pending and unknown effects with the failure stage. After partial/unknown outcomes, inspect current files and apply only the remaining changes; never blindly retry or roll back the full patch.",
+            "name": "apply_patch",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "patch": {
+                  "description": "Patch text wrapped in '*** Begin Patch' and '*** End Patch'. Update hunks use '@@' or '@@ <exact source line>'; context lines start with a space, removals with '-', additions with '+'. Optional '*** End of File' ends the file's last hunk. Do not supply a unified diff or Markdown fence.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "patch",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
+      ],
+    },
+    "headers": {
+      "Authorization": "Bearer fixture-key",
+      "Content-Type": "application/json",
+      "User-Agent": "fluxagent-cli/1.0.1 (platform; arch)",
+      "originator": "fluxagent_cli",
+      "x-app": "fluxagent-cli",
+      "x-client-app": "fluxagent-cli",
+      "x-client-request-id": "<generated-request-id>",
+      "x-fixture": "value",
+      "x-fluxagent-conversation-id": "<generated-conversation-id>",
+      "x-fluxagent-protocol": "openai_chat",
+      "x-fluxagent-round": "1",
+    },
+    "url": "http://fixture.invalid/v1/chat/completions",
+  },
+  "text": "fixture answer",
+  "tokens": {
+    "cached": 5,
+    "input": 20,
+    "output": 3,
+    "source": "provider",
+    "total": 23,
+  },
+  "toolCalls": [],
+}
+`;
+
+exports[`provider wire parity frozen before adapter extraction > openai_chat / kimi / kimi-k2.5 / custom=false 1`] = `
+{
+  "reasoningEffort": undefined,
+  "reasoningEnabled": true,
+  "request": {
+    "body": {
+      "max_completion_tokens": 4096,
+      "messages": [
+        {
+          "content": "fixture system",
+          "role": "system",
+        },
+        {
+          "content": "fixture input",
+          "role": "user",
+        },
+      ],
+      "model": "kimi-k2.5",
+      "parallel_tool_calls": true,
+      "prompt_cache_key": "tf:kimi-k2.5:vibe:7c3b7h:17tf42q",
+      "stream": true,
+      "stream_options": {
+        "include_usage": true,
+      },
+      "thinking": {
+        "type": "enabled",
+      },
+      "tool_choice": "auto",
+      "tools": [
+        {
+          "function": {
+            "description": "Read a numbered line range, up to 200 lines by default within a strict byte budget. For giant lines or exact UTF-8 text, use byte_offset=0, then returned byte offsets and source_version. Byte mode preserves raw line endings and never splits a character. Do not mix byte mode with line offset/limit. Numbered snippets can be pasted directly into edit_file or multi_edit.",
+            "name": "read_file",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "byte_limit": {
+                  "description": "Byte budget in byte mode; default 16384, maximum 32768.",
+                  "maximum": 32768,
+                  "minimum": 4,
+                  "type": "integer",
+                },
+                "byte_offset": {
+                  "description": "Zero-based UTF-8 byte offset; enables raw byte mode. Start at 0, then use nextOffset.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer",
+                },
+                "limit": {
+                  "description": "Number of lines to read. Defaults to 200, maximum 2000.",
+                  "type": "number",
+                },
+                "offset": {
+                  "description": "Starting line number (1-based). Defaults to 1.",
+                  "type": "number",
+                },
+                "path": {
+                  "description": "File path (relative to workspace root)",
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "source_version": {
+                  "description": "Version returned by the first byte page; required for nonzero byte_offset. Changed files are rejected.",
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string",
+                },
+              },
+              "required": [
+                "path",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
+        {
+          "function": {
+            "description": "Apply a structured patch with add, update, move, or delete file operations. Hunks follow original source order. Use @@ <exact source line> to advance past a literal anchor, and *** End of File to require the final source suffix. Ambiguous matches fail; add exact context. All hunks are preflighted and file contents checked before writes. Multi-file writes are not atomic. Results report committed, pending and unknown effects with the failure stage. After partial/unknown outcomes, inspect current files and apply only the remaining changes; never blindly retry or roll back the full patch.",
+            "name": "apply_patch",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "patch": {
+                  "description": "Patch text wrapped in '*** Begin Patch' and '*** End Patch'. Update hunks use '@@' or '@@ <exact source line>'; context lines start with a space, removals with '-', additions with '+'. Optional '*** End of File' ends the file's last hunk. Do not supply a unified diff or Markdown fence.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "patch",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
+      ],
+    },
+    "headers": {
+      "Authorization": "Bearer fixture-key",
+      "Content-Type": "application/json",
+      "User-Agent": "fluxagent-cli/1.0.1 (platform; arch)",
+      "originator": "fluxagent_cli",
+      "x-app": "fluxagent-cli",
+      "x-client-app": "fluxagent-cli",
+      "x-client-request-id": "<generated-request-id>",
+      "x-fixture": "value",
+      "x-fluxagent-conversation-id": "<generated-conversation-id>",
+      "x-fluxagent-protocol": "openai_chat",
+      "x-fluxagent-round": "1",
+    },
+    "url": "http://fixture.invalid/v1/chat/completions",
+  },
+  "text": "fixture answer",
+  "tokens": {
+    "cached": 5,
+    "input": 20,
+    "output": 3,
+    "source": "provider",
+    "total": 23,
+  },
+  "toolCalls": [],
+}
+`;
+
+exports[`provider wire parity frozen before adapter extraction > openai_chat / openai / gpt-5.6 / custom=false 1`] = `
+{
+  "reasoningEffort": "high",
+  "reasoningEnabled": true,
+  "request": {
+    "body": {
+      "max_tokens": 4096,
+      "messages": [
+        {
+          "content": "fixture system",
+          "role": "system",
+        },
+        {
+          "content": "fixture input",
+          "role": "user",
+        },
+      ],
+      "model": "gpt-5.6",
+      "parallel_tool_calls": true,
+      "prompt_cache_key": "tf:gpt-5.6:vibe:7c3b7h:1h3gm4m",
+      "prompt_cache_options": {
+        "ttl": "30m",
+      },
+      "reasoning_effort": "high",
+      "stream": true,
+      "stream_options": {
+        "include_usage": true,
+      },
+      "tool_choice": "auto",
+      "tools": [
+        {
+          "function": {
+            "description": "Read a numbered line range, up to 200 lines by default within a strict byte budget. For giant lines or exact UTF-8 text, use byte_offset=0, then returned byte offsets and source_version. Byte mode preserves raw line endings and never splits a character. Do not mix byte mode with line offset/limit. Numbered snippets can be pasted directly into edit_file or multi_edit.",
+            "name": "read_file",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "byte_limit": {
+                  "anyOf": [
+                    {
+                      "maximum": 32768,
+                      "minimum": 4,
+                      "type": "integer",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                  "description": "Byte budget in byte mode; default 16384, maximum 32768.",
+                },
+                "byte_offset": {
+                  "anyOf": [
+                    {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                  "description": "Zero-based UTF-8 byte offset; enables raw byte mode. Start at 0, then use nextOffset.",
+                },
+                "limit": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                  "description": "Number of lines to read. Defaults to 200, maximum 2000.",
+                },
+                "offset": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                  "description": "Starting line number (1-based). Defaults to 1.",
+                },
+                "path": {
+                  "description": "File path (relative to workspace root)",
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "source_version": {
+                  "anyOf": [
+                    {
+                      "pattern": "^[a-f0-9]{64}$",
+                      "type": "string",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                  "description": "Version returned by the first byte page; required for nonzero byte_offset. Changed files are rejected.",
+                },
+              },
+              "required": [
+                "path",
+                "offset",
+                "limit",
+                "byte_offset",
+                "byte_limit",
+                "source_version",
+              ],
+              "type": "object",
+            },
+            "strict": true,
+          },
+          "type": "function",
+        },
+        {
+          "function": {
+            "description": "Apply a structured patch with add, update, move, or delete file operations. Hunks follow original source order. Use @@ <exact source line> to advance past a literal anchor, and *** End of File to require the final source suffix. Ambiguous matches fail; add exact context. All hunks are preflighted and file contents checked before writes. Multi-file writes are not atomic. Results report committed, pending and unknown effects with the failure stage. After partial/unknown outcomes, inspect current files and apply only the remaining changes; never blindly retry or roll back the full patch.",
+            "name": "apply_patch",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "patch": {
+                  "description": "Patch text wrapped in '*** Begin Patch' and '*** End Patch'. Update hunks use '@@' or '@@ <exact source line>'; context lines start with a space, removals with '-', additions with '+'. Optional '*** End of File' ends the file's last hunk. Do not supply a unified diff or Markdown fence.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "patch",
+              ],
+              "type": "object",
+            },
+            "strict": true,
+          },
+          "type": "function",
+        },
+      ],
+    },
+    "headers": {
+      "Authorization": "Bearer fixture-key",
+      "Content-Type": "application/json",
+      "User-Agent": "fluxagent-cli/1.0.1 (platform; arch)",
+      "originator": "fluxagent_cli",
+      "x-app": "fluxagent-cli",
+      "x-client-app": "fluxagent-cli",
+      "x-client-request-id": "<generated-request-id>",
+      "x-fixture": "value",
+      "x-fluxagent-conversation-id": "<generated-conversation-id>",
+      "x-fluxagent-protocol": "openai_chat",
+      "x-fluxagent-round": "1",
+    },
+    "url": "http://fixture.invalid/v1/chat/completions",
+  },
+  "text": "fixture answer",
+  "tokens": {
+    "cached": 5,
+    "input": 20,
+    "output": 3,
+    "source": "provider",
+    "total": 23,
+  },
+  "toolCalls": [],
+}
+`;
+
+exports[`provider wire parity frozen before adapter extraction > openai_chat / openrouter / fixture-model / custom=false 1`] = `
+{
+  "reasoningEffort": undefined,
+  "reasoningEnabled": undefined,
+  "request": {
+    "body": {
+      "max_tokens": 4096,
+      "messages": [
+        {
+          "content": [
+            {
+              "cache_control": {
+                "type": "ephemeral",
+              },
+              "text": "fixture system",
+              "type": "text",
+            },
+          ],
+          "role": "system",
+        },
+        {
+          "content": [
+            {
+              "cache_control": {
+                "type": "ephemeral",
+              },
+              "text": "fixture input",
+              "type": "text",
+            },
+          ],
+          "role": "user",
+        },
+      ],
+      "model": "fixture-model",
+      "parallel_tool_calls": true,
+      "stream": true,
+      "stream_options": {
+        "include_usage": true,
+      },
+      "temperature": 0.2,
+      "tool_choice": "auto",
+      "tools": [
+        {
+          "function": {
+            "description": "Read a numbered line range, up to 200 lines by default within a strict byte budget. For giant lines or exact UTF-8 text, use byte_offset=0, then returned byte offsets and source_version. Byte mode preserves raw line endings and never splits a character. Do not mix byte mode with line offset/limit. Numbered snippets can be pasted directly into edit_file or multi_edit.",
+            "name": "read_file",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "byte_limit": {
+                  "description": "Byte budget in byte mode; default 16384, maximum 32768.",
+                  "maximum": 32768,
+                  "minimum": 4,
+                  "type": "integer",
+                },
+                "byte_offset": {
+                  "description": "Zero-based UTF-8 byte offset; enables raw byte mode. Start at 0, then use nextOffset.",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer",
+                },
+                "limit": {
+                  "description": "Number of lines to read. Defaults to 200, maximum 2000.",
+                  "type": "number",
+                },
+                "offset": {
+                  "description": "Starting line number (1-based). Defaults to 1.",
+                  "type": "number",
+                },
+                "path": {
+                  "description": "File path (relative to workspace root)",
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "source_version": {
+                  "description": "Version returned by the first byte page; required for nonzero byte_offset. Changed files are rejected.",
+                  "pattern": "^[a-f0-9]{64}$",
+                  "type": "string",
+                },
+              },
+              "required": [
+                "path",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
+        {
+          "function": {
+            "description": "Apply a structured patch with add, update, move, or delete file operations. Hunks follow original source order. Use @@ <exact source line> to advance past a literal anchor, and *** End of File to require the final source suffix. Ambiguous matches fail; add exact context. All hunks are preflighted and file contents checked before writes. Multi-file writes are not atomic. Results report committed, pending and unknown effects with the failure stage. After partial/unknown outcomes, inspect current files and apply only the remaining changes; never blindly retry or roll back the full patch.",
+            "name": "apply_patch",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "patch": {
+                  "description": "Patch text wrapped in '*** Begin Patch' and '*** End Patch'. Update hunks use '@@' or '@@ <exact source line>'; context lines start with a space, removals with '-', additions with '+'. Optional '*** End of File' ends the file's last hunk. Do not supply a unified diff or Markdown fence.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "patch",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
+      ],
+    },
+    "headers": {
+      "Authorization": "Bearer fixture-key",
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://fluxagent.dev",
+      "User-Agent": "fluxagent-cli/1.0.1 (platform; arch)",
+      "X-Title": "FluxAgent",
+      "originator": "fluxagent_cli",
+      "x-app": "fluxagent-cli",
+      "x-client-app": "fluxagent-cli",
+      "x-client-request-id": "<generated-request-id>",
+      "x-fixture": "value",
+      "x-fluxagent-conversation-id": "<generated-conversation-id>",
+      "x-fluxagent-protocol": "openai_chat",
+      "x-fluxagent-round": "1",
+    },
+    "url": "http://fixture.invalid/v1/chat/completions",
+  },
+  "text": "fixture answer",
+  "tokens": {
+    "cached": 5,
+    "input": 20,
+    "output": 3,
+    "source": "provider",
+    "total": 23,
+  },
+  "toolCalls": [],
+}
+`;
+
+exports[`provider wire parity frozen before adapter extraction > openai_responses / openai / gpt-5.6 / custom=false 1`] = `
+{
+  "reasoningEffort": "high",
+  "reasoningEnabled": true,
+  "request": {
+    "body": {
+      "input": [
+        {
+          "content": "fixture input",
+          "role": "user",
+        },
+      ],
+      "instructions": "fixture system",
+      "max_output_tokens": 4096,
+      "model": "gpt-5.6",
+      "parallel_tool_calls": true,
+      "prompt_cache_key": "tf:gpt-5.6:vibe:7c3b7h:14sosby",
+      "prompt_cache_options": {
+        "ttl": "30m",
+      },
+      "reasoning": {
+        "effort": "high",
+        "summary": "detailed",
+      },
+      "store": false,
+      "stream": true,
+      "text": {
+        "verbosity": "low",
+      },
+      "tool_choice": "auto",
+      "tools": [
+        {
+          "description": "Read a numbered line range, up to 200 lines by default within a strict byte budget. For giant lines or exact UTF-8 text, use byte_offset=0, then returned byte offsets and source_version. Byte mode preserves raw line endings and never splits a character. Do not mix byte mode with line offset/limit. Numbered snippets can be pasted directly into edit_file or multi_edit.",
+          "name": "read_file",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "byte_limit": {
+                "anyOf": [
+                  {
+                    "maximum": 32768,
+                    "minimum": 4,
+                    "type": "integer",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Byte budget in byte mode; default 16384, maximum 32768.",
+              },
+              "byte_offset": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Zero-based UTF-8 byte offset; enables raw byte mode. Start at 0, then use nextOffset.",
+              },
+              "limit": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Number of lines to read. Defaults to 200, maximum 2000.",
+              },
+              "offset": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Starting line number (1-based). Defaults to 1.",
+              },
+              "path": {
+                "description": "File path (relative to workspace root)",
+                "minLength": 1,
+                "type": "string",
+              },
+              "source_version": {
+                "anyOf": [
+                  {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Version returned by the first byte page; required for nonzero byte_offset. Changed files are rejected.",
+              },
+            },
+            "required": [
+              "path",
+              "offset",
+              "limit",
+              "byte_offset",
+              "byte_limit",
+              "source_version",
+            ],
+            "type": "object",
+          },
+          "strict": true,
+          "type": "function",
+        },
+        {
+          "description": "Apply a structured patch with add, update, move, or delete file operations. Hunks follow original source order. Use @@ <exact source line> to advance past a literal anchor, and *** End of File to require the final source suffix. Ambiguous matches fail; add exact context. All hunks are preflighted and file contents checked before writes. Multi-file writes are not atomic. Results report committed, pending and unknown effects with the failure stage. After partial/unknown outcomes, inspect current files and apply only the remaining changes; never blindly retry or roll back the full patch.",
+          "name": "apply_patch",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "patch": {
+                "description": "Patch text wrapped in '*** Begin Patch' and '*** End Patch'. Update hunks use '@@' or '@@ <exact source line>'; context lines start with a space, removals with '-', additions with '+'. Optional '*** End of File' ends the file's last hunk. Do not supply a unified diff or Markdown fence.",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "patch",
+            ],
+            "type": "object",
+          },
+          "strict": true,
+          "type": "function",
+        },
+      ],
+    },
+    "headers": {
+      "Authorization": "Bearer fixture-key",
+      "Content-Type": "application/json",
+      "User-Agent": "fluxagent-cli/1.0.1 (platform; arch)",
+      "originator": "fluxagent_cli",
+      "x-app": "fluxagent-cli",
+      "x-client-app": "fluxagent-cli",
+      "x-client-request-id": "<generated-request-id>",
+      "x-fixture": "value",
+      "x-fluxagent-conversation-id": "<generated-conversation-id>",
+      "x-fluxagent-protocol": "openai_responses",
+      "x-fluxagent-round": "1",
+    },
+    "url": "http://fixture.invalid/v1/responses",
+  },
+  "text": "fixture answer",
+  "tokens": {
+    "cached": 5,
+    "input": 20,
+    "output": 3,
+    "source": "provider",
+    "total": 23,
+  },
+  "toolCalls": [],
+}
+`;
+
+exports[`provider wire parity frozen before adapter extraction > openai_responses / openai / gpt-5.6 / custom=true 1`] = `
+{
+  "reasoningEffort": "high",
+  "reasoningEnabled": true,
+  "request": {
+    "body": {
+      "input": [
+        {
+          "content": "fixture input",
+          "role": "user",
+        },
+      ],
+      "instructions": "fixture system",
+      "max_output_tokens": 4096,
+      "model": "gpt-5.6",
+      "parallel_tool_calls": false,
+      "prompt_cache_key": "tf:gpt-5.6:vibe:7c3b7h:1jnwgpp",
+      "prompt_cache_options": {
+        "ttl": "30m",
+      },
+      "reasoning": {
+        "effort": "high",
+        "summary": "detailed",
+      },
+      "store": false,
+      "stream": true,
+      "text": {
+        "verbosity": "low",
+      },
+      "tool_choice": "auto",
+      "tools": [
+        {
+          "description": "Read a numbered line range, up to 200 lines by default within a strict byte budget. For giant lines or exact UTF-8 text, use byte_offset=0, then returned byte offsets and source_version. Byte mode preserves raw line endings and never splits a character. Do not mix byte mode with line offset/limit. Numbered snippets can be pasted directly into edit_file or multi_edit.",
+          "name": "read_file",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "byte_limit": {
+                "anyOf": [
+                  {
+                    "maximum": 32768,
+                    "minimum": 4,
+                    "type": "integer",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Byte budget in byte mode; default 16384, maximum 32768.",
+              },
+              "byte_offset": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Zero-based UTF-8 byte offset; enables raw byte mode. Start at 0, then use nextOffset.",
+              },
+              "limit": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Number of lines to read. Defaults to 200, maximum 2000.",
+              },
+              "offset": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Starting line number (1-based). Defaults to 1.",
+              },
+              "path": {
+                "description": "File path (relative to workspace root)",
+                "minLength": 1,
+                "type": "string",
+              },
+              "source_version": {
+                "anyOf": [
+                  {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Version returned by the first byte page; required for nonzero byte_offset. Changed files are rejected.",
+              },
+            },
+            "required": [
+              "path",
+              "offset",
+              "limit",
+              "byte_offset",
+              "byte_limit",
+              "source_version",
+            ],
+            "type": "object",
+          },
+          "strict": true,
+          "type": "function",
+        },
+        {
+          "description": "Apply a structured patch with add, update, move, or delete file operations. Hunks follow original source order. Use @@ <exact source line> to advance past a literal anchor, and *** End of File to require the final source suffix. Ambiguous matches fail; add exact context. All hunks are preflighted and file contents checked before writes. Multi-file writes are not atomic. Results report committed, pending and unknown effects with the failure stage. After partial/unknown outcomes, inspect current files and apply only the remaining changes; never blindly retry or roll back the full patch.
+Pass the literal patch text. Do not wrap it in JSON or a code fence.",
+          "format": {
+            "type": "text",
+          },
+          "name": "apply_patch",
+          "type": "custom",
+        },
+      ],
+    },
+    "headers": {
+      "Authorization": "Bearer fixture-key",
+      "Content-Type": "application/json",
+      "User-Agent": "fluxagent-cli/1.0.1 (platform; arch)",
+      "originator": "fluxagent_cli",
+      "x-app": "fluxagent-cli",
+      "x-client-app": "fluxagent-cli",
+      "x-client-request-id": "<generated-request-id>",
+      "x-fixture": "value",
+      "x-fluxagent-conversation-id": "<generated-conversation-id>",
+      "x-fluxagent-protocol": "openai_responses",
+      "x-fluxagent-round": "1",
+    },
+    "url": "http://fixture.invalid/v1/responses",
+  },
+  "text": "fixture answer",
+  "tokens": {
+    "cached": 5,
+    "input": 20,
+    "output": 3,
+    "source": "provider",
+    "total": 23,
+  },
+  "toolCalls": [],
+}
+`;

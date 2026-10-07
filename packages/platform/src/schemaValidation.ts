@@ -131,12 +131,12 @@ function validateSchemaValueInternal(
       ? schema.required.filter((name): name is string => typeof name === 'string')
       : []
     for (const name of required) {
-      if (record[name] === undefined || record[name] === null) {
+      if (!Object.prototype.hasOwnProperty.call(record, name) || record[name] === undefined) {
         return { valid: false, error: `Missing required parameter: ${path ? `${path}.` : ''}${name}` }
       }
     }
     if (schema.additionalProperties === false) {
-      const unexpected = Object.keys(record).find(name => !(name in properties))
+      const unexpected = Object.keys(record).find(name => !Object.prototype.hasOwnProperty.call(properties, name))
       if (unexpected) return { valid: false, error: `Unexpected parameter: ${path ? `${path}.` : ''}${unexpected}` }
     }
     for (const [name, propertySchema] of Object.entries(properties)) {
@@ -176,4 +176,66 @@ function schemaTypeMatches(type: string, value: unknown): boolean {
     case 'object': return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
     default: return true
   }
+}
+
+/** Shared optional-null schema semantics for local validation and model requests. */
+export function relaxNullableRequiredFields(schema: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = { ...schema }
+
+  for (const keyword of ['anyOf', 'oneOf', 'allOf']) {
+    const candidates = schema[keyword]
+    if (Array.isArray(candidates)) {
+      normalized[keyword] = candidates.map(candidate => (
+        candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+          ? relaxNullableRequiredFields(candidate as Record<string, unknown>)
+          : candidate
+      ))
+    }
+  }
+
+  if (schema.items && typeof schema.items === 'object' && !Array.isArray(schema.items)) {
+    normalized.items = relaxNullableRequiredFields(schema.items as Record<string, unknown>)
+  }
+
+  if (schema.additionalProperties && typeof schema.additionalProperties === 'object' && !Array.isArray(schema.additionalProperties)) {
+    normalized.additionalProperties = relaxNullableRequiredFields(schema.additionalProperties as Record<string, unknown>)
+  }
+
+  if (schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)) {
+    const properties = schema.properties as Record<string, unknown>
+    normalized.properties = Object.fromEntries(Object.entries(properties).map(([name, property]) => [
+      name,
+      property && typeof property === 'object' && !Array.isArray(property)
+        ? relaxNullableRequiredFields(property as Record<string, unknown>)
+        : property,
+    ]))
+
+    if (Array.isArray(schema.required)) {
+      normalized.required = schema.required.filter(name => {
+        if (typeof name !== 'string') return true
+        const property = properties[name]
+        return !property || typeof property !== 'object' || Array.isArray(property)
+          || !schemaAcceptsNull(property as Record<string, unknown>)
+      })
+    }
+  }
+
+  return normalized
+}
+
+function schemaAcceptsNull(schema: Record<string, unknown>): boolean {
+  const declaredTypes = Array.isArray(schema.type) ? schema.type : schema.type ? [schema.type] : []
+  if (declaredTypes.includes('null')) return true
+
+  for (const keyword of ['anyOf', 'oneOf']) {
+    const candidates = schema[keyword]
+    if (Array.isArray(candidates) && candidates.some(candidate => (
+      candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+      && schemaAcceptsNull(candidate as Record<string, unknown>)
+    ))) {
+      return true
+    }
+  }
+
+  return false
 }

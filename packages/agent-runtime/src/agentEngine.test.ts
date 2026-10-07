@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import { COMPUTER_DETAIL_REDACTED, COMPUTER_RESULT_REDACTED } from '@fluxos/contracts/computerPrivacy'
 import type { ToolExecutor } from '@fluxos/contracts/toolExecutor'
-import type { McpClient } from '@fluxos/extensions/mcp/client'
+import { McpClient } from '@fluxos/extensions/mcp/client'
 import { AgentEngine, countTurnContextChars, downgradeReasoningEffort, splitTurnsForCompaction, type AgentEventType } from './agentEngine'
 import { TaskManager } from './taskManager'
 import { NodeToolExecutor } from '@fluxos/tools/nodeToolExecutor'
@@ -281,7 +281,7 @@ describe('AgentEngine pause lifecycle', () => {
           const finish = () => resolve({
             success: false,
             error: 'aborted',
-            data: { stdout: '', stderr: '', exitCode: -1, aborted: true },
+            data: { stdout: '', stderr: '', exitCode: null, aborted: true },
           })
           if (signal?.aborted) finish()
           else signal?.addEventListener('abort', finish, { once: true })
@@ -319,7 +319,9 @@ describe('AgentEngine pause lifecycle', () => {
       expect(result).toMatchObject({
         isError: true,
         errorKind: 'abort',
-        output: 'Cancelled: paused by user',
+        interruption: { kind: 'pause', resumable: true },
+        data: { kind: 'command', process: { state: 'aborted', exitCode: null } },
+        output: 'Error (code unknown, aborted): aborted\nNo output',
       })
     } finally {
       engine.resume()
@@ -402,7 +404,7 @@ describe('AgentEngine pause lifecycle', () => {
     }, {} as ToolExecutor, stateProvider)
     ;(engine as unknown as { abortController: AbortController }).abortController = new AbortController()
     const dispatchTool = (engine as unknown as {
-      dispatchTool: (name: string, args: Record<string, unknown>, toolCallId: string) => Promise<string>
+      dispatchTool: (name: string, args: Record<string, unknown>, toolCallId: string) => Promise<string | Pick<ToolResult, 'output' | 'isError' | 'data'>>
     }).dispatchTool.bind(engine)
     const approvalStates: Array<{ state: string; decision?: string }> = []
     let requestPresented!: () => void
@@ -568,6 +570,7 @@ describe('AgentEngine MCP dispatch', () => {
     const tools = [
       {
         name: 'browser__observe',
+        hostPolicy: { isReadOnly: true, isDestructive: false, isConcurrencySafe: false, resources: [{ kind: 'browser', access: 'read', scope: 'host' }] },
         serverName: 'browser',
         description: 'Observe',
         inputSchema: { type: 'object', properties: {}, additionalProperties: false },
@@ -575,6 +578,7 @@ describe('AgentEngine MCP dispatch', () => {
       },
       {
         name: 'browser__click',
+        hostPolicy: { isReadOnly: false, isDestructive: true, isConcurrencySafe: false, resources: [{ kind: 'browser', access: 'write', scope: 'host' }] },
         serverName: 'browser',
         description: 'Click',
         inputSchema: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'], additionalProperties: false },
@@ -629,6 +633,13 @@ describe('AgentEngine MCP dispatch', () => {
       approvalPolicy: 'ask',
       workspacePath: workspace,
     }, {} as ToolExecutor, stateProvider)
+    const client = new McpClient()
+    client.registerLocalServer({ name: 'computer', tools: ['observe', 'click', 'type_text'].map(name => ({
+      name, description: 'Trusted computer fixture', inputSchema: { type: 'object' },
+      hostPolicy: { isReadOnly: name === 'observe', isDestructive: name !== 'observe', isConcurrencySafe: false,
+        resources: [{ kind: 'computer' as const, access: name === 'observe' ? 'read' as const : 'write' as const, scope: 'host' as const }] },
+    })), handler: async () => 'fixture' })
+    engine.setMcpClient(client)
     const requests: Array<Extract<AgentEventType, { type: 'ask:user' }>> = []
     engine.subscribe(event => {
       if (event.type !== 'ask:user') return
@@ -820,7 +831,7 @@ describe('AgentEngine structured patch dispatch', () => {
 *** Add File: added.txt
 +created
 *** End Patch`
-    await expect(dispatchTool('apply_patch', { patch }, 'patch-1')).resolves.toContain('Patch applied')
+    await expect(dispatchTool('apply_patch', { patch }, 'patch-1')).resolves.toMatchObject({ isError: false, data: { kind: 'patch', status: 'completed' } })
     expect(readFileSync(sourcePath, 'utf8')).toBe('after\n')
     expect(readFileSync(join(workspace, 'added.txt'), 'utf8')).toBe('created\n')
 
@@ -831,10 +842,10 @@ describe('AgentEngine structured patch dispatch', () => {
 -after
 +after
 *** End Patch`
-    await expect(dispatchTool('apply_patch', { patch: movePatch }, 'patch-move')).resolves.toContain('M moved.txt')
+    await expect(dispatchTool('apply_patch', { patch: movePatch }, 'patch-move')).resolves.toMatchObject({ data: { status: 'completed', committed: [expect.objectContaining({ displayPath: 'moved.txt', action: 'write' }), expect.objectContaining({ displayPath: 'sample.txt', action: 'delete' })] } })
     expect(readFileSync(join(workspace, 'moved.txt'), 'utf8')).toBe('after\n')
 
-    await expect(dispatchTool('apply_patch', { patch }, 'patch-2')).resolves.toMatch(/Error: (Failed to find expected lines|Write conflict|.*requires an existing file)/)
+    await expect(dispatchTool('apply_patch', { patch }, 'patch-2')).resolves.toMatchObject({ isError: true, data: { status: 'failed', failure: { stage: 'preflight', message: expect.stringContaining('requires an existing file') } } })
     const executeSingleTool = (engine as unknown as {
       executeSingleTool: (toolCall: ToolCall) => Promise<ToolResult>
     }).executeSingleTool.bind(engine)
@@ -1349,7 +1360,8 @@ describe('AgentEngine read bandwidth', () => {
       const { output, retrieval } = await dispatchTool('read_file', { path: 'conversation.jsonl', limit: 50 })
 
       expect(output).toContain('showing a bounded preview only')
-      expect(output).toContain('structured log/task reader')
+      expect(output).toContain('byte_offset=0')
+      expect(output).toContain('source_version')
       expect(output).not.toContain('offset=2')
       expect(retrieval.nextOffset).toBeUndefined()
       expect(retrieval.resources[0].textTruncated).toBe(true)
@@ -1410,7 +1422,7 @@ describe('AgentEngine tool scheduling and task contracts', () => {
     return new AgentEngine({ mode: 'vibe', approvalPolicy: 'full', workspacePath: workspace }, {} as ToolExecutor, stateProvider)
   }
 
-  it('uses dynamic concurrency metadata for command reads', () => {
+  it('does not infer shell concurrency from a read-like command prefix', () => {
     const engine = createEngine()
     const partitionToolCalls = (engine as unknown as {
       partitionToolCalls: (calls: ToolCall[]) => Array<{ isConcurrencySafe: boolean; toolCalls: ToolCall[] }>
@@ -1422,7 +1434,7 @@ describe('AgentEngine tool scheduling and task contracts', () => {
         { id: 'write-command', name: 'run_command', arguments: { command: 'npm run build', display_kind: 'build', display_title: '构建项目' } },
       ])
 
-      expect(batches.map(batch => batch.isConcurrencySafe)).toEqual([true, false])
+      expect(batches.map(batch => batch.isConcurrencySafe)).toEqual([false, false])
       expect(batches[0]?.toolCalls[0]?.id).toBe('read-command')
     } finally {
       engine.destroy()
@@ -1434,12 +1446,12 @@ describe('AgentEngine tool scheduling and task contracts', () => {
     const internals = engine as unknown as {
       workExecution: { startRun(id: string, objective: string): void }
       linkToolCallToActiveTask(toolCall: ToolCall): void
-      updateTaskToolCallStatus(toolCallId: string, status: 'completed' | 'error' | 'cancelled', result?: string, toolName?: string): void
+      updateTaskToolCallStatus(result: ToolResult): void
     }
     try {
       internals.workExecution.startRun('run-unlinked', 'Explore before task creation')
       internals.linkToolCallToActiveTask({ id: 'unlinked-tool', name: 'search_files', arguments: { pattern: '**/tasks*' } })
-      internals.updateTaskToolCallStatus('unlinked-tool', 'completed', 'No files found', 'search_files')
+      internals.updateTaskToolCallStatus({ toolCallId: 'unlinked-tool', name: 'search_files', isError: false, output: 'No files found' })
 
       const run = engine.getWorkExecutionSnapshot().runs[0]
       expect(run.activities['activity-unlinked-tool']).toMatchObject({ status: 'completed', result: 'No files found' })
@@ -1455,12 +1467,12 @@ describe('AgentEngine tool scheduling and task contracts', () => {
     }).dispatchTool.bind(engine)
 
     try {
-      const root = JSON.parse(await dispatchTool('create_task', {
+      const root = JSON.parse((await dispatchTool('create_task', {
         title: 'Root', description: 'Root task', priority: 'major',
-      }, 'create-root')) as { id: string }
-      const child = JSON.parse(await dispatchTool('create_task', {
+      }, 'create-root') as unknown as ToolResult).output) as { id: string }
+      const child = JSON.parse((await dispatchTool('create_task', {
         title: 'Child', description: 'Child task', priority: 'medium', parent_id: root.id,
-      }, 'create-child')) as { id: string }
+      }, 'create-child') as unknown as ToolResult).output) as { id: string }
       await dispatchTool('update_task', { task_id: child.id, status: 'completed' }, 'complete-child')
 
       const filtered = JSON.parse(await dispatchTool('list_tasks', {
@@ -1584,13 +1596,13 @@ describe('AgentEngine tool scheduling and task contracts', () => {
         stage: 'direction-count',
         title: 'Spoofed',
         question: 'Continue?',
-      }, 'workflow-spoof')).resolves.toContain('is not active')
+      }, 'workflow-spoof')).resolves.toMatchObject({ isError: true, errorKind: 'validation', output: expect.stringContaining('is not active') })
       await expect(dispatchTool('present_workflow', {
         workflow: 'design-atlas',
         stage: 'undeclared-stage',
         title: 'Spoofed',
         question: 'Continue?',
-      }, 'workflow-stage-spoof')).resolves.toContain('is not declared')
+      }, 'workflow-stage-spoof')).resolves.toMatchObject({ isError: true, errorKind: 'validation', output: expect.stringContaining('is not declared') })
     } finally {
       engine.destroy()
     }
@@ -1620,14 +1632,14 @@ describe('AgentEngine tool scheduling and task contracts', () => {
         title: 'Research',
         question: 'Research?',
         choices: [{ id: 'quick', label: 'Quick' }],
-      }, 'workflow-repeat')).resolves.toContain('already been resolved')
+      }, 'workflow-repeat')).resolves.toMatchObject({ isError: true, errorKind: 'validation', output: expect.stringContaining('already been resolved') })
       await expect(dispatchTool('present_workflow', {
         workflow: 'design-atlas',
         stage: 'direction-gallery',
         title: 'Gallery',
         question: 'Choose?',
         choices: [{ id: '01', label: 'Direction 01' }],
-      }, 'workflow-skip')).resolves.toContain('direction-count must be resolved before direction-gallery')
+      }, 'workflow-skip')).resolves.toMatchObject({ isError: true, errorKind: 'validation', output: expect.stringContaining('direction-count must be resolved before direction-gallery') })
     } finally {
       engine.destroy()
     }
@@ -1651,11 +1663,11 @@ describe('AgentEngine tool scheduling and task contracts', () => {
       await expect(dispatchTool('present_workflow', {
         ...base,
         choices: [{ id: '1', label: 'One' }, { id: '1', label: 'Duplicate' }],
-      }, 'workflow-duplicate')).resolves.toContain('ids must be unique')
+      }, 'workflow-duplicate')).resolves.toMatchObject({ isError: true, errorKind: 'validation', output: expect.stringContaining('ids must be unique') })
       await expect(dispatchTool('present_workflow', {
         ...base,
         input: { type: 'number', min: 20, max: 1 },
-      }, 'workflow-range')).resolves.toContain('range is invalid')
+      }, 'workflow-range')).resolves.toMatchObject({ isError: true, errorKind: 'validation', output: expect.stringContaining('range is invalid') })
     } finally {
       engine.destroy()
     }
@@ -1830,6 +1842,7 @@ describe('AgentEngine command output', () => {
       expect(result.output).toContain('stdout:\npartial output')
       expect(result.output).toContain('stderr:\nbuild failed')
       expect(result.isError).toBe(false)
+      expect(result.data).toMatchObject({ kind: 'command', process: { state: 'exited', exitCode: 2 }, expectedExitCodes: [0] })
     } finally {
       engine.destroy()
     }
@@ -1844,11 +1857,12 @@ describe('AgentEngine command output', () => {
       const result = await executeSingleTool({
         id: 'command-query-miss-1',
         name: 'run_command',
-        arguments: { command: 'git config --get missing.key', display_kind: 'check', display_title: '检查 Git 配置' },
+        arguments: { command: 'git config --get missing.key', display_kind: 'check', display_title: '检查 Git 配置', expected_exit_codes: [0, 1] },
       })
 
       expect(result.output).toBe('Process exited with code 1\nNo output')
       expect(result.isError).toBe(false)
+      expect(result.data).toMatchObject({ process: { state: 'exited', exitCode: 1 }, expectedExitCodes: [0, 1] })
     } finally {
       engine.destroy()
     }
@@ -1997,6 +2011,8 @@ describe('AgentEngine command output', () => {
         undefined,
         true,
         { kind: 'install', title: '安装项目依赖', detail: undefined, previewUrl: undefined },
+        [0],
+        undefined,
       )
       expect(foreground.output).toContain('Process exited with code 0')
       expect(runCommand).toHaveBeenCalledOnce()
@@ -2168,6 +2184,7 @@ describe('AgentEngine repeated tool failure loop breaker', () => {
 
       expect(callModel).toHaveBeenCalledTimes(3)
       expect(executeToolCalls).toHaveBeenCalledTimes(3)
+      expect(turns.flatMap(turn => turn.toolResults ?? []).map(result => result.output)).toEqual(Array(3).fill('Error: Unexpected parameter: file_path'))
       expect(turns.at(-1)).toMatchObject({
         role: 'assistant',
         content: expect.stringContaining('Stopped a repeated tool-call loop after 3 identical failures'),
@@ -2336,7 +2353,7 @@ describe('AgentEngine Git integration state', () => {
 })
 
 describe('AgentEngine permission requests', () => {
-  it('presents capability negotiation as a current-task enablement', async () => {
+  it('does not present an external capability name as trusted native enablement', async () => {
     const workspace = process.cwd()
     const stateProvider = new DefaultAgentStateProvider({
       provider: 'custom',
@@ -2371,8 +2388,8 @@ describe('AgentEngine permission requests', () => {
         type: 'ask:user',
         requestId: 'capability-approval-1',
         toolName: 'capabilities__request',
-        question: '为当前任务启用电脑操控吗？',
-        reason: '需要在 Keynote 中整理演示文稿。',
+        question: '允许执行 capabilities__request 吗？',
+        reason: 'MCP tools require explicit approval before sharing data or taking action',
       })])
     } finally {
       engine.destroy()
@@ -2432,7 +2449,7 @@ describe('AgentEngine permission requests', () => {
 })
 
 describe('AgentEngine interrupted streams', () => {
-  function createHarness(provider: 'custom' | 'anthropic', streamLine?: string | string[], abortStream = true) {
+  function createHarness(provider: 'custom' | 'anthropic', streamLine?: string | string[], abortStream = true, prepareActiveStream = true) {
     const workspace = process.cwd()
     const runtimeConfig = {
       provider,
@@ -2465,7 +2482,7 @@ describe('AgentEngine interrupted streams', () => {
       maxTokens: 4096,
       workspacePath: workspace,
     }, executor, stateProvider)
-    ;(engine as unknown as { abortController: AbortController }).abortController = new AbortController()
+    if (prepareActiveStream) (engine as unknown as { abortController: AbortController }).abortController = new AbortController()
     const events: AgentEventType[] = []
     engine.subscribe(event => events.push(event))
     return { engine, stateProvider, events, streamAbort }
@@ -2477,7 +2494,8 @@ describe('AgentEngine interrupted streams', () => {
     })}`
     const { engine, stateProvider, events, streamAbort } = createHarness('custom', line)
     const internal = engine as unknown as {
-      callOpenAICompatibleAPI: (
+      callModelProvider: (
+        protocol: 'openai_chat',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
         messages: Array<Record<string, unknown>>,
@@ -2486,7 +2504,7 @@ describe('AgentEngine interrupted streams', () => {
     }
 
     try {
-      const turn = await internal.callOpenAICompatibleAPI(
+      const turn = await internal.callModelProvider('openai_chat',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
         [{ role: 'system', content: 'system' }, { role: 'user', content: 'hello' }],
@@ -2511,20 +2529,19 @@ describe('AgentEngine interrupted streams', () => {
     })}`
     const { engine, stateProvider, events } = createHarness('anthropic', line)
     const internal = engine as unknown as {
-      callAnthropicAPI: (
+      callModelProvider: (
+        protocol: 'anthropic_messages',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
-        systemPrompt: string,
         messages: Array<Record<string, unknown>>,
         startTime: number,
       ) => Promise<AgentTurn>
     }
 
     try {
-      const turn = await internal.callAnthropicAPI(
+      const turn = await internal.callModelProvider('anthropic_messages',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
-        'system',
         [{ role: 'user', content: 'hello' }],
         Date.now(),
       )
@@ -2546,20 +2563,19 @@ describe('AgentEngine interrupted streams', () => {
     ]
     const { engine, stateProvider, events } = createHarness('anthropic', lines, false)
     const internal = engine as unknown as {
-      callAnthropicAPI: (
+      callModelProvider: (
+        protocol: 'anthropic_messages',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
-        systemPrompt: string,
         messages: Array<Record<string, unknown>>,
         startTime: number,
       ) => Promise<AgentTurn>
     }
 
     try {
-      const turn = await internal.callAnthropicAPI(
+      const turn = await internal.callModelProvider('anthropic_messages',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
-        'system',
         [{ role: 'user', content: 'hello' }],
         Date.now(),
       )
@@ -2582,20 +2598,19 @@ describe('AgentEngine interrupted streams', () => {
     ]
     const { engine, stateProvider, events } = createHarness('anthropic', lines, false)
     const internal = engine as unknown as {
-      callAnthropicAPI: (
+      callModelProvider: (
+        protocol: 'anthropic_messages',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
-        systemPrompt: string,
         messages: Array<Record<string, unknown>>,
         startTime: number,
       ) => Promise<AgentTurn>
     }
 
     try {
-      const turn = await internal.callAnthropicAPI(
+      const turn = await internal.callModelProvider('anthropic_messages',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
-        'system',
         [{ role: 'user', content: 'hello' }],
         Date.now(),
       )
@@ -2612,7 +2627,8 @@ describe('AgentEngine interrupted streams', () => {
   it('does not create an empty assistant turn when interrupted before output', async () => {
     const { engine, stateProvider, events } = createHarness('custom')
     const internal = engine as unknown as {
-      callOpenAICompatibleAPI: (
+      callModelProvider: (
+        protocol: 'openai_chat',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
         messages: Array<Record<string, unknown>>,
@@ -2621,7 +2637,7 @@ describe('AgentEngine interrupted streams', () => {
     }
 
     try {
-      await expect(internal.callOpenAICompatibleAPI(
+      await expect(internal.callModelProvider('openai_chat',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
         [{ role: 'system', content: 'system' }, { role: 'user', content: 'hello' }],
@@ -2642,7 +2658,8 @@ describe('AgentEngine interrupted streams', () => {
     })}`
     const { engine, stateProvider, events } = createHarness('custom', line)
     const internal = engine as unknown as {
-      callOpenAICompatibleAPI: (
+      callModelProvider: (
+        protocol: 'openai_chat',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
         messages: Array<Record<string, unknown>>,
@@ -2651,7 +2668,7 @@ describe('AgentEngine interrupted streams', () => {
     }
 
     try {
-      const turn = await internal.callOpenAICompatibleAPI(
+      const turn = await internal.callModelProvider('openai_chat',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
         [{ role: 'system', content: 'system' }, { role: 'user', content: 'hello' }],
@@ -2674,7 +2691,8 @@ describe('AgentEngine interrupted streams', () => {
     })}`
     const { engine, stateProvider, events } = createHarness('custom', line, false)
     const internal = engine as unknown as {
-      callOpenAICompatibleAPI: (
+      callModelProvider: (
+        protocol: 'openai_chat',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
         messages: Array<Record<string, unknown>>,
@@ -2683,7 +2701,7 @@ describe('AgentEngine interrupted streams', () => {
     }
 
     try {
-      const turn = await internal.callOpenAICompatibleAPI(
+      const turn = await internal.callModelProvider('openai_chat',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
         [{ role: 'system', content: 'system' }, { role: 'user', content: 'hello' }],
@@ -2706,20 +2724,19 @@ describe('AgentEngine interrupted streams', () => {
     })}`
     const { engine, stateProvider, events } = createHarness('anthropic', line, false)
     const internal = engine as unknown as {
-      callAnthropicAPI: (
+      callModelProvider: (
+        protocol: 'anthropic_messages',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
-        systemPrompt: string,
         messages: Array<Record<string, unknown>>,
         startTime: number,
       ) => Promise<AgentTurn>
     }
 
     try {
-      const turn = await internal.callAnthropicAPI(
+      const turn = await internal.callModelProvider('anthropic_messages',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
-        'system',
         [{ role: 'user', content: 'hello' }],
         Date.now(),
       )
@@ -2741,20 +2758,19 @@ describe('AgentEngine interrupted streams', () => {
     ]
     const { engine, stateProvider, events } = createHarness('anthropic', lines, false)
     const internal = engine as unknown as {
-      callAnthropicAPI: (
+      callModelProvider: (
+        protocol: 'anthropic_messages',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
-        systemPrompt: string,
         messages: Array<Record<string, unknown>>,
         startTime: number,
       ) => Promise<AgentTurn>
     }
 
     try {
-      const turn = await internal.callAnthropicAPI(
+      const turn = await internal.callModelProvider('anthropic_messages',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
-        'system',
         [{ role: 'user', content: 'hello' }],
         Date.now(),
       )
@@ -2786,6 +2802,46 @@ describe('AgentEngine interrupted streams', () => {
     }
   })
 
+  it.each([
+    ['custom', 'length'],
+    ['custom', 'stop'],
+    ['anthropic', 'max_tokens'],
+  ] as const)('preserves reasoning-only %s output ending with %s without repeating the request', async (provider, finishReason) => {
+    const reasoning = '先规划实现，再调用写文件工具。'
+    const frames = provider === 'anthropic'
+      ? [
+          { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '' } },
+          { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: reasoning } },
+          { type: 'content_block_stop', index: 0 },
+          { type: 'message_delta', delta: { stop_reason: finishReason }, usage: { output_tokens: 4096 } },
+          { type: 'message_stop' },
+        ]
+      : [
+          { choices: [{ delta: { reasoning_content: reasoning }, finish_reason: null }] },
+          { choices: [{ delta: {}, finish_reason: finishReason }], usage: { prompt_tokens: 12, completion_tokens: finishReason === 'length' ? 4096 : 32 } },
+        ]
+    const { engine, events } = createHarness(provider, frames.map(frame => `data: ${JSON.stringify(frame)}`), false, false)
+    vi.spyOn(engine as any, 'initializeGit').mockResolvedValue(true)
+    vi.spyOn(engine as any, 'prepareContextWindow').mockResolvedValue(undefined)
+    const callModel = vi.spyOn(engine as any, 'callModel')
+    try {
+      const turns = await engine.run('构建游戏')
+      expect(callModel).toHaveBeenCalledTimes(1)
+      expect(turns.filter(turn => turn.role === 'assistant')).toHaveLength(1)
+      expect(turns.at(-1)).toMatchObject({
+        content: expect.stringContaining('已停止自动重试'),
+        metadata: { interrupted: true, thinking: { content: reasoning } },
+      })
+      expect(turns.at(-1)?.content).not.toContain(reasoning)
+      if (finishReason !== 'stop') expect(turns.at(-1)?.content).toContain('4096 tokens')
+      expect(engine.getWorkExecutionSnapshot().runs.at(-1)?.status).toBe('partial')
+      expect(engine.getSession().turns.at(-1)?.metadata?.thinking?.content).toBe(reasoning)
+      expect(events.filter(event => event.type === 'turn:complete')).toContainEqual(expect.objectContaining({
+        turn: expect.objectContaining({ metadata: expect.objectContaining({ thinking: expect.objectContaining({ content: reasoning }) }) }),
+      }))
+    } finally { engine.destroy() }
+  })
+
   it('marks reasoning-only Chat completion stopped by the output limit as interrupted', async () => {
     const lines = [
       `data: ${JSON.stringify({
@@ -2798,7 +2854,8 @@ describe('AgentEngine interrupted streams', () => {
     ]
     const { engine, stateProvider, events } = createHarness('custom', lines, false)
     const internal = engine as unknown as {
-      callOpenAICompatibleAPI: (
+      callModelProvider: (
+        protocol: 'openai_chat',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
         messages: Array<Record<string, unknown>>,
@@ -2807,7 +2864,7 @@ describe('AgentEngine interrupted streams', () => {
     }
 
     try {
-      const turn = await internal.callOpenAICompatibleAPI(
+      const turn = await internal.callModelProvider('openai_chat',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
         [{ role: 'system', content: 'system' }, { role: 'user', content: 'hello' }],
@@ -2849,7 +2906,8 @@ describe('AgentEngine interrupted streams', () => {
     ]
     const { engine, stateProvider } = createHarness('custom', lines, false)
     const internal = engine as unknown as {
-      callOpenAICompatibleAPI: (
+      callModelProvider: (
+        protocol: 'openai_chat',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
         messages: Array<Record<string, unknown>>,
@@ -2858,7 +2916,7 @@ describe('AgentEngine interrupted streams', () => {
     }
 
     try {
-      const turn = await internal.callOpenAICompatibleAPI(
+      const turn = await internal.callModelProvider('openai_chat',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
         [{ role: 'system', content: 'system' }, { role: 'user', content: 'hello' }],
@@ -2892,7 +2950,8 @@ describe('AgentEngine interrupted streams', () => {
     })}`
     const { engine, stateProvider } = createHarness('custom', line, false)
     const internal = engine as unknown as {
-      callOpenAICompatibleAPI: (
+      callModelProvider: (
+        protocol: 'openai_chat',
         config: ReturnType<DefaultAgentStateProvider['getActiveConfig']>,
         model: ReturnType<DefaultAgentStateProvider['getActiveModel']>,
         messages: Array<Record<string, unknown>>,
@@ -2901,7 +2960,7 @@ describe('AgentEngine interrupted streams', () => {
     }
 
     try {
-      await expect(internal.callOpenAICompatibleAPI(
+      await expect(internal.callModelProvider('openai_chat',
         stateProvider.getActiveConfig(),
         stateProvider.getActiveModel(),
         [{ role: 'system', content: 'system' }, { role: 'user', content: 'hello' }],
@@ -3008,6 +3067,32 @@ describe('AgentEngine model protocol compatibility', () => {
     return { engine, executor, stateProvider, events, callModel }
   }
 
+  it('tracks transport retries separately and measures the successful response chunks', async () => {
+    const harness = createProtocolHarness('custom', 'gpt-5.6-sol', async (_url, _headers, _body, onLine, options) => {
+      options?.onAttempt?.(0)
+      options?.onRetry?.(429)
+      options?.onAttempt?.(1)
+      onLine('data: ' + JSON.stringify({ type: 'response.output_text.delta', delta: 'done' }))
+      onLine('data: ' + JSON.stringify({ type: 'response.completed', response: {
+        usage: { input_tokens: 100, output_tokens: 10 },
+        output: [{ type: 'message', content: [{ type: 'output_text', text: 'done' }] }],
+      } }))
+      return { success: true, status: 200 }
+    })
+    try {
+      await harness.callModel()
+      const records = harness.events.filter(event => event.type === 'model:request').map(event => event.request)
+      expect(summarizeModelRequests(records)).toMatchObject({ attempts: 2, requests: 1, unknownUsageAttempts: 1 })
+      const failed = records.find(record => record.status === 'failed')!
+      const successful = records.at(-1)!
+      expect(failed.httpStatus).toBe(429)
+      expect(failed.outputTiming).toBeUndefined()
+      expect(successful.status).toBe('completed')
+      expect(successful.outputTiming?.firstAnswerChunkMs).toBeGreaterThanOrEqual(0)
+      expect(successful.durationMs).toBeGreaterThanOrEqual(successful.outputTiming!.firstAnswerChunkMs!)
+    } finally { harness.engine.destroy() }
+  })
+
   it('tracks rejected and successful physical attempts separately with one logical request', async () => {
     let calls = 0
     const harness = createProtocolHarness('custom', 'gpt-5.6-sol', async (_url, _headers, _body, onLine) => {
@@ -3025,6 +3110,8 @@ describe('AgentEngine model protocol compatibility', () => {
       const summary = summarizeModelRequests(requests)
       expect(summary).toMatchObject({ attempts: 2, requests: 1, knownUsageAttempts: 1, unknownUsageAttempts: 1, totals: { input: 1200, output: 50, cached: 1000, reasoning: 20 } })
       expect(requests.at(-1)).toMatchObject({ providerResponseId: 'response-measured', status: 'completed', usageFinal: true })
+      expect(requests.at(-1)?.outputTiming?.firstAnswerChunkMs).toBeGreaterThanOrEqual(0)
+      expect(requests.at(-1)?.requestSettings?.maxOutputTokens).toBe(4096)
       expect(turn.metadata?.modelAttemptId).toBe(requests.at(-1)?.id)
       expect(turn.metadata?.tokens).toMatchObject({ input: 1200, output: 50, cached: 1000, reasoning: 20 })
       expect(JSON.stringify(requests)).not.toContain('test-key')
@@ -3047,7 +3134,7 @@ describe('AgentEngine model protocol compatibility', () => {
 
   it('records non-streamed compaction consumption without losing request identity', async () => {
     const harness = createProtocolHarness('custom', 'gpt-5.6-sol', async () => ({ success: true }))
-    harness.executor.sendMessage = vi.fn(async (_url, _headers, _body, options) => { options?.onAttempt?.(0); options?.onAttempt?.(1); return { success: true, data: JSON.stringify({
+    harness.executor.sendMessage = vi.fn(async (_url, _headers, _body, options) => { options?.onAttempt?.(0); options?.onRetry?.(429); options?.onAttempt?.(1); return { success: true, data: JSON.stringify({
       id: 'compact-response', usage: { input_tokens: 2500, output_tokens: 80, input_tokens_details: { cached_tokens: 2000 } }, output_text: '<continuation_summary>state</continuation_summary>',
     }) } })
     try {
@@ -3142,7 +3229,7 @@ describe('AgentEngine model protocol compatibility', () => {
       const repairedResultMessage = requestBody?.messages[assistantIndex + 1]
       expect(repairedResultMessage?.role).toBe('user')
       expect(repairedResultMessage?.content.slice(0, 2)).toEqual([
-        expect.objectContaining({ type: 'tool_result', tool_use_id: 'tc1', content: 'a' }),
+        expect.objectContaining({ type: 'tool_result', tool_use_id: 'tc1', is_error: false, content: JSON.stringify({ status: 'completed', isError: false, output: 'a' }) }),
         expect.objectContaining({
           type: 'tool_result',
           tool_use_id: 'tc2',

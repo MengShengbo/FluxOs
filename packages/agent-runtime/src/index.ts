@@ -88,8 +88,6 @@ export {
   getToolsForMode,
   getToolByName,
   getToolsByCategory,
-  toolsToOpenAIFormat,
-  toolsToAnthropicFormat,
 } from '@fluxos/tools/toolRegistry'
 export { PermissionPipeline, createDefaultPipeline } from '@fluxos/tools/permissions'
 export { TurnStrategyPlanner } from './turnStrategy'
@@ -105,7 +103,6 @@ export type { TaskSystemCreationEvent, TaskToolDispatchContext } from './taskToo
 
 export * from '@fluxos/platform/profilePaths'
 export * from '@fluxos/platform/networkProxy'
-export * from '@fluxos/models/credentialStore'
 export * from '@fluxos/extensions'
 export * from './runtime/approvalCoordinator'
 export * from './runtime/sessionRegistry'
@@ -113,3 +110,5 @@ export * from './runtime/systems/index'
 
 export { AgentOrchestrator } from './agentOrchestrator'
 export type { AgentOrchestratorHost, AutomationSubAgentPolicy } from './agentOrchestrator'
+
+export { toolsToOpenAIFormat, toolsToAnthropicFormat } from '@fluxos/models/toolSchemas'
