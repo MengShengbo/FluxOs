@@ -3,6 +3,16 @@ import { normalizeSubAgentConfig } from '../agents/loader'
 
 const ALLOWED_PERMISSIONS = new Set<PluginPermission>(PLUGIN_PERMISSIONS)
 
+export function assertApprovedPluginPermissions(manifest: PluginManifest, approvedPermissions: PluginPermission[]): void {
+  const requested = new Set(manifest.permissions || [])
+  const approved = new Set(approvedPermissions)
+  if ([...requested].some(permission => !ALLOWED_PERMISSIONS.has(permission))
+    || [...approved].some(permission => !ALLOWED_PERMISSIONS.has(permission) || !requested.has(permission))
+    || [...requested].some(permission => !approved.has(permission))) {
+    throw new Error('Approved permissions must be approved exactly as requested in the current plugin manifest')
+  }
+}
+
 function safeRelativePath(value: string, label: string): string {
   if (!value || value.startsWith('/') || /^[a-z]:[\\/]/i.test(value)) throw new Error(`${label} must be a relative path`)
   const normalized = value.replaceAll('\\', '/')

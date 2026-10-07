@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PLUGIN_PERMISSIONS, type PluginManifest, type PluginPermission } from '@fluxos/contracts/pluginTypes'
+import { assertApprovedPluginPermissions } from './pluginManifestValidation'
 
 interface PendingInvocation {
   resolve(value: unknown): void
@@ -45,13 +46,19 @@ export class PluginHostProcess {
   private child: ChildProcessWithoutNullStreams | null = null
   private readonly pending = new Map<string, PendingInvocation>()
   private readyPromise: Promise<void> | null = null
+  private exitPromise: Promise<void> | null = null
+  private failure: Error | null = null
   private stopped = false
 
   constructor(private readonly options: PluginHostOptions) {}
 
   async start(): Promise<void> {
+    // Only an explicit start may revive a revoked or failed host, after exit.
+    if (this.stopped && this.child) await this.exitPromise
     if (this.readyPromise) return this.readyPromise
+    assertApprovedPluginPermissions(this.options.manifest, this.options.approvedPermissions)
     this.stopped = false
+    this.failure = null
     const manifestMain = this.options.manifest.main
     if (!manifestMain) return
     const unsupported = unsupportedCodePermissions(this.options.manifest.permissions)
@@ -93,10 +100,11 @@ export class PluginHostProcess {
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     this.child = child
+    this.exitPromise = new Promise(resolveExit => child.once('close', resolveExit))
     this.readyPromise = new Promise<void>((resolveReady, rejectReady) => {
       let settled = false
       const succeed = () => { if (settled) return; settled = true; clearTimeout(timer); resolveReady() }
-      const fail = (error: Error) => { if (settled) return; settled = true; clearTimeout(timer); child.kill('SIGKILL'); rejectReady(error) }
+      const fail = (error: Error) => { if (settled) return; settled = true; this.stopped = true; clearTimeout(timer); child.kill('SIGKILL'); rejectReady(error) }
       const timer = setTimeout(() => fail(new Error('Plugin activation timed out')), 8_000)
       let buffer = ''
       child.stdout.setEncoding('utf8')
@@ -115,32 +123,38 @@ export class PluginHostProcess {
         }
       })
       child.once('error', fail)
-      child.once('exit', (code, signal) => {
+      child.once('close', (code, signal) => {
         clearTimeout(timer)
         const message = `Plugin host exited (${signal || code || 0})`
         if (!settled) fail(new Error(message))
-        for (const request of this.pending.values()) { clearTimeout(request.timer); request.reject(new Error(message)) }
+        const failure = this.failure
+        const notifyCrash = failure !== null || !this.stopped
+        this.stopped = true
+        for (const request of this.pending.values()) { clearTimeout(request.timer); request.reject(failure || new Error(message)) }
         this.pending.clear()
         this.child = null
         this.readyPromise = null
-        if (!this.stopped) this.options.onCrash?.(message)
+        if (notifyCrash) this.options.onCrash?.(failure?.message || message)
       })
       child.stderr.setEncoding('utf8')
       child.stderr.on('data', () => {})
+      child.stdin.on('error', error => this.abort(error))
     })
     return this.readyPromise
   }
 
   async invoke(handler: string, args: Record<string, unknown>, timeoutMs = 30_000): Promise<unknown> {
+    if (this.stopped) throw new Error('Plugin host is stopped; explicitly start it before invoking')
     await this.start()
+    if (this.stopped) throw new Error('Plugin host is stopped; explicitly start it before invoking')
     if (!this.child) throw new Error('Plugin host is not running')
     const requestId = randomUUID()
     const payload = JSON.stringify({ type: 'invoke', requestId, handler, args })
     if (Buffer.byteLength(payload) > 1024 * 1024) throw new Error('Plugin request exceeds 1 MB')
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pending.delete(requestId)
-        reject(new Error(`Plugin handler timed out: ${handler}`))
+        // Reject on actual exit: a timed-out handler must not keep writing.
+        this.abort(new Error(`Plugin handler timed out: ${handler}; outcome unknown`))
       }, Math.max(250, Math.min(120_000, timeoutMs)))
       this.pending.set(requestId, { resolve, reject, timer })
       this.child!.stdin.write(`${payload}\n`)
@@ -154,13 +168,27 @@ export class PluginHostProcess {
       this.readyPromise = null
       return
     }
-    child.stdin.write(`${JSON.stringify({ type: 'deactivate' })}\n`)
-    await new Promise<void>(resolveStop => {
-      const timer = setTimeout(() => { child.kill('SIGKILL'); resolveStop() }, 2_000)
-      child.once('exit', () => { clearTimeout(timer); resolveStop() })
+    await new Promise<void>((resolveStop, rejectStop) => {
+      let confirmation: ReturnType<typeof setTimeout> | undefined
+      const onExit = () => { clearTimeout(timer); clearTimeout(confirmation); resolveStop() }
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL')
+        confirmation = setTimeout(() => {
+          child.removeListener('close', onExit)
+          rejectStop(new Error('Plugin host termination was not confirmed; outcome unknown'))
+        }, 2_000)
+      }, 2_000)
+      child.once('close', onExit)
+      if (child.exitCode !== null || child.signalCode !== null) void this.exitPromise?.then(onExit)
+      else child.stdin.write(`${JSON.stringify({ type: 'deactivate' })}\n`, error => { if (error) child.kill('SIGKILL') })
     })
-    this.child = null
-    this.readyPromise = null
+  }
+
+  private abort(error: Error): void {
+    if (!this.child || this.failure) return
+    this.failure = error
+    this.stopped = true
+    this.child.kill('SIGKILL')
   }
 
   private handleMessage(line: string, lifecycle: (message: Record<string, unknown>) => void): void {
@@ -168,6 +196,7 @@ export class PluginHostProcess {
     try { message = JSON.parse(line) as Record<string, unknown> } catch { return }
     lifecycle(message)
     if (message.type !== 'result' || typeof message.requestId !== 'string') return
+    if (this.failure) return
     const request = this.pending.get(message.requestId)
     if (!request) return
     clearTimeout(request.timer)

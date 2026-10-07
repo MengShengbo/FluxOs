@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { McpClient } from '../mcp/client'
 import { getSubAgentDefinition, loadDynamicAgents } from '@fluxos/agent-runtime/subAgentRegistry'
 import { PluginService } from './pluginService'
@@ -22,6 +22,78 @@ function fixture(root: string, manifest: Record<string, unknown>, files: Record<
 }
 
 describe('PluginService', () => {
+  it.skipIf(process.platform !== 'darwin').each(['disable', 'detach'])('still terminates the host if connector removal fails during %s', async operation => {
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-disable-failure-'))
+    directories.push(root)
+    const workspace = join(root, 'workspace')
+    mkdirSync(workspace)
+    const source = fixture(root, {
+      id: 'disable.failure', name: 'Disable', description: '', version: '1.0.0', author: { name: 'Test' },
+      main: 'main.mjs', permissions: [], contributes: {
+        commands: [{ id: 'pid', title: 'Pid' }],
+        tools: [{ id: 'echo', name: 'Echo', description: 'Echo', handler: 'echo', parameters: [] }],
+      },
+    }, { 'main.mjs': 'export function pid() { return process.pid }\nexport function echo() { return "ok" }' })
+    const client = new McpClient()
+    const service = new PluginService(join(root, 'plugins.json'), join(root, 'plugins'), workspace)
+    await service.initialize(client)
+    await service.installFromDirectory(source, [])
+    await service.setEnabled('disable.failure', true)
+    const pid = await service.executeCommand('disable.failure', 'pid') as number
+    const disconnect = vi.spyOn(client, 'disconnect').mockRejectedValue(new Error('connector removal failed'))
+    try {
+      const cleanup = operation === 'disable' ? service.setEnabled('disable.failure', false) : service.detachMcpClient(client)
+      await expect(cleanup).rejects.toThrow()
+      expect(() => process.kill(pid, 0)).toThrow()
+    } finally { disconnect.mockRestore(); await service.destroy() }
+  })
+
+  it.skipIf(process.platform !== 'darwin')('cleans up already started hosts when another conversation fails activation', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-partial-activation-'))
+    directories.push(root)
+    const workspace = join(root, 'workspace')
+    mkdirSync(workspace)
+    const source = fixture(root, {
+      id: 'partial.activation', name: 'Partial', description: '', version: '1.0.0', author: { name: 'Test' },
+      main: 'main.mjs', permissions: ['filesystem.write'],
+    }, { 'main.mjs': `export function activate(context) {
+      if (context.conversationId === 'fails') throw new Error('activation deliberately fails');
+      setTimeout(() => context.api.filesystem.writeFile('leaked-host.txt', 'unexpected'), 700);
+    }` })
+    const service = new PluginService(join(root, 'plugins.json'), join(root, 'plugins'), workspace)
+    await service.initialize(new McpClient(), { conversationId: 'works' })
+    await service.initialize(new McpClient(), { conversationId: 'fails' })
+    try {
+      await service.installFromDirectory(source, ['filesystem.write'])
+      await expect(service.setEnabled('partial.activation', true)).rejects.toThrow('activation deliberately fails')
+      await new Promise(resolve => setTimeout(resolve, 800))
+      expect(() => readFileSync(join(workspace, 'leaked-host.txt'))).toThrow()
+    } finally { await service.destroy() }
+  })
+
+  it.each(['identity', 'added-permission', 'removed-permission'])('rejects changed installed manifest at activation: %s', async change => {
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-manifest-binding-'))
+    directories.push(root)
+    const workspace = join(root, 'workspace')
+    mkdirSync(workspace)
+    const manifest = {
+      id: 'manifest.bound', name: 'Bound', description: '', version: '1.0.0', author: { name: 'Test' }, permissions: ['network'],
+      contributes: { skills: [{ id: 'bound-skill', name: 'Bound', command: '/bound', description: 'Bound', category: 'custom', systemPrompt: 'Original' }] },
+    }
+    const service = new PluginService(join(root, 'plugins.json'), join(root, 'plugins'), workspace)
+    await service.initialize(new McpClient())
+    try {
+      await service.installFromDirectory(fixture(root, manifest), ['network'])
+      const installed = JSON.parse(readFileSync(join(root, 'plugins.json'), 'utf8')).plugins.find((record: { id: string }) => record.id === manifest.id)
+      const changed = { ...manifest }
+      if (change === 'identity') changed.id = 'other.identity'
+      else changed.permissions = change === 'added-permission' ? ['network', 'storage'] : []
+      writeFileSync(join(installed.path, 'plugin.json'), JSON.stringify(changed))
+      await expect(service.setEnabled(manifest.id, true)).rejects.toThrow(change === 'identity' ? 'identity' : 'permissions')
+      expect(service.list().plugins.find(plugin => plugin.id === manifest.id)?.state).toBe('error')
+    } finally { await service.destroy() }
+  })
+
   it('installs, enables, projects Skills, disables, and persists metadata', async () => {
     const root = mkdtempSync(join(tmpdir(), 'fluxagent-plugin-'))
     directories.push(root)

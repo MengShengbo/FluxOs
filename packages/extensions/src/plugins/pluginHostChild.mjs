@@ -1,4 +1,5 @@
-import { readFile, writeFile, mkdir, realpath, rm, readdir } from 'node:fs/promises'
+import { readFile, writeFile, open, rename, mkdir, realpath, rm, readdir } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import readline from 'node:readline'
@@ -8,6 +9,14 @@ const permissions = new Set(JSON.parse(permissionJson || '[]'))
 const manifest = Object.freeze(JSON.parse(manifestJson || '{}'))
 const handlers = new Map()
 let deactivate
+let storageQueue = Promise.resolve()
+
+function withStorage(operation) {
+  const result = storageQueue.then(operation)
+  // A failed operation must not prevent subsequent reads or repairs.
+  storageQueue = result.catch(() => {})
+  return result
+}
 
 function assertWithin(root, value) {
   const child = relative(root, value)
@@ -46,7 +55,9 @@ function requirePermission(permission) {
 async function loadStorage() {
   requirePermission('storage')
   try {
-    return JSON.parse(await readFile(join(storagePath, 'storage.json'), 'utf8'))
+    const state = JSON.parse(await readFile(join(storagePath, 'storage.json'), 'utf8'))
+    if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('Plugin storage must contain a JSON object')
+    return state
   } catch (error) {
     if (error?.code === 'ENOENT') return {}
     throw error
@@ -55,7 +66,17 @@ async function loadStorage() {
 
 async function saveStorage(value) {
   requirePermission('storage')
-  await writeFile(join(storagePath, 'storage.json'), `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+  const temporaryPath = join(storagePath, `.storage-${randomUUID()}.tmp`)
+  try {
+    const file = await open(temporaryPath, 'wx', 0o600)
+    try {
+      await file.writeFile(`${JSON.stringify(value, null, 2)}\n`)
+      await file.sync()
+    } finally { await file.close() }
+    await rename(temporaryPath, join(storagePath, 'storage.json'))
+    const directory = await open(storagePath, 'r')
+    try { await directory.sync() } finally { await directory.close() }
+  } finally { await rm(temporaryPath, { force: true }) }
 }
 
 const context = Object.freeze({
@@ -65,9 +86,13 @@ const context = Object.freeze({
   path: pluginDirectory,
   api: Object.freeze({
     storage: Object.freeze({
-      async get(key) { return (await loadStorage())[key] },
-      async set(key, value) { const state = await loadStorage(); state[key] = value; await saveStorage(state) },
-      async remove(key) { const state = await loadStorage(); delete state[key]; await saveStorage(state) },
+      get(key) { return withStorage(async () => { const state = await loadStorage(); return Object.hasOwn(state, key) ? state[key] : undefined }) },
+      set(key, value) { return withStorage(async () => {
+        const state = await loadStorage()
+        Object.defineProperty(state, key, { value, enumerable: true, configurable: true, writable: true })
+        await saveStorage(state)
+      }) },
+      remove(key) { return withStorage(async () => { const state = await loadStorage(); delete state[key]; await saveStorage(state) }) },
     }),
     filesystem: Object.freeze({
       async readFile(path) { requirePermission('filesystem.read'); return readFile(await within(workspacePath, path), 'utf8') },

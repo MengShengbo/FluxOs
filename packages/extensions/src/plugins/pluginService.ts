@@ -9,7 +9,7 @@ import type { PluginManifest, PluginPermission, PluginTool } from '@fluxos/contr
 import { AtomicJsonStore } from '@fluxos/platform/atomicJsonStore'
 import { BUNDLED_PLUGINS, type BundledPlugin } from './bundledPlugins'
 import { codePluginHostUnavailableReason, PluginHostProcess, unsupportedCodePermissions } from './pluginHost'
-import { validatePluginManifest } from './pluginManifestValidation'
+import { assertApprovedPluginPermissions, validatePluginManifest } from './pluginManifestValidation'
 
 export interface PluginRecord {
   id: string
@@ -145,15 +145,22 @@ export class PluginService {
 
   async detachMcpClient(mcpClient: McpClient): Promise<void> {
     if (!this.mcpClients.delete(mcpClient)) return
-    await Promise.all(this.data.plugins.map(async plugin => {
-      const serverName = serverNameFor(plugin.id)
-      if (mcpClient.getConnection(serverName)) await mcpClient.disconnect(serverName)
+    const cleanup = this.data.plugins.flatMap(plugin => {
       const hosts = this.hosts.get(plugin.id)
       const host = hosts?.get(mcpClient)
       hosts?.delete(mcpClient)
-      await host?.stop()
       if (hosts?.size === 0) this.hosts.delete(plugin.id)
-    }))
+      return [
+        (async () => {
+          const serverName = serverNameFor(plugin.id)
+          if (mcpClient.getConnection(serverName)) await mcpClient.disconnect(serverName)
+        })(),
+        ...(host ? [host.stop()] : []),
+      ]
+    })
+    const results = await Promise.allSettled(cleanup)
+    const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
+    if (errors.length) throw new AggregateError(errors, 'Plugin conversation cleanup failed; termination or removal was not fully confirmed')
   }
 
   async inspectDirectory(sourcePath: string): Promise<{ manifest: PluginManifest; path: string }> {
@@ -344,9 +351,7 @@ export class PluginService {
   private async installInspected(sourcePath: string, manifest: PluginManifest, source: PluginRecord['source'], approvedPermissions: PluginPermission[]): Promise<PluginSnapshot> {
     if (this.data.plugins.some(plugin => plugin.id === manifest.id)) throw new Error(`Plugin is already installed: ${manifest.id}`)
     this.assertContributionIdsAvailable(manifest)
-    const requested = new Set(manifest.permissions || [])
-    if (approvedPermissions.some(permission => !requested.has(permission))) throw new Error('Approved permissions do not match the plugin manifest')
-    if ([...requested].some(permission => !approvedPermissions.includes(permission))) throw new Error('All requested plugin permissions must be approved before installation')
+    assertApprovedPluginPermissions(manifest, approvedPermissions)
     await mkdir(this.pluginsRoot, { recursive: true, mode: 0o700 })
     const directoryName = `${manifest.id.replace(/[^a-z0-9._-]+/gi, '-')}-${createHash('sha256').update(`${manifest.id}@${manifest.version}`).digest('hex').slice(0, 8)}`
     const finalPath = resolve(this.pluginsRoot, directoryName)
@@ -360,9 +365,22 @@ export class PluginService {
   }
 
   private async activate(id: string): Promise<void> {
+    try {
+      await this.activateInstalled(id)
+    } catch (error) {
+      try { await this.deactivate(id) } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], 'Plugin activation failed and cleanup was not confirmed')
+      }
+      throw error
+    }
+  }
+
+  private async activateInstalled(id: string): Promise<void> {
     const record = this.requireRecord(id)
     const inspected = await this.inspectDirectory(record.path)
     const manifest = inspected.manifest
+    if (manifest.id !== record.id) throw new Error('Installed plugin identity does not match its current manifest')
+    assertApprovedPluginPermissions(manifest, record.approvedPermissions)
     let hosts = this.hosts.get(id)
     if (manifest.main) {
       if (!hosts) {
@@ -386,7 +404,7 @@ export class PluginService {
           approvedPermissions: record.approvedPermissions,
           onCrash: message => { void this.handleHostCrash(id, client, host, message) },
         })
-        await host.start()
+        try { await host.start() } catch (error) { await host.stop(); throw error }
         hosts.set(client, host)
       }
     }
@@ -417,30 +435,28 @@ export class PluginService {
     const record = this.data.plugins.find(plugin => plugin.id === id)
     if (!record) return
     const serverName = serverNameFor(id)
-    await Promise.all([...this.mcpClients.keys()].map(async client => {
-      if (client.getConnection(serverName)) await client.disconnect(serverName)
-    }))
     const hosts = this.hosts.get(id)
     this.hosts.delete(id)
-    await Promise.all([...(hosts?.values() || [])].map(host => host.stop()))
-    await this.removeProjectedSkills(id)
-    await this.removeProjectedAgents(id)
+    // Failure in one cleanup path must not leave other capabilities running.
+    const results = await Promise.allSettled([
+      ...[...this.mcpClients.keys()].map(async client => {
+        if (client.getConnection(serverName)) await client.disconnect(serverName)
+      }),
+      ...[...(hosts?.values() || [])].map(host => host.stop()),
+      this.removeProjectedSkills(id),
+      this.removeProjectedAgents(id),
+    ])
+    const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
+    if (errors.length) throw new AggregateError(errors, 'Plugin cleanup failed; termination or removal was not fully confirmed')
   }
 
   private async handleHostCrash(id: string, client: McpClient, host: PluginHostProcess, message: string): Promise<void> {
     const hosts = this.hosts.get(id)
     if (hosts?.get(client) !== host) return
-    this.hosts.delete(id)
     this.setError(id, message)
-    const serverName = serverNameFor(id)
-    await Promise.all([...this.mcpClients.keys()].map(async registeredClient => {
-      if (registeredClient.getConnection(serverName)) await registeredClient.disconnect(serverName)
-    }))
-    await Promise.all([...hosts.values()].filter(candidate => candidate !== host).map(candidate => candidate.stop()))
-    await Promise.all([
-      this.removeProjectedSkills(id),
-      this.removeProjectedAgents(id),
-    ])
+    try { await this.deactivate(id) } catch (error) {
+      this.setError(id, `${message}; ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
 
   private async projectSkills(manifest: PluginManifest, pluginPath: string): Promise<void> {
