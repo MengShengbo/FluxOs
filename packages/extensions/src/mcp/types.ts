@@ -1,4 +1,6 @@
 import type { AgentAttachment } from '@fluxos/contracts/agentTypes'
+import type { OAuthClientMetadata } from '@modelcontextprotocol/sdk/shared/auth.js'
+import type { McpOAuthProvider, McpOAuthTokenStore } from './oauth'
 
 export interface McpServerConfig {
   command?: string
@@ -12,6 +14,15 @@ export interface McpServerConfig {
   enabledTools?: string[]
   disabledTools?: string[]
   enabled: boolean
+  /** Runtime-only OAuth wiring; never serialized into MCP settings. */
+  oauth?: McpOAuthConnectOptions
+}
+
+export interface McpOAuthConnectOptions {
+  redirectUrl: string | URL
+  clientMetadata: OAuthClientMetadata
+  tokenStore: McpOAuthTokenStore
+  onAuthorizationUrl?: (url: URL) => void | Promise<void>
 }
 
 export interface McpSettings {

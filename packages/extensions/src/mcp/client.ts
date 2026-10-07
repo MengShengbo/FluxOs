@@ -5,6 +5,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type { AgentAttachment } from '@fluxos/contracts/agentTypes'
 import { PaginatedMcpSdkClient } from './paginatedClient'
 import type { McpLocalServerDefinition, McpLocalToolResult, McpServerConfig, McpToolCallOptions, McpToolInfo } from './types'
+import { McpOAuthProvider } from './oauth'
 
 const INHERITED_ENV_ALLOWLIST = new Set([
   'PATH',
@@ -51,6 +52,7 @@ export interface McpConnection {
   requiresSelection?: boolean
   enabledForRun?: boolean
   localHandler?: McpLocalServerDefinition['handler']
+  oauthProvider?: McpOAuthProvider
 }
 
 export class McpClient {
@@ -152,9 +154,19 @@ export class McpClient {
 
     try {
       const environment = this.buildEnvironment(config)
+      const oauthProvider = config.oauth
+        ? new McpOAuthProvider({
+          serverName: name,
+          redirectUrl: config.oauth.redirectUrl,
+          clientMetadata: config.oauth.clientMetadata,
+          store: config.oauth.tokenStore,
+          onAuthorizationUrl: config.oauth.onAuthorizationUrl,
+        })
+        : undefined
       const transport: Transport = config.url
         ? new StreamableHTTPClientTransport(new URL(config.url), {
           requestInit: config.httpHeaders ? { headers: config.httpHeaders } : undefined,
+          authProvider: oauthProvider,
         })
         : new StdioClientTransport({
           command: config.command!,
@@ -164,6 +176,7 @@ export class McpClient {
           stderr: 'pipe',
         })
       conn.transport = transport
+      conn.oauthProvider = oauthProvider
       if (transport instanceof StdioClientTransport) transport.stderr?.on('data', () => {})
       const discovered = await withTimeout((async () => {
         await client.connect(transport, { signal: startup.signal })

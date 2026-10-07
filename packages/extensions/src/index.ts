@@ -1,6 +1,7 @@
 export * from './mcp/client'
 export * from './mcp/types'
 export * from './mcp/settings'
+export * from './mcp/oauth'
 export * from './skills/runtime'
 export * from './skills/loader'
 export * from './plugins/pluginService'
