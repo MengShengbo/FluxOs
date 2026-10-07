@@ -1,6 +1,6 @@
 import type { AgentAttachment } from '@fluxos/contracts/agentTypes'
 import type { OAuthClientMetadata } from '@modelcontextprotocol/sdk/shared/auth.js'
-import type { McpOAuthProvider, McpOAuthTokenStore } from './oauth'
+import type { McpOAuthTokenStore } from './oauth'
 
 export interface McpServerConfig {
   command?: string

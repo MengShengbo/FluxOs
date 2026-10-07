@@ -24,6 +24,7 @@ async function fixture() {
   let expectedChallenge = ''
   let tokenRequests = 0
   let revoked = false
+  const revocations: Array<{ token: string | null; hint: string | null }> = []
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host}`)
     if (url.pathname.includes('oauth-authorization-server')) {
@@ -65,6 +66,7 @@ async function fixture() {
     }
     if (url.pathname === '/revoke' && req.method === 'POST') {
       const body = await readBody(req)
+      revocations.push({ token: body.get('token'), hint: body.get('token_type_hint') })
       revoked = body.get('token') === 'access-2'
       return json(res, 200, {})
     }
@@ -82,6 +84,7 @@ async function fixture() {
     serverUrl: `http://127.0.0.1:${address.port}/mcp`,
     get tokenRequests() { return tokenRequests },
     get revoked() { return revoked },
+    get revocations() { return revocations },
     set expectedChallenge(value: string) { expectedChallenge = value },
   }
 }
@@ -89,6 +92,7 @@ async function fixture() {
 function provider(fixtureData: Awaited<ReturnType<typeof fixture>>, onUrl?: (url: URL) => void) {
   return new McpOAuthProvider({
     serverName: 'fixture',
+    serverUrl: fixtureData.serverUrl,
     redirectUrl: 'http://127.0.0.1:43127/oauth/callback',
     clientMetadata: {
       redirect_uris: ['http://127.0.0.1:43127/oauth/callback'],
@@ -124,7 +128,7 @@ describe('McpOAuthProvider', () => {
     await expect(oauth.tokens()).resolves.toMatchObject({ access_token: 'access-1', refresh_token: 'refresh-1' })
   })
 
-  it('refreshes and revokes without exposing tokens to settings or logs', async () => {
+  it('refreshes and revokes both grants with RFC 7009 token type hints', async () => {
     const fixtureData = await fixture()
     let redirected: URL | undefined
     const oauth = provider(fixtureData, url => { redirected = url })
@@ -134,6 +138,10 @@ describe('McpOAuthProvider', () => {
     await expect(oauth.refresh(fixtureData.serverUrl)).resolves.toMatchObject({ access_token: 'access-2', refresh_token: 'refresh-2' })
     await expect(oauth.revoke(fixtureData.serverUrl)).resolves.toBe(true)
     expect(fixtureData.revoked).toBe(true)
+    expect(fixtureData.revocations).toEqual([
+      { token: 'refresh-2', hint: 'refresh_token' },
+      { token: 'access-2', hint: 'access_token' },
+    ])
     await expect(oauth.tokens()).resolves.toBeUndefined()
   })
 
@@ -144,5 +152,105 @@ describe('McpOAuthProvider', () => {
     await oauth.cancelAuthorization()
     expect(oauth.authorizationUrl).toBeUndefined()
     await expect(oauth.completeAuthorization(fixtureData.serverUrl, 'https://evil.example/oauth/callback?code=x&state=y')).rejects.toThrow()
+  })
+
+  it('rejects callback server substitution before exchanging a code', async () => {
+    const data = await fixture()
+    const other = await fixture()
+    const oauth = provider(data)
+    await oauth.startAuthorization(data.serverUrl)
+    const state = oauth.authorizationUrl?.searchParams.get('state')
+    await expect(oauth.completeAuthorization(other.serverUrl, `${oauth.redirectUrl}?code=fixture-code&state=${state}`)).rejects.toThrow('server URL mismatch')
+    expect(data.tokenRequests).toBe(0)
+    expect(other.tokenRequests).toBe(0)
+    expect(oauth.authorizationUrl).toBeUndefined()
+  })
+
+  it('isolates credentials when a server name is reused for another URL', async () => {
+    const data = await fixture()
+    const other = await fixture()
+    const store = new MemoryMcpOAuthTokenStore()
+    const options = {
+      serverName: 'fixture', redirectUrl: 'http://127.0.0.1:43127/oauth/callback',
+      clientMetadata: { redirect_uris: ['http://127.0.0.1:43127/oauth/callback'] }, store,
+    }
+    const first = new McpOAuthProvider({ ...options, serverUrl: data.serverUrl })
+    await first.saveTokens({ access_token: 'secret', token_type: 'Bearer' })
+    const second = new McpOAuthProvider({ ...options, serverUrl: other.serverUrl })
+    await expect(second.tokens()).resolves.toBeUndefined()
+    await expect(first.tokens()).resolves.toMatchObject({ access_token: 'secret' })
+  })
+
+  it('clears the verifier after a failed code exchange', async () => {
+    const data = await fixture()
+    const oauth = provider(data)
+    await oauth.startAuthorization(data.serverUrl)
+    const state = oauth.authorizationUrl?.searchParams.get('state')
+    await expect(oauth.completeAuthorization(data.serverUrl, `${oauth.redirectUrl}?code=bad&state=${state}`)).rejects.toThrow()
+    await expect(oauth.codeVerifier()).rejects.toThrow('missing or expired')
+  })
+
+  it('rejects issuer substitution and insecure endpoints before persisting discovery', async () => {
+    const data = await fixture()
+    const oauth = provider(data)
+    const state = {
+      authorizationServerUrl: 'https://issuer.example/',
+      authorizationServerMetadata: {
+        issuer: 'https://evil.example/', authorization_endpoint: 'https://issuer.example/authorize',
+        token_endpoint: 'https://issuer.example/token', response_types_supported: ['code'],
+      },
+    }
+    await expect(oauth.saveDiscoveryState(state)).rejects.toThrow('issuer mismatch')
+    await expect(oauth.saveDiscoveryState({ ...state, authorizationServerMetadata: {
+      ...state.authorizationServerMetadata, issuer: 'https://issuer.example/', token_endpoint: 'http://evil.example/token',
+    } })).rejects.toThrow('require HTTPS')
+    await expect(oauth.discoveryState()).resolves.toBeUndefined()
+  })
+
+  it('retains credentials for retry when remote revocation fails', async () => {
+    const data = await fixture()
+    const oauth = new McpOAuthProvider({
+      serverName: 'fixture', serverUrl: data.serverUrl,
+      redirectUrl: 'http://127.0.0.1:43127/oauth/callback',
+      clientMetadata: { redirect_uris: ['http://127.0.0.1:43127/oauth/callback'] },
+      store: new MemoryMcpOAuthTokenStore(),
+      fetchFn: async () => new Response('', { status: 503 }),
+    })
+    await oauth.saveTokens({ access_token: 'access', refresh_token: 'refresh', token_type: 'Bearer' })
+    await oauth.saveClientInformation({ client_id: 'public-client' })
+    await oauth.saveDiscoveryState({
+      authorizationServerUrl: 'https://issuer.example/',
+      authorizationServerMetadata: {
+        issuer: 'https://issuer.example/', authorization_endpoint: 'https://issuer.example/authorize',
+        token_endpoint: 'https://issuer.example/token', revocation_endpoint: 'https://issuer.example/revoke',
+        response_types_supported: ['code'],
+      },
+    })
+    await expect(oauth.revoke(data.serverUrl)).rejects.toThrow('HTTP 503')
+    await expect(oauth.tokens()).resolves.toMatchObject({ refresh_token: 'refresh' })
+  })
+
+  it('refuses token endpoint redirects and clears pending PKCE state', async () => {
+    const data = await fixture()
+    let redirectsBlocked = false
+    const oauth = new McpOAuthProvider({
+      serverName: 'fixture', serverUrl: data.serverUrl,
+      redirectUrl: 'http://127.0.0.1:43127/oauth/callback',
+      clientMetadata: { redirect_uris: ['http://127.0.0.1:43127/oauth/callback'] },
+      store: new MemoryMcpOAuthTokenStore(),
+      fetchFn: async (input, init) => {
+        if (String(input).endsWith('/token')) {
+          redirectsBlocked = init?.redirect === 'error'
+          throw new TypeError('Redirect rejected')
+        }
+        return fetch(input, init)
+      },
+    })
+    await oauth.startAuthorization(data.serverUrl)
+    const state = oauth.authorizationUrl?.searchParams.get('state')
+    await expect(oauth.completeAuthorization(data.serverUrl, `${oauth.redirectUrl}?code=fixture-code&state=${state}`)).rejects.toThrow('Redirect rejected')
+    expect(redirectsBlocked).toBe(true)
+    await expect(oauth.codeVerifier()).rejects.toThrow('missing or expired')
+    await expect(oauth.tokens()).resolves.toBeUndefined()
   })
 })

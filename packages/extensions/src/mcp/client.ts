@@ -157,6 +157,7 @@ export class McpClient {
       const oauthProvider = config.oauth
         ? new McpOAuthProvider({
           serverName: name,
+          serverUrl: config.url!,
           redirectUrl: config.oauth.redirectUrl,
           clientMetadata: config.oauth.clientMetadata,
           store: config.oauth.tokenStore,
