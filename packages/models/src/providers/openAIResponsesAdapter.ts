@@ -1,7 +1,7 @@
 import { buildModelProtocolUrl, looksLikeResponsesPreferredModel, toResponsesInput, toResponsesTools } from '../modelProtocol'
 import { resolveNativeReasoningRequest } from '../modelRegistry'
 import { resolveRequestMaxTokens } from '../modelRequestBudget'
-import { setOpenAIPromptCacheLifetime, shouldOmitSamplingTemperature } from '../requestCompatibility'
+import { setOpenAIPromptCacheLifetime, shouldOmitSamplingTemperature, supportsSamplingTemperature } from '../requestCompatibility'
 import { completeModelExchange } from './completion'
 import { prepareSummary, readSummary } from './summary'
 import { requestHeaders, openAITools, usesDefaultToolChoice, usesPromptCacheKey, reviseRejectedRequest } from './requestShared'
@@ -38,7 +38,7 @@ function prepare(input: ModelRequestInput): PreparedModelRequest {
   if (looksLikeResponsesPreferredModel(config.defaultModel)) {
     body.text = { verbosity: 'low' }
   }
-  if (!shouldOmitSamplingTemperature(config)) {
+  if (!shouldOmitSamplingTemperature(config) && supportsSamplingTemperature(config)) {
     body.temperature = settings.temperature ?? config.temperature ?? 0.7
   }
   if (maxTokens > 0) body.max_output_tokens = maxTokens

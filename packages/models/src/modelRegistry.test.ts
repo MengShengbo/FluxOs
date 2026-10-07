@@ -105,6 +105,13 @@ describe('modelRegistry', () => {
     expect(getModelReasoningCapabilities('gpt-5.6', 'custom', { reasoning: false })).toBeNull()
   })
 
+  it('does not infer reasoning for an unlisted model from its provider name', () => {
+    expect(getModelReasoningCapabilities('vendor/claude-future', 'anthropic')).toBeNull()
+    expect(getModelReasoningCapabilities('vendor/deepseek-future', 'deepseek')).toBeNull()
+    expect(getModelReasoningCapabilities('vendor/glm-future', 'glm')).toBeNull()
+    expect(getModelReasoningCapabilities('vendor/open-model', 'openai')).toBeNull()
+  })
+
   it('honors gateway reasoning defaults and mandatory thinking', () => {
     const capabilities: ModelCapabilities = {
       reasoning: true,

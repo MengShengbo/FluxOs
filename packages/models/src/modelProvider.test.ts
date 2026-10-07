@@ -11,6 +11,19 @@ function fixture(): ModelRequestInput {
     tools: [], externalTools: [], traceHeaders: { 'x-fixture-trace': 'one' }, promptCacheKey: () => 'fixture-cache' }
 }
 
+function fixtureTool(): AgentTool {
+  return {
+    name: 'write_record',
+    access: { source: 'builtin', exposure: 'resident', output: 'ToolResult', resources: [{ kind: 'filesystem', access: 'write', scope: 'workspace' }] },
+    description: 'Write a record', category: 'write',
+    isReadOnly: false, isDestructive: false, isConcurrencySafe: true,
+    parameters: [
+      { name: 'path', type: 'string', description: 'Destination', required: true },
+      { name: 'mode', type: 'string', description: 'Mode', required: false, enum: ['append', 'replace'] },
+    ],
+  }
+}
+
 describe('independent model provider adapters', () => {
   it.each(protocols)('%s prepares an unlisted provider model without runtime services', protocol => {
     const input = fixture(), before = JSON.stringify(input)
@@ -33,6 +46,43 @@ describe('independent model provider adapters', () => {
     expect(protocol === 'anthropic_messages' ? tools[0].input_schema : protocol === 'openai_chat' ? tools[0].function.parameters : tools[0].parameters).toEqual(schema)
     expect(protocol === 'openai_chat' ? tools[0].function.strict : tools[0].strict).toBeUndefined()
     expect(JSON.stringify(schema)).not.toContain('cache_control')
+  })
+
+  it.each(protocols)('%s applies the protocol schema contract and explicit tool capability', protocol => {
+    const input = fixture()
+    input.tools = [fixtureTool()]
+    const request = getModelProviderAdapter(protocol).prepare(input)
+    const tools = request.body.tools as any[]
+    expect(tools).toHaveLength(1)
+    if (protocol === 'anthropic_messages') {
+      expect(tools[0].input_schema.required).toEqual(['path'])
+      expect(tools[0].input_schema).not.toHaveProperty('strict')
+    } else if (protocol === 'openai_chat') {
+      expect(tools[0].function.parameters.required).toEqual(['path'])
+      expect(tools[0].function.strict).toBeUndefined()
+    } else {
+      expect(tools[0].parameters.required).toEqual(['path'])
+      expect(tools[0].strict).toBeUndefined()
+    }
+
+    input.config.provider = 'openai'
+    const strict = getModelProviderAdapter(protocol).prepare(input)
+    const strictTool = (strict.body.tools as any[])[0]
+    if (protocol === 'anthropic_messages') {
+      expect(strictTool.input_schema.required).toEqual(['path'])
+    } else if (protocol === 'openai_chat') {
+      expect(strictTool.function.strict).toBe(true)
+      expect(strictTool.function.parameters.required).toEqual(['path', 'mode'])
+    } else {
+      expect(strictTool.strict).toBe(true)
+      expect(strictTool.parameters.required).toEqual(['path', 'mode'])
+    }
+
+    input.config.modelCapabilities = { tools: false }
+    expect(getModelProviderAdapter(protocol).prepare(input).body.tools).toBeUndefined()
+
+    input.config.modelCapabilities = { supportedParameters: ['tools'] }
+    expect(getModelProviderAdapter(protocol).prepare(input).body.temperature).toBeUndefined()
   })
 
   it.each(protocols)('%s retries a rejected optional field once before any stream bytes', async protocol => {

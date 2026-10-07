@@ -244,7 +244,11 @@ export function getModelReasoningCapabilities(
   provider?: string,
   discovered?: ModelCapabilities,
 ): ModelReasoningCapabilities | null {
-  const key = modelFamilyKey(model)
+  // A provider name is only a routing hint. It is not evidence that an
+  // arbitrary model on that endpoint supports the provider's reasoning wire
+  // format. Built-in behavior requires a registered model; unlisted models
+  // must advertise reasoning through discovery metadata instead.
+  const key = getSupportedModelSpec(model)?.id ?? ''
   const providerKey = normalizeModelKey(provider)
 
   if (/^claude-(?:fable-5|mythos-(?:5|preview))/.test(key)) {
@@ -272,7 +276,7 @@ export function getModelReasoningCapabilities(
       description: 'Adaptive thinking with native low, medium, and high effort.',
     }), discovered)
   }
-  if (/^claude-/.test(key) || providerKey === 'anthropic') {
+  if (/^claude-/.test(key)) {
     return reconcileAdvertisedReasoning(capabilities('anthropic', 'budget', [], {
       defaultBudgetTokens: 8_192,
       description: 'Manual extended thinking controlled by a token budget.',
@@ -301,7 +305,7 @@ export function getModelReasoningCapabilities(
       description: 'Thinking toggle with low, high, and max native effort levels.',
     }), discovered)
   }
-  if (/^deepseek-v4-pro/.test(key) || providerKey === 'deepseek') {
+  if (/^deepseek-v4-pro/.test(key)) {
     return reconcileAdvertisedReasoning(capabilities('deepseek', 'toggle-effort', ['high', 'max'], {
       defaultEffort: 'high',
       preservesReasoningContent: true,
@@ -339,7 +343,7 @@ export function getModelReasoningCapabilities(
       description: 'GLM-5.2 thinking toggle with native max reasoning effort.',
     }), discovered)
   }
-  if (/^glm-(?:5(?:$|-|\.1)|4\.(?:5|6|7))/.test(key) || providerKey === 'glm') {
+  if (/^glm-(?:5(?:$|-|\.1)|4\.(?:5|6|7))/.test(key)) {
     return reconcileAdvertisedReasoning(capabilities('glm', 'toggle', [], {
       omitTemperature: false,
       preservesReasoningContent: true,
@@ -349,20 +353,26 @@ export function getModelReasoningCapabilities(
 
   if (discovered?.reasoning) {
     const efforts = discovered.reasoningEfforts?.filter(effort => effort !== undefined) ?? []
-    const supportsEffort = efforts.length > 0 || discovered.supportedParameters?.includes('reasoning_effort')
+    // OpenAI's discovery contract historically only exposed `reasoning: true`
+    // for some models. Keep the known OpenAI effort wire shape for that
+    // explicit declaration, while requiring effort metadata for other
+    // providers so an unknown model is not assigned a guessed format.
+    const supportsEffort = efforts.length > 0
+      || discovered.supportedParameters?.includes('reasoning_effort')
+      || providerKey === 'openai'
     if (supportsEffort) {
       const available = efforts.length > 0 ? efforts : ['low', 'medium', 'high'] as ReasoningEffort[]
-      return capabilities('openai', 'effort', available, {
+      return reconcileAdvertisedReasoning(capabilities('openai', 'effort', available, {
         defaultEffort: available.includes('medium') ? 'medium' : available[0],
         omitTemperature: false,
         description: 'Reasoning effort reported by the active API model metadata.',
-      })
+      }), discovered)
     }
-    return capabilities('openai', 'fixed', [], {
+    return reconcileAdvertisedReasoning(capabilities('openai', 'fixed', [], {
       supportsToggle: false,
       omitTemperature: false,
       description: 'Reasoning is supported, but the API did not advertise an adjustable control.',
-    })
+    }), discovered)
   }
 
   return null

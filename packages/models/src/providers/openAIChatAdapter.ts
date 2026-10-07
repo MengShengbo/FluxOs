@@ -1,7 +1,7 @@
 import { buildModelProtocolUrl } from '../modelProtocol'
 import { resolveNativeReasoningRequest } from '../modelRegistry'
 import { resolveRequestMaxTokens } from '../modelRequestBudget'
-import { setOpenAIChatMaxTokens, setOpenAIPromptCacheLifetime, shouldOmitSamplingTemperature } from '../requestCompatibility'
+import { setOpenAIChatMaxTokens, setOpenAIPromptCacheLifetime, shouldOmitSamplingTemperature, supportsSamplingTemperature } from '../requestCompatibility'
 import { completeModelExchange } from './completion'
 import { prepareSummary, readSummary } from './summary'
 import { requestHeaders, openAITools, usesDefaultToolChoice, usesPromptCacheKey, reviseRejectedRequest } from './requestShared'
@@ -28,7 +28,7 @@ function prepare(input: ModelRequestInput): PreparedModelRequest {
     messages: requestMessages,
     stream: true,
   }
-  if (!shouldOmitSamplingTemperature(config)) {
+  if (!shouldOmitSamplingTemperature(config) && supportsSamplingTemperature(config)) {
     body.temperature = settings.temperature ?? config.temperature ?? 0.7
   }
   if (maxTokens > 0) setOpenAIChatMaxTokens(body, maxTokens, config.provider, config.defaultModel)

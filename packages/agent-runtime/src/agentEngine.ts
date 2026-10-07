@@ -2838,7 +2838,9 @@ Before retrying:
         ? this.buildPreservedFilesContext(preservedFiles)
         : undefined,
       currentRunId: this.workExecution.getCurrentRunId() || undefined,
-      supportsVision: activeConfig.modelCapabilities?.vision ?? activeModel?.supportsVision ?? true,
+      // Unknown models must not receive local attachments unless the active
+      // model metadata explicitly advertises vision input.
+      supportsVision: activeConfig.modelCapabilities?.vision ?? activeModel?.supportsVision ?? false,
     })
     this.session.modelSurface = prepared.state
     return prepared.turns
@@ -2872,7 +2874,7 @@ Before retrying:
       contextSegments,
       policyProfile,
       activeModel?.id || activeConfig?.defaultModel,
-      activeConfig?.modelCapabilities?.vision ?? activeModel?.supportsVision ?? true,
+      activeConfig?.modelCapabilities?.vision ?? activeModel?.supportsVision ?? false,
     )
   }
 

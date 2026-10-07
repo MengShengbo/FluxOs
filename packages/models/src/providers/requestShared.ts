@@ -29,6 +29,7 @@ export function requestHeaders(config: APIConfig, protocol: ModelProtocol, trace
 }
 
 export function openAITools(input: ModelRequestInput): object[] {
+  if (input.config.modelCapabilities?.tools === false) return []
   return [...toolsToOpenAIFormat(input.tools, { strict: input.config.provider === 'openai' }),
     ...input.externalTools.map(tool => ({ type: 'function', function: {
       name: tool.name, description: tool.description, parameters: externalToolSchema(tool),

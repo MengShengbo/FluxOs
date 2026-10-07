@@ -11,6 +11,13 @@ export function shouldOmitSamplingTemperature(config: APIConfig): boolean {
   )?.omitTemperature === true
 }
 
+/** Return false only when the active model metadata explicitly excludes it. */
+export function supportsSamplingTemperature(config: APIConfig): boolean {
+  const parameters = config.modelCapabilities?.supportedParameters
+  if (!parameters?.length) return true
+  return parameters.some(parameter => parameter.toLowerCase() === 'temperature' || parameter.toLowerCase() === 'top_p')
+}
+
 export function looksLikeKimiModel(model?: string): boolean {
   return /(?:^|[/_.:-])(?:kimi|moonshot)(?:$|[/_.:-])/i.test(String(model || '').trim())
 }

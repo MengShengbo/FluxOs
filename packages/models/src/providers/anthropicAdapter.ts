@@ -1,6 +1,7 @@
 import { buildModelProtocolUrl } from '../modelProtocol'
 import { resolveNativeReasoningRequest } from '../modelRegistry'
 import { resolveRequestMaxTokens } from '../modelRequestBudget'
+import { supportsSamplingTemperature } from '../requestCompatibility'
 
 import { completeModelExchange } from './completion'
 import { prepareSummary, readSummary } from './summary'
@@ -15,7 +16,7 @@ function prepare(input: ModelRequestInput): PreparedModelRequest {
   const { config, model, settings, systemPrompt, messages } = input
   const url = buildModelProtocolUrl(config.baseUrl, 'anthropic_messages', config.provider)
   const headers = requestHeaders(config, 'anthropic_messages', input.traceHeaders)
-  const anthropicTools = [...toolsToAnthropicFormat(input.tools), ...input.externalTools.map(tool => ({
+  const anthropicTools = input.config.modelCapabilities?.tools === false ? [] : [...toolsToAnthropicFormat(input.tools), ...input.externalTools.map(tool => ({
     name: tool.name, description: tool.description, input_schema: externalToolSchema(tool),
   }))]
 
@@ -43,7 +44,7 @@ function prepare(input: ModelRequestInput): PreparedModelRequest {
   const requestBody: Record<string, unknown> = {
     model: config.defaultModel,
     max_tokens: anthropicMaxTokens,
-    temperature,
+    ...(supportsSamplingTemperature(config) ? { temperature } : {}),
     system: [
       { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
     ],
