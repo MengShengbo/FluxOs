@@ -1,4 +1,4 @@
-import type { AgentAttachment } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentAttachment } from '@fluxos/contracts/agentTypes'
 
 export interface McpServerConfig {
   command?: string

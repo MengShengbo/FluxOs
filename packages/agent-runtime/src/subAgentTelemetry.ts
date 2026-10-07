@@ -1,5 +1,5 @@
-import type { ModelRequestRecord } from '@fluxagentcore/contracts/agentTypes'
-import { isModelRequestRecord, mergeModelRequest, summarizeModelRequests } from '@fluxagentcore/contracts/modelUsage'
+import type { ModelRequestRecord } from '@fluxos/contracts/agentTypes'
+import { isModelRequestRecord, mergeModelRequest, summarizeModelRequests } from '@fluxos/contracts/modelUsage'
 import type { SubAgentCompletionStats } from './subAgentCompletionCoordinator'
 
 /** Same reducer for live events and durable transcript recovery. */

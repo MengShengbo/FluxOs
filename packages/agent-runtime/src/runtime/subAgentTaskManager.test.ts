@@ -2,7 +2,7 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync } from 'nod
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { RuntimeTaskManager } from '@fluxagentcore/tools/runtimeTaskManager'
+import { RuntimeTaskManager } from '@fluxos/tools/runtimeTaskManager'
 import { SubAgentTaskManager } from './subAgentTaskManager'
 
 function createWorkspace(): string {

@@ -1,4 +1,4 @@
-import type { TaskNode, TaskPriority, TaskStatus } from '@fluxagentcore/contracts/agentTypes'
+import type { TaskNode, TaskPriority, TaskStatus } from '@fluxos/contracts/agentTypes'
 import { TaskManager } from './taskManager'
 
 export type TaskSystemCreationEvent = {

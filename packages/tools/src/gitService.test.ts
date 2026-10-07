@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import type { ToolExecutor } from '@fluxagentcore/contracts/toolExecutor'
+import type { ToolExecutor } from '@fluxos/contracts/toolExecutor'
 import {
   fetchGitSnapshot,
   fetchGitShow,
@@ -127,7 +127,7 @@ describe('Git safety boundaries', () => {
     const git = async (...args: string[]) => execFileAsync('git', args, { cwd: workspace, env: process.env })
     try {
       await git('init')
-      await git('config', 'user.name', 'FluxAgentCore Test')
+      await git('config', 'user.name', 'FluxOs Test')
       await git('config', 'user.email', 'test@fluxagent.local')
       await writeFile(join(workspace, 'example.txt'), 'before\n')
       await git('add', '--', 'example.txt')
@@ -250,7 +250,7 @@ describe('Git safety boundaries', () => {
     const git = async (...args: string[]) => execFileAsync('git', args, { cwd: workspace, env: process.env })
     try {
       await git('init')
-      await git('config', 'user.name', 'FluxAgentCore Test')
+      await git('config', 'user.name', 'FluxOs Test')
       await git('config', 'user.email', 'test@fluxagent.local')
       await writeFile(join(workspace, 'base.txt'), 'base\n')
       await writeFile(join(workspace, 'user.txt'), 'before\n')
@@ -278,7 +278,7 @@ describe('Git safety boundaries', () => {
     const git = async (...args: string[]) => execFileAsync('git', args, { cwd: workspace, env: process.env })
     try {
       await git('init')
-      await git('config', 'user.name', 'FluxAgentCore Test')
+      await git('config', 'user.name', 'FluxOs Test')
       await git('config', 'user.email', 'test@fluxagent.local')
       await writeFile(join(workspace, 'agent.txt'), 'agent change\n')
       await writeFile(join(workspace, 'user.txt'), 'user staged\n')

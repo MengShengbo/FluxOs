@@ -20,7 +20,7 @@ import type {
   MemoryForgetResponse,
   MemoryUpdateRequest,
   MemoryUpdateResponse,
-} from '@fluxagentcore/contracts/memoryTypes'
+} from '@fluxos/contracts/memoryTypes'
 import { loadAllMemoryGroups } from './loaders'
 import { MemoryWriter } from './writer'
 

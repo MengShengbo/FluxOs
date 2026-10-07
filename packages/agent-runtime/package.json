@@ -1,5 +1,5 @@
 {
-  "name": "@fluxagentcore/agent-runtime",
+  "name": "@fluxos/agent-runtime",
   "version": "1.0.1",
   "description": "Agent execution, context, subagents and lifecycle orchestration",
   "type": "module",
@@ -181,11 +181,11 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "@fluxagentcore/contracts": "*",
-    "@fluxagentcore/extensions": "*",
-    "@fluxagentcore/models": "*",
-    "@fluxagentcore/platform": "*",
-    "@fluxagentcore/presentation": "*",
-    "@fluxagentcore/tools": "*"
+    "@fluxos/contracts": "*",
+    "@fluxos/extensions": "*",
+    "@fluxos/models": "*",
+    "@fluxos/platform": "*",
+    "@fluxos/presentation": "*",
+    "@fluxos/tools": "*"
   }
 }

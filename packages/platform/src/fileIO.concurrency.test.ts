@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { hashText, withFileLockSync, writeFileAtomic } from './fileIO'
-import { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
+import { NodeToolExecutor } from '@fluxos/tools/nodeToolExecutor'
 
 const roots: string[] = []
 function root() { const value = realpathSync.native(mkdtempSync(join(tmpdir(), 'tf-write-race-'))); roots.push(value); return value }

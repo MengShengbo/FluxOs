@@ -1,4 +1,4 @@
-# @fluxagentcore/models
+# @fluxos/models
 
 Model configuration, credentials, discovery and streaming protocols.
 

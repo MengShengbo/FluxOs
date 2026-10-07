@@ -1,4 +1,4 @@
-import type { PluginManifest } from '@fluxagentcore/contracts/pluginTypes'
+import type { PluginManifest } from '@fluxos/contracts/pluginTypes'
 import { DESIGN_ATLAS_AGENTS, DESIGN_ATLAS_PROMPT_FILES } from './designAtlasPrompts'
 
 export interface BundledPlugin {

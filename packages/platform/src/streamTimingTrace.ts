@@ -30,5 +30,5 @@ export function summarizeTimings(samples: readonly number[]): TimingSummary {
 
 export function emitStreamTimingTrace(scope: string, detail: Record<string, unknown>): void {
   if (!streamTimingTraceEnabled()) return
-  console.error(`[FluxAgentCore stream trace] ${JSON.stringify({ scope, at: Date.now(), ...detail })}`)
+  console.error(`[FluxOs stream trace] ${JSON.stringify({ scope, at: Date.now(), ...detail })}`)
 }

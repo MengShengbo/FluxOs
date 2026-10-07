@@ -6,7 +6,7 @@ describe('buildSystemPrompt', () => {
     const prompt = buildSystemPrompt('vibe')
     expect(prompt).toContain('You are FluxAgent, an AI agent')
     expect(prompt).toContain('When asked who you are or what you are called, identify yourself as FluxAgent.')
-    expect(prompt).not.toContain('You are FluxAgentCore,')
+    expect(prompt).not.toContain('You are FluxOs,')
   })
 
   it('injects the FluxAgent profile section when provided', () => {

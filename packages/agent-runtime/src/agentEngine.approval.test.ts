@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { AgentEventType } from './agentEngine'
 import { AgentEngine } from './agentEngine'
 import { DefaultAgentStateProvider } from './runtime/stateProvider'
-import type { ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import type { ToolExecutor } from '@fluxagentcore/contracts/toolExecutor'
+import type { ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import type { ToolExecutor } from '@fluxos/contracts/toolExecutor'
 
 describe('AgentEngine concurrent approval requests', () => {
   it('serializes two concurrency-safe MCP approvals without losing a resolver', async () => {

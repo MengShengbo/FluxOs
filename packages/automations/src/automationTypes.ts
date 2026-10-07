@@ -1,4 +1,4 @@
-import type { ApprovalPolicy } from '@fluxagentcore/contracts/agentTypes'
+import type { ApprovalPolicy } from '@fluxos/contracts/agentTypes'
 import type { AutomationSchedule } from './automationService'
 import type { AutomationToolSideEffectClass } from './automationSideEffects'
 

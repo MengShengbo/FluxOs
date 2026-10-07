@@ -1,5 +1,5 @@
 {
-  "name": "@fluxagentcore/contracts",
+  "name": "@fluxos/contracts",
   "version": "1.0.1",
   "description": "Browser-safe Agent, event, state and tool contracts",
   "type": "module",

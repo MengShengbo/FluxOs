@@ -1,8 +1,8 @@
-import type { AgentStateProvider, ContextCompactionState, ContextReservoirEntry, ContextSegment } from '@fluxagentcore/contracts/stateTypes'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentStateProvider, ContextCompactionState, ContextReservoirEntry, ContextSegment } from '@fluxos/contracts/stateTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
 import { ContextManager } from '../contextManager'
-import { ModelSurface } from '@fluxagentcore/models/modelSurface'
-import type { ModelSurfaceState } from '@fluxagentcore/contracts/modelSurfaceTypes'
+import { ModelSurface } from '@fluxos/models/modelSurface'
+import type { ModelSurfaceState } from '@fluxos/contracts/modelSurfaceTypes'
 
 export interface PreservedContextFile {
   path: string

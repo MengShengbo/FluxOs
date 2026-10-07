@@ -1,5 +1,5 @@
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
-import type { ContextSegment } from '@fluxagentcore/contracts/stateTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import type { ContextSegment } from '@fluxos/contracts/stateTypes'
 
 export interface ContextCompactionPlan {
   oldTurns: AgentTurn[]

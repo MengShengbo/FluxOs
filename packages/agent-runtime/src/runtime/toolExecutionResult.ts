@@ -1,4 +1,4 @@
-import type { AgentRunInterruption, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentRunInterruption, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import { isAgentRunInterruption, resolveAgentRunInterruption } from './runControl'
 
 export function createInterruptedToolResult(

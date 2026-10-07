@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import type { RuntimeTaskEvent } from '@fluxagentcore/contracts/runtimeTaskTypes'
+import type { RuntimeTaskEvent } from '@fluxos/contracts/runtimeTaskTypes'
 import { RuntimeTaskManager } from './runtimeTaskManager'
 
 describe('RuntimeTaskManager', () => {

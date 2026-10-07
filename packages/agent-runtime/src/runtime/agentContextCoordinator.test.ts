@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ModelSurface } from '@fluxagentcore/models/modelSurface'
+import { ModelSurface } from '@fluxos/models/modelSurface'
 import { DefaultAgentStateProvider } from './stateProvider'
 import { AgentContextCoordinator } from './agentContextCoordinator'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
 
 function createCoordinator() {
   const provider = new DefaultAgentStateProvider({

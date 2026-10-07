@@ -1,14 +1,14 @@
-# FluxAgentCore
+# FluxOs
 
-FluxAgentCore is the open-source Agent infrastructure powering FluxAgent. It is an independent npm workspace, with no Desktop application, workbench assembly, DOM renderer, remote-control product or private product Git history.
+FluxOs is the open-source Agent infrastructure powering FluxAgent. It is an independent npm workspace, with no Desktop application, workbench assembly, DOM renderer, remote-control product or private product Git history.
 
 ## Quick start
 
 Node.js 22.12+, npm and ripgrep are required.
 
 ```sh
-git clone https://github.com/MengShengbo/FluxAgentCore.git
-cd FluxAgentCore
+git clone https://github.com/MengShengbo/FluxOs.git
+cd FluxOs
 npm ci
 npm run verify
 npm run build
@@ -17,11 +17,11 @@ npm test
 npm run pack:core
 ```
 
-Consumers import declared `@fluxagentcore/*` entrypoints, such as `@fluxagentcore/agent-runtime`. Inject browser, computer and terminal adapters through the core interfaces.
+Consumers import declared `@fluxos/*` entrypoints, such as `@fluxos/agent-runtime`. Inject browser, computer and terminal adapters through the core interfaces.
 
 ## Product boundary
 
-| Open-source FluxAgentCore | Private FluxAgent product |
+| Open-source FluxOs | Private FluxAgent product |
 | --- | --- |
 | contracts, platform, models, tools, extensions, agent-runtime | Electron application and native browser/computer/terminal adapters |
 | conversations, profiles, automations, presentation | workbench assembly, DOM renderer, remote protocol, desktop UI and product services |
@@ -30,7 +30,7 @@ All ten core packages are MIT licensed, publishable, independently built and tes
 
 ## Compatibility
 
-Runtime configuration uses `FLUXAGENT_*` and `.fluxagent` only. Before launch, code and development data move directly to the current format, without old aliases, fallback readers or runtime migration layers. The assistant identifies itself as FluxAgent; FluxAgentCore is its execution kernel.
+Runtime configuration uses `FLUXAGENT_*` and `.fluxagent` only. Before launch, code and development data move directly to the current format, without old aliases, fallback readers or runtime migration layers. The assistant identifies itself as FluxAgent; FluxOs is its execution kernel.
 
 Profile archives exported by the product use `.fluxagent-profile`; the core container reader accepts both `.fluxagent-profile` and historical `.fluxagent-profile` files. The encrypted container format is unchanged.
 

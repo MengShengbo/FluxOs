@@ -11,7 +11,7 @@ export {
   type ConversationRunOutcome,
   type ConversationStepOutcome,
   type ConversationStreamChannel,
-} from '@fluxagentcore/contracts/conversationEvent'
+} from '@fluxos/contracts/conversationEvent'
 export {
   ConversationEventLog,
   DEFAULT_CONVERSATION_EVENT_WINDOW_LIMIT,

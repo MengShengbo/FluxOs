@@ -1,4 +1,4 @@
-import type { TaskNode } from '@fluxagentcore/contracts/agentTypes'
+import type { TaskNode } from '@fluxos/contracts/agentTypes'
 import type { SubAgentTaskSnapshot } from './runtime/subAgentTaskManager'
 import { TaskManager } from './taskManager'
 

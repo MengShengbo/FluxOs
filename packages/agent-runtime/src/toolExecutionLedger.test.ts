@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import { ToolExecutionLedger, toolCallSignature } from './toolExecutionLedger'
 
 function call(id: string, name = 'read_file', args: Record<string, unknown> = { path: 'src/app.ts' }): ToolCall {

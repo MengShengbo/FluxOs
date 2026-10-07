@@ -42,7 +42,7 @@ describe('modelRegistry', () => {
     expect(deepseek?.maxOutputTokens).toBe(384_000)
   })
 
-  it('exposes provider-native effort ranges instead of FluxAgentCore modes', () => {
+  it('exposes provider-native effort ranges instead of FluxOs modes', () => {
     expect(getModelReasoningCapabilities('gpt-5.6')?.efforts).toEqual(['none', 'low', 'medium', 'high', 'xhigh', 'max'])
     expect(getModelReasoningCapabilities('claude-opus-4-8')?.efforts).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
     expect(getModelReasoningCapabilities('claude-opus-5')?.efforts).toEqual(['low', 'medium', 'high', 'xhigh', 'max'])

@@ -1,4 +1,4 @@
-import type { ModelProtocol } from '@fluxagentcore/models/modelProtocol'
+import type { ModelProtocol } from '@fluxos/models/modelProtocol'
 import { CacheMonitor, type CacheBreakResult, type PromptStateSnapshot } from './cacheMonitor'
 
 export interface SentModelCacheRequest {

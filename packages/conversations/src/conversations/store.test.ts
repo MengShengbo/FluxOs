@@ -2,11 +2,11 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
-import type { ContextCompactionState } from '@fluxagentcore/contracts/stateTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import type { ContextCompactionState } from '@fluxos/contracts/stateTypes'
 import type { ConversationMeta, PersistedConversation } from './types'
 import type { AnyConversationEvent } from '../events/index'
-import { ModelSurface } from '@fluxagentcore/models/modelSurface'
+import { ModelSurface } from '@fluxos/models/modelSurface'
 import {
   appendConversationJournal,
   ConversationStore,

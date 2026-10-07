@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { performance } from 'node:perf_hooks'
-import type { ModelRequestRecord, TokenUsage } from '@fluxagentcore/contracts/agentTypes'
+import type { ModelRequestRecord, TokenUsage } from '@fluxos/contracts/agentTypes'
 
 export interface ModelRequestHandle {
   readonly record: ModelRequestRecord

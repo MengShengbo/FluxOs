@@ -2,9 +2,9 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import { AgentEngine } from './agentEngine'
-import { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
+import { NodeToolExecutor } from '@fluxos/tools/nodeToolExecutor'
 import { DefaultAgentStateProvider } from './runtime/stateProvider'
 
 const cleanups: Array<() => void> = []

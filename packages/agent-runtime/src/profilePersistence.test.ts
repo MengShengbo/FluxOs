@@ -27,7 +27,7 @@ describe('profile persistence', () => {
     const directory = temporaryConfigDirectory()
     writeFileSync(join(directory, 'profile.json'), '{broken', 'utf-8')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const { loadProfile } = await import('@fluxagentcore/models/profile')
+    const { loadProfile } = await import('@fluxos/models/profile')
 
     const profile = loadProfile()
 
@@ -42,7 +42,7 @@ describe('profile persistence', () => {
 
   it('merges independent profile fields under the profile lock', async () => {
     temporaryConfigDirectory()
-    const { loadProfile, saveProfile } = await import('@fluxagentcore/models/profile')
+    const { loadProfile, saveProfile } = await import('@fluxos/models/profile')
 
     saveProfile({ interfaceLanguage: 'en' })
     saveProfile({ enabledPersonaIds: ['architect'], defaultPersonaId: 'architect' })

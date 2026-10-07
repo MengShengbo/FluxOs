@@ -2,7 +2,7 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
-import type { AgentAttachment } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentAttachment } from '@fluxos/contracts/agentTypes'
 import { PaginatedMcpSdkClient } from './paginatedClient'
 import type { McpLocalServerDefinition, McpLocalToolResult, McpServerConfig, McpToolCallOptions, McpToolInfo } from './types'
 

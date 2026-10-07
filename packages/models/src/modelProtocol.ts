@@ -1,4 +1,4 @@
-import type { APIConfig } from '@fluxagentcore/contracts/stateTypes'
+import type { APIConfig } from '@fluxos/contracts/stateTypes'
 import { normalizeBaseUrl } from './normalizeBaseUrl'
 
 export type ModelProtocol = 'anthropic_messages' | 'openai_chat' | 'openai_responses'

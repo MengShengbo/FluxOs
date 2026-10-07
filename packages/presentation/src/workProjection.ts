@@ -1,5 +1,5 @@
-import type { ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import type { AnyConversationEvent, ConversationRunOutcome, ConversationStepOutcome } from '@fluxagentcore/contracts/conversationEvent'
+import type { ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import type { AnyConversationEvent, ConversationRunOutcome, ConversationStepOutcome } from '@fluxos/contracts/conversationEvent'
 
 export type WorkNodeKind = 'input' | 'reasoning' | 'answer' | 'tool' | 'runtime' | 'approval' | 'phase'
 export type WorkNodeStatus = 'waiting' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'interrupted'

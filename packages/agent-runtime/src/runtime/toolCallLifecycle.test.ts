@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentTool, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTool, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import { AgentRunControl, createAgentRunInterruption } from './runControl'
 import { ToolCallLifecycle, type ToolCallLifecycleOptions } from './toolCallLifecycle'
 

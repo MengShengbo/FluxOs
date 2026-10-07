@@ -15,25 +15,25 @@
   AgentRunPhase,
   AgentRunInterruption,
   ChangeSummary,
-} from '@fluxagentcore/contracts/agentTypes'
-import { generateSessionId, generateTurnId } from '@fluxagentcore/contracts/agentTypes'
+} from '@fluxos/contracts/agentTypes'
+import { generateSessionId, generateTurnId } from '@fluxos/contracts/agentTypes'
 import { existsSync, statSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import type { MemoryKind, MemoryScope } from '@fluxagentcore/contracts/memoryTypes'
-import { browserToolNeedsApproval, describeBrowserPermission, describeBrowserToolActivity, isBuiltInBrowserTool } from '@fluxagentcore/contracts/browserToolPresentation'
-import { computerToolApprovalLevel, describeComputerPermission, describeComputerToolActivity, isBuiltInComputerTool } from '@fluxagentcore/contracts/computerToolPresentation'
+import type { MemoryKind, MemoryScope } from '@fluxos/contracts/memoryTypes'
+import { browserToolNeedsApproval, describeBrowserPermission, describeBrowserToolActivity, isBuiltInBrowserTool } from '@fluxos/contracts/browserToolPresentation'
+import { computerToolApprovalLevel, describeComputerPermission, describeComputerToolActivity, isBuiltInComputerTool } from '@fluxos/contracts/computerToolPresentation'
 import { buildActivatedSkillsContext, buildSystemPrompt, invalidateStaticPromptCache } from './systemPrompt'
 import { TaskManager, type TaskTreeNode } from './taskManager'
 import { WorkExecutionTracker } from './workExecutionTracker'
-import type { WorkExecutionSnapshot, WorkStepControlAction } from '@fluxagentcore/contracts/workExecutionTypes'
+import type { WorkExecutionSnapshot, WorkStepControlAction } from '@fluxos/contracts/workExecutionTypes'
 import { CacheMonitor, type CacheBreakResult } from './cacheMonitor'
 import { observeModelCache } from './modelRequestCache'
 import { ModelRequestTracker, type ModelRequestHandle } from './runtime/modelRequestTracker'
-import { toolsToOpenAIFormat, toolsToAnthropicFormat, getToolByName, getToolsForMode, validateToolArgs } from '@fluxagentcore/tools/toolRegistry'
-import { applyEdit, stripLineNumberPrefix } from '@fluxagentcore/tools/editHelpers'
-import { applyPatchAdd, applyPatchHunks, parseApplyPatch, type ApplyPatchOperation } from '@fluxagentcore/tools/applyPatch'
-import { canComputeDiff, computeHunks, summarizeHunks } from '@fluxagentcore/presentation/diffCompute'
-import { shouldAutoBackgroundCommand } from '@fluxagentcore/tools/commandExecutionPolicy'
+import { toolsToOpenAIFormat, toolsToAnthropicFormat, getToolByName, getToolsForMode, validateToolArgs } from '@fluxos/tools/toolRegistry'
+import { applyEdit, stripLineNumberPrefix } from '@fluxos/tools/editHelpers'
+import { applyPatchAdd, applyPatchHunks, parseApplyPatch, type ApplyPatchOperation } from '@fluxos/tools/applyPatch'
+import { canComputeDiff, computeHunks, summarizeHunks } from '@fluxos/presentation/diffCompute'
+import { shouldAutoBackgroundCommand } from '@fluxos/tools/commandExecutionPolicy'
 import { ContextManager } from './contextManager'
 import {
   buildContextHandoff,
@@ -49,8 +49,8 @@ import {
   type ContinuationWorkspaceSnapshot,
 } from './contextCompaction'
 import { autoCompactThreshold, resolveContextPolicyProfile } from './contextPolicy'
-import { countMessagesTokens, countTurnishTokens } from '@fluxagentcore/models/tokenCounter'
-import { resolveNativeReasoningRequest } from '@fluxagentcore/models/modelRegistry'
+import { countMessagesTokens, countTurnishTokens } from '@fluxos/models/tokenCounter'
+import { resolveNativeReasoningRequest } from '@fluxos/models/modelRegistry'
 import {
   downgradeReasoningEffort,
   extractUnsupportedRequestParam,
@@ -60,19 +60,19 @@ import {
   setOpenAIPromptCacheLifetime,
   setOpenAIChatMaxTokens,
   shouldOmitSamplingTemperature,
-} from '@fluxagentcore/models/requestCompatibility'
+} from '@fluxos/models/requestCompatibility'
 import { TurnStrategyPlanner, type TurnStrategy } from './turnStrategy'
 import { toolCallSignature } from './toolExecutionLedger'
-import { createDefaultPipeline, type PermissionPipeline } from '@fluxagentcore/tools/permissions'
-import type { TerminalSessionInfo } from '@fluxagentcore/contracts/terminalTypes'
-import type { RuntimeTask, RuntimeTaskEvent, RuntimeTaskPresentation, RuntimeTaskPresentationKind } from '@fluxagentcore/contracts/runtimeTaskTypes'
-import { isMcpTool, parseMcpToolName, executeMcpTool, getMcpAgentTools, validateMcpToolArgs } from '@fluxagentcore/extensions/mcp/toolBridge'
-import type { McpClient } from '@fluxagentcore/extensions/mcp/client'
-import type { SubAgentDefinition, SubAgentEvent } from '@fluxagentcore/contracts/subAgentTypes'
-import type { WorkflowCheckpointSpec, WorkflowProgressUpdate, WorkflowRunContract, WorkflowSurfaceSpec } from '@fluxagentcore/contracts/workflowSurfaceTypes'
-import { resolvePath, toWorkspaceRelative } from '@fluxagentcore/platform/pathUtils'
-import { normalizeBaseUrl } from '@fluxagentcore/models/normalizeBaseUrl'
-import { createFluxAgentRequestHeaders } from '@fluxagentcore/models/clientIdentity'
+import { createDefaultPipeline, type PermissionPipeline } from '@fluxos/tools/permissions'
+import type { TerminalSessionInfo } from '@fluxos/contracts/terminalTypes'
+import type { RuntimeTask, RuntimeTaskEvent, RuntimeTaskPresentation, RuntimeTaskPresentationKind } from '@fluxos/contracts/runtimeTaskTypes'
+import { isMcpTool, parseMcpToolName, executeMcpTool, getMcpAgentTools, validateMcpToolArgs } from '@fluxos/extensions/mcp/toolBridge'
+import type { McpClient } from '@fluxos/extensions/mcp/client'
+import type { SubAgentDefinition, SubAgentEvent } from '@fluxos/contracts/subAgentTypes'
+import type { WorkflowCheckpointSpec, WorkflowProgressUpdate, WorkflowRunContract, WorkflowSurfaceSpec } from '@fluxos/contracts/workflowSurfaceTypes'
+import { resolvePath, toWorkspaceRelative } from '@fluxos/platform/pathUtils'
+import { normalizeBaseUrl } from '@fluxos/models/normalizeBaseUrl'
+import { createFluxAgentRequestHeaders } from '@fluxos/models/clientIdentity'
 import {
   ModelProtocolRequestError,
   buildModelProtocolUrl,
@@ -88,16 +88,16 @@ import {
   toResponsesTools,
   type ModelProtocol,
   type ModelProtocolAttempt,
-} from '@fluxagentcore/models/modelProtocol'
-import { resolveRequestMaxTokens } from '@fluxagentcore/models/modelRequestBudget'
+} from '@fluxos/models/modelProtocol'
+import { resolveRequestMaxTokens } from '@fluxos/models/modelRequestBudget'
 import { dispatchTaskTool, type TaskSystemCreationEvent } from './taskToolDispatcher'
 import { SubAgentRegistry, getAvailableAgentTypes } from './subAgentRegistry'
 import { AgentOrchestrator, type AutomationSubAgentPolicy } from './agentOrchestrator'
-import type { ToolExecutor, WebFetchResponse, WebSearchResponse, RequestOptions, Result } from '@fluxagentcore/contracts/toolExecutor'
-import type { AgentStateProvider, APIConfig, APIModel, ContextCompactionState, ContextHandoff, ContextHandoffFacts, ContextReservoirEntry, ContextSegment, WorkspaceInfo } from '@fluxagentcore/contracts/stateTypes'
-import type { TreeNode } from '@fluxagentcore/contracts/types'
-import type { EnhancedToolDef } from '@fluxagentcore/contracts/toolTypes'
-import { parseTextToolCalls, stripTextToolCallMarkup } from '@fluxagentcore/contracts/toolCallMarkup'
+import type { ToolExecutor, WebFetchResponse, WebSearchResponse, RequestOptions, Result } from '@fluxos/contracts/toolExecutor'
+import type { AgentStateProvider, APIConfig, APIModel, ContextCompactionState, ContextHandoff, ContextHandoffFacts, ContextReservoirEntry, ContextSegment, WorkspaceInfo } from '@fluxos/contracts/stateTypes'
+import type { TreeNode } from '@fluxos/contracts/types'
+import type { EnhancedToolDef } from '@fluxos/contracts/toolTypes'
+import { parseTextToolCalls, stripTextToolCallMarkup } from '@fluxos/contracts/toolCallMarkup'
 import {
   detectGitRepo,
   fetchGitDiff,
@@ -118,13 +118,13 @@ import {
   type GitDiffScope,
   type GitIntegrationState,
   type GitOperationResult,
-} from '@fluxagentcore/tools/gitService'
-import { hashText } from '@fluxagentcore/platform/fileIO'
-import { formatWebSources } from '@fluxagentcore/tools/webSourceStore'
-import { RuntimeTaskManager } from '@fluxagentcore/tools/runtimeTaskManager'
+} from '@fluxos/tools/gitService'
+import { hashText } from '@fluxos/platform/fileIO'
+import { formatWebSources } from '@fluxos/tools/webSourceStore'
+import { RuntimeTaskManager } from '@fluxos/tools/runtimeTaskManager'
 import { SubAgentTaskManager } from './runtime/subAgentTaskManager'
 import { ChildAgentController } from './runtime/childAgentController'
-import { type ChildAgentSnapshot } from '@fluxagentcore/contracts/childAgentTypes'
+import { type ChildAgentSnapshot } from '@fluxos/contracts/childAgentTypes'
 import { injectSubAgentDeliveries } from './subAgentDelivery'
 import { childCompletionBlocker, effectiveRequiredChildren, reconcileSubAgentSteps } from './subAgentStepCoordinator'
 import { type SubAgentBudgetConfig } from './subAgentBudget'
@@ -143,40 +143,40 @@ import { AgentRunLifecycle } from './runtime/agentRunLifecycle'
 import { AgentContextCoordinator } from './runtime/agentContextCoordinator'
 import { ToolExecutionCoordinator } from './runtime/toolExecutionCoordinator'
 import { ToolCallLifecycle } from './runtime/toolCallLifecycle'
-import { hasCompleteToolPayloads, isOutputLimitFinishReason } from '@fluxagentcore/models/modelStream'
-import { appendRuntimeContextToLatestUserMessage, normalizeAnthropicToolMessages } from '@fluxagentcore/models/modelMessages'
+import { hasCompleteToolPayloads, isOutputLimitFinishReason } from '@fluxos/models/modelStream'
+import { appendRuntimeContextToLatestUserMessage, normalizeAnthropicToolMessages } from '@fluxos/models/modelMessages'
 import {
   COMPUTER_ERROR_REDACTED,
   COMPUTER_RESULT_REDACTED,
   redactComputerContextSegments,
   redactComputerReservoir,
   redactComputerTurns,
-} from '@fluxagentcore/contracts/computerPrivacy'
-import { AnthropicStreamParser } from '@fluxagentcore/models/providers/anthropicStream'
-import { OpenAIChatStreamParser } from '@fluxagentcore/models/providers/openAIChatStream'
-import { OpenAIResponsesStreamParser } from '@fluxagentcore/models/providers/openAIResponsesStream'
-import { runModelRequest } from '@fluxagentcore/models/modelRequestOrchestrator'
+} from '@fluxos/contracts/computerPrivacy'
+import { AnthropicStreamParser } from '@fluxos/models/providers/anthropicStream'
+import { OpenAIChatStreamParser } from '@fluxos/models/providers/openAIChatStream'
+import { OpenAIResponsesStreamParser } from '@fluxos/models/providers/openAIResponsesStream'
+import { runModelRequest } from '@fluxos/models/modelRequestOrchestrator'
 import type { ToolCallBatch } from './toolCallOrchestrator'
 import {
   planContextCompaction,
   projectTurnsForModelContext,
 } from './contextCompactionBoundary'
-import { presentRequestError } from '@fluxagentcore/presentation/requestErrorPresentation'
-import { normalizeBuiltInToolArguments } from '@fluxagentcore/tools/toolArgumentNormalization'
-import { contentSearchResult, fileSearchResult, formatRetrievalResult } from '@fluxagentcore/tools/retrievalResults'
-import type { RetrievalResult, RetrievedResource } from '@fluxagentcore/contracts/retrievalTypes'
-import type { ToolResultData } from '@fluxagentcore/contracts/toolResultData'
-import { ModelSurface } from '@fluxagentcore/models/modelSurface'
-import type { ModelSurfaceState } from '@fluxagentcore/contracts/modelSurfaceTypes'
+import { presentRequestError } from '@fluxos/presentation/requestErrorPresentation'
+import { normalizeBuiltInToolArguments } from '@fluxos/tools/toolArgumentNormalization'
+import { contentSearchResult, fileSearchResult, formatRetrievalResult } from '@fluxos/tools/retrievalResults'
+import type { RetrievalResult, RetrievedResource } from '@fluxos/contracts/retrievalTypes'
+import type { ToolResultData } from '@fluxos/contracts/toolResultData'
+import { ModelSurface } from '@fluxos/models/modelSurface'
+import type { ModelSurfaceState } from '@fluxos/contracts/modelSurfaceTypes'
 
 export {
   extractResponsesReasoningEventDelta,
   extractResponsesReasoningSummary,
-} from '@fluxagentcore/models/modelStream'
+} from '@fluxos/models/modelStream'
 export {
   appendRuntimeContextToLatestUserMessage,
   normalizeAnthropicToolMessages,
-} from '@fluxagentcore/models/modelMessages'
+} from '@fluxos/models/modelMessages'
 export { splitTurnsForCompaction } from './contextCompactionBoundary'
 
 function describeSemanticToolActivity(
@@ -349,7 +349,7 @@ interface EngineInteractiveRequest {
   event: AskUserEvent
 }
 
-export { downgradeReasoningEffort } from '@fluxagentcore/models/requestCompatibility'
+export { downgradeReasoningEffort } from '@fluxos/models/requestCompatibility'
 
 function stableHash(value: unknown): string {
   const normalize = (input: unknown): unknown => {
@@ -4984,7 +4984,7 @@ Support claims with inspected source text. Use known paths directly, or locate c
           : await this.toolExecutor.searchContent(args.pattern as string, dirPath, filePattern, !caseSensitive)
         if (!result.success) return `Error: ${result.error}`
         const page = this.toolExecutor.searchContentPage
-          ? result.data as import('@fluxagentcore/contracts/toolExecutor').SearchContentPage
+          ? result.data as import('@fluxos/contracts/toolExecutor').SearchContentPage
           : { hits: Array.isArray(result.data) ? result.data : [], truncated: false, offset: 0, limit: 50, totalMatches: Array.isArray(result.data) ? result.data.length : 0 }
         const retrieval = contentSearchResult(page, this.toWorkspaceRelative(basePath, dirPath) || '.', String(args.pattern), path => this.toWorkspaceRelative(basePath, path))
         return { retrieval, output: formatRetrievalResult(retrieval) }

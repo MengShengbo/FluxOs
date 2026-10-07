@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
-import type { ContextHandoff, ContextSegment } from '@fluxagentcore/contracts/stateTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import type { ContextHandoff, ContextSegment } from '@fluxos/contracts/stateTypes'
 import {
   buildContextHandoff,
   buildContinuationEvidence,

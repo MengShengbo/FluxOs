@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentEventType } from '@fluxagentcore/agent-runtime/agentEngine'
-import type { AgentTurn, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import type { ContextSegment } from '@fluxagentcore/contracts/stateTypes'
+import type { AgentEventType } from '@fluxos/agent-runtime/agentEngine'
+import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import type { ContextSegment } from '@fluxos/contracts/stateTypes'
 import type { PersistedConversation } from '../conversations/types'
 import {
   COMPUTER_ERROR_REDACTED,

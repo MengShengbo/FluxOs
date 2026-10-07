@@ -1,7 +1,7 @@
 /**
  * Cache break detection - lightweight cross-turn monitoring for prompt prefix
  * cache stability. Inspired by Claude Code's promptCacheBreakDetection.ts but
- * trimmed to FluxAgentCore's scope.
+ * trimmed to FluxOs's scope.
  *
  * Design goals:
  *   - Detect when cacheReadTokens drops > 5% and > 2000 absolute tokens

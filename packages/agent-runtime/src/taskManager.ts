@@ -2,10 +2,10 @@ import type {
   TaskNode,
   TaskPriority,
   TaskStatus,
-} from '@fluxagentcore/contracts/agentTypes'
+} from '@fluxos/contracts/agentTypes'
 import {
   generateTaskId,
-} from '@fluxagentcore/contracts/agentTypes'
+} from '@fluxos/contracts/agentTypes'
 
 export interface TaskToolCall {
   toolCallId: string

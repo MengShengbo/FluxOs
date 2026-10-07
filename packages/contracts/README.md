@@ -1,4 +1,4 @@
-# @fluxagentcore/contracts
+# @fluxos/contracts
 
 Browser-safe Agent, event, state and tool contracts.
 

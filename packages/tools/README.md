@@ -1,4 +1,4 @@
-# @fluxagentcore/tools
+# @fluxos/tools
 
 Tool execution, search, memory, permissions and runtime processes.
 

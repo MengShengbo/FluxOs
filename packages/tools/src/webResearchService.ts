@@ -1,7 +1,7 @@
 import { WebSourceStore } from './webSourceStore'
 import { resolvePublicWebAddresses } from './publicWebDns'
 import { interceptors, type Dispatcher } from 'undici'
-import { getPinnedNetworkDispatcher } from '@fluxagentcore/platform/networkProxy'
+import { getPinnedNetworkDispatcher } from '@fluxos/platform/networkProxy'
 import type {
   Result,
   WebFetchResponse,
@@ -9,7 +9,7 @@ import type {
   WebSearchProviderStatus,
   WebSearchResponse,
   WebSearchResult,
-} from '@fluxagentcore/contracts/toolExecutor'
+} from '@fluxos/contracts/toolExecutor'
 
 const SEARCH_TIMEOUTS = {
   fast: 3_500,
@@ -22,7 +22,7 @@ const PAGE_RESPONSE_LIMIT = 4 * 1024 * 1024
 const SEARCH_CACHE_TTL_MS = 2 * 60 * 1000
 const PAGE_CACHE_TTL_MS = 5 * 60 * 1000
 const CACHE_LIMIT = 96
-const USER_AGENT = 'FluxAgentCore/1.0 (+https://github.com/MengShengbo/FluxAgentCore)'
+const USER_AGENT = 'FluxOs/1.0 (+https://github.com/MengShengbo/FluxOs)'
 const TRACKING_PARAMETERS = new Set([
   'fbclid', 'gclid', 'mc_cid', 'mc_eid', 'ref', 'ref_src', 'source',
 ])

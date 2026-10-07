@@ -2,9 +2,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
-import type { AgentTurn, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import { AgentEngine } from './agentEngine'
-import { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
+import { NodeToolExecutor } from '@fluxos/tools/nodeToolExecutor'
 import { DefaultAgentStateProvider } from './runtime/stateProvider'
 
 it('returns current file and search facts after compaction removes the original results', async () => {

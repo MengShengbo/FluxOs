@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { BlockList, isIP } from 'node:net'
 import { interceptors, type Dispatcher } from 'undici'
-import { getPinnedNetworkDispatcher } from '@fluxagentcore/platform/networkProxy'
+import { getPinnedNetworkDispatcher } from '@fluxos/platform/networkProxy'
 
 type Address = { address: string; family: 4 | 6 }
 const blocked = new BlockList()

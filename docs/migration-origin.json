@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "name": "FluxAgentCore",
+  "name": "FluxOs",
   "sourceRevision": "946ab7c0603e2992d7df90fd15af230ac78f0a92",
   "includesWorkingTreeChanges": true,
   "packageIds": [

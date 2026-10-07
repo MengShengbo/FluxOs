@@ -1,7 +1,7 @@
-import type { AgentAttachment, AgentTool, ToolParameter } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentAttachment, AgentTool, ToolParameter } from '@fluxos/contracts/agentTypes'
 import type { McpClient } from './client'
 import type { McpToolCallOptions, McpToolInfo } from './types'
-import { validateSchemaValue } from '@fluxagentcore/platform/schemaValidation'
+import { validateSchemaValue } from '@fluxos/platform/schemaValidation'
 
 export function mcpToolToAgentTool(tool: McpToolInfo): AgentTool {
   const params = extractParameters(tool.inputSchema)

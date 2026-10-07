@@ -1,5 +1,5 @@
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
-import type { AnyConversationEvent } from '@fluxagentcore/contracts/conversationEvent'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import type { WorkNode, WorkProjectionSnapshot } from './workProjection'
 import type { WorkSessionSnapshot } from './workTypes'
 

@@ -1,4 +1,4 @@
-import type { RuntimeTaskStatus } from '@fluxagentcore/contracts/runtimeTaskTypes'
+import type { RuntimeTaskStatus } from '@fluxos/contracts/runtimeTaskTypes'
 
 export interface SubAgentBudgetConfig {
   maxParallelPerSession: number

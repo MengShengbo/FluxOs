@@ -1,6 +1,6 @@
-import type { AgentEventType } from '@fluxagentcore/agent-runtime/agentEngine'
-import type { AgentAttachment, AgentCapabilitySelection, AgentRunState, AgentTurn, ApprovalPolicy } from '@fluxagentcore/contracts/agentTypes'
-import type { WorkRun } from '@fluxagentcore/contracts/workExecutionTypes'
+import type { AgentEventType } from '@fluxos/agent-runtime/agentEngine'
+import type { AgentAttachment, AgentCapabilitySelection, AgentRunState, AgentTurn, ApprovalPolicy } from '@fluxos/contracts/agentTypes'
+import type { WorkRun } from '@fluxos/contracts/workExecutionTypes'
 import type {
   AnyAppendConversationEventInput,
   AppendConversationEventInput,
@@ -9,7 +9,7 @@ import type {
   ConversationRunOutcome,
   ConversationStepOutcome,
   ConversationStreamChannel,
-} from '@fluxagentcore/contracts/conversationEvent'
+} from '@fluxos/contracts/conversationEvent'
 
 export interface ConversationEventNormalizerOptions {
   now?: () => number

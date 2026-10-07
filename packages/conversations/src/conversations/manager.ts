@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
-import type { AgentEngine, AgentEventType } from '@fluxagentcore/agent-runtime/agentEngine'
-import type { FluxAgentConfig } from '@fluxagentcore/models/config'
-import { mergeModelRequest, summarizeModelRequests, type ModelUsageSummary } from '@fluxagentcore/contracts/modelUsage'
-import type { AgentTurn, ModelRequestRecord } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentEngine, AgentEventType } from '@fluxos/agent-runtime/agentEngine'
+import type { FluxAgentConfig } from '@fluxos/models/config'
+import { mergeModelRequest, summarizeModelRequests, type ModelUsageSummary } from '@fluxos/contracts/modelUsage'
+import type { AgentTurn, ModelRequestRecord } from '@fluxos/contracts/agentTypes'
 import type { AnyConversationEvent } from '../events/index'
 import type {
   ConversationDraftState,
@@ -12,7 +12,7 @@ import type {
   ConversationQueuedInput,
   PersistedConversation,
 } from './types'
-import type { WorkflowInstanceState } from '@fluxagentcore/contracts/workflowSurfaceTypes'
+import type { WorkflowInstanceState } from '@fluxos/contracts/workflowSurfaceTypes'
 import {
   deleteConversation,
   deleteConversationAsync,
@@ -26,12 +26,12 @@ import {
 } from './store'
 import { ConversationCatalog } from './conversationCatalog'
 import { ConversationJournalWriter, type ConversationJournalWriterStats, type JournalDurability } from './journalWriter'
-import { SessionRegistry } from '@fluxagentcore/agent-runtime/runtime/sessionRegistry'
+import { SessionRegistry } from '@fluxos/agent-runtime/runtime/sessionRegistry'
 import { writeConversationRecoveryBundle } from './recoveryExport'
 import { redactComputerAgentEvent, redactComputerConversation } from '../privacy/computerPrivacy'
 import { ConversationInteractionStoreV2 } from './conversationInteractionStoreV2'
 import { ConversationRuntimeRepositoryV2 } from './conversationRuntimeRepositoryV2'
-import { generatedConversationTitle, normalizeConversationTitleText } from '@fluxagentcore/presentation/conversationTitle'
+import { generatedConversationTitle, normalizeConversationTitleText } from '@fluxos/presentation/conversationTitle'
 
 export type ConversationPersistenceStatusHandler = (error: Error | null) => void
 

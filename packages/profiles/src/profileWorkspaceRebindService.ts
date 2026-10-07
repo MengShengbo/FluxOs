@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
-import { writeFileAtomicSync } from '@fluxagentcore/platform/fileIO'
-import { ConversationRepositoryV2 } from '@fluxagentcore/conversations/conversations/conversationRepositoryV2'
-import { ConversationStore } from '@fluxagentcore/conversations/conversations/store'
+import { writeFileAtomicSync } from '@fluxos/platform/fileIO'
+import { ConversationRepositoryV2 } from '@fluxos/conversations/conversations/conversationRepositoryV2'
+import { ConversationStore } from '@fluxos/conversations/conversations/store'
 import type { ProfileStorageLayout } from './types'
 import {
   WorkspaceBindingService,

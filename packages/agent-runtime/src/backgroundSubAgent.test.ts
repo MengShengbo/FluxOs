@@ -1,11 +1,11 @@
-import { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
+import { NodeToolExecutor } from '@fluxos/tools/nodeToolExecutor'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAgentRuntime } from './runtime/agentRuntime'
 import { registerAgent } from './subAgentRegistry'
-import type { ToolResultData } from '@fluxagentcore/contracts/toolResultData'
+import type { ToolResultData } from '@fluxos/contracts/toolResultData'
 
 function registerTestAgent(id: string): void {
   registerAgent({

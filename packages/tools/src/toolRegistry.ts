@@ -1,6 +1,6 @@
-﻿import type { AgentMode, ToolCategory, ToolParameter } from '@fluxagentcore/contracts/agentTypes'
-import type { EnhancedToolDef } from '@fluxagentcore/contracts/toolTypes'
-import { validateSchemaValue } from '@fluxagentcore/platform/schemaValidation'
+﻿import type { AgentMode, ToolCategory, ToolParameter } from '@fluxos/contracts/agentTypes'
+import type { EnhancedToolDef } from '@fluxos/contracts/toolTypes'
+import { validateSchemaValue } from '@fluxos/platform/schemaValidation'
 
 const tools: EnhancedToolDef[] = [
   {

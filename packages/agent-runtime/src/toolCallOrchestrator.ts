@@ -1,5 +1,5 @@
-import type { AgentTool, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import type { EnhancedToolDef } from '@fluxagentcore/contracts/toolTypes'
+import type { AgentTool, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import type { EnhancedToolDef } from '@fluxos/contracts/toolTypes'
 
 export interface ToolCallBatch {
   isConcurrencySafe: boolean

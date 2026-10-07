@@ -8,8 +8,8 @@ import type {
   RuntimeTaskKind,
   RuntimeTaskPresentation,
   RuntimeTaskStatus,
-} from '@fluxagentcore/contracts/runtimeTaskTypes'
-import { getRuntimeInfo, type RuntimeInfo } from '@fluxagentcore/platform/runtime'
+} from '@fluxos/contracts/runtimeTaskTypes'
+import { getRuntimeInfo, type RuntimeInfo } from '@fluxos/platform/runtime'
 
 export interface RuntimeTaskControl {
   stop?: () => Promise<void> | void

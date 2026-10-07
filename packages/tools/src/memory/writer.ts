@@ -17,9 +17,9 @@ import type {
   MemoryForgetResponse,
   MemoryUpdateRequest,
   MemoryUpdateResponse,
-} from '@fluxagentcore/contracts/memoryTypes'
+} from '@fluxos/contracts/memoryTypes'
 import { sanitizeMemoryText } from './sanitizer'
-import { withFileLockSync } from '@fluxagentcore/platform/fileIO'
+import { withFileLockSync } from '@fluxos/platform/fileIO'
 
 const DYNAMIC_STORE_SOFT_CAP = 500
 const DEDUP_THRESHOLD = 0.75

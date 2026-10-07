@@ -1,5 +1,5 @@
 {
-  "name": "@fluxagentcore/models",
+  "name": "@fluxos/models",
   "version": "1.0.1",
   "description": "Model configuration, credentials, discovery and streaming protocols",
   "type": "module",
@@ -97,8 +97,8 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "@fluxagentcore/contracts": "*",
-    "@fluxagentcore/platform": "*",
+    "@fluxos/contracts": "*",
+    "@fluxos/platform": "*",
     "js-tiktoken": "^1.0.21",
     "strip-ansi": "^7.2.0"
   }

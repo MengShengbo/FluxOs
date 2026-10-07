@@ -1,6 +1,6 @@
-import type { AgentEventType } from '@fluxagentcore/agent-runtime/agentEngine'
-import type { ActiveTaskContext } from '@fluxagentcore/agent-runtime/taskManager'
-import type { AgentSession, AgentTurn } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentEventType } from '@fluxos/agent-runtime/agentEngine'
+import type { ActiveTaskContext } from '@fluxos/agent-runtime/taskManager'
+import type { AgentSession, AgentTurn } from '@fluxos/contracts/agentTypes'
 import {
   COMPUTER_DETAIL_REDACTED,
   COMPUTER_ERROR_REDACTED,
@@ -13,12 +13,12 @@ import {
   redactComputerTurn,
   redactComputerTurns,
   turnContainsComputerActivity,
-} from '@fluxagentcore/contracts/computerPrivacy'
-import { isBuiltInComputerTool } from '@fluxagentcore/contracts/computerToolPresentation'
-import type { ContextHandoff, ContextHandoffFacts, ContextReservoirEntry, ContextSegment } from '@fluxagentcore/contracts/stateTypes'
+} from '@fluxos/contracts/computerPrivacy'
+import { isBuiltInComputerTool } from '@fluxos/contracts/computerToolPresentation'
+import type { ContextHandoff, ContextHandoffFacts, ContextReservoirEntry, ContextSegment } from '@fluxos/contracts/stateTypes'
 import type { ConversationJournalEntry, PersistedConversation } from '../conversations/types'
 import type { AnyConversationEvent } from '../events/index'
-import type { ModelSurfaceState } from '@fluxagentcore/contracts/modelSurfaceTypes'
+import type { ModelSurfaceState } from '@fluxos/contracts/modelSurfaceTypes'
 
 export {
   COMPUTER_DETAIL_REDACTED,
@@ -28,9 +28,9 @@ export {
   redactComputerToolResult,
   redactComputerTurn,
   redactComputerTurns,
-} from '@fluxagentcore/contracts/computerPrivacy'
+} from '@fluxos/contracts/computerPrivacy'
 
-export { redactComputerContextSegments, redactComputerReservoir } from '@fluxagentcore/contracts/computerPrivacy'
+export { redactComputerContextSegments, redactComputerReservoir } from '@fluxos/contracts/computerPrivacy'
 
 export function redactComputerActiveTask(context: ActiveTaskContext | null): ActiveTaskContext | null {
   if (!context) return null

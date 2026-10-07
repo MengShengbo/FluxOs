@@ -1,4 +1,4 @@
-# @fluxagentcore/presentation
+# @fluxos/presentation
 
 Browser-safe deterministic conversation and task projections.
 

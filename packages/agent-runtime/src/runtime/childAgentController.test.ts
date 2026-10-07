@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAgentRuntime, type AgentRuntime } from './agentRuntime'
-import { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
-import { childCapabilityProfile, normalizeChildName } from '@fluxagentcore/contracts/childAgentTypes'
+import { NodeToolExecutor } from '@fluxos/tools/nodeToolExecutor'
+import { childCapabilityProfile, normalizeChildName } from '@fluxos/contracts/childAgentTypes'
 
 const runtimes: AgentRuntime[] = [], workspaces: string[] = []
 afterEach(async () => {

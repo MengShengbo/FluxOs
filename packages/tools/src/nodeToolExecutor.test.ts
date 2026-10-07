@@ -6,11 +6,11 @@ import { createServer } from 'node:http'
 import { PassThrough } from 'node:stream'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { CommandOutput, Result } from '@fluxagentcore/contracts/toolExecutor'
+import type { CommandOutput, Result } from '@fluxos/contracts/toolExecutor'
 import { NodeToolExecutor } from './nodeToolExecutor'
 import { RuntimeTaskManager } from './runtimeTaskManager'
 import { WebResearchService } from './webResearchService'
-import { hashText } from '@fluxagentcore/platform/fileIO'
+import { hashText } from '@fluxos/platform/fileIO'
 
 // The first Windows PowerShell process can exceed 15 seconds on a fresh runner.
 // Give real shell integration checks the runtime's normal 30-second deadline.

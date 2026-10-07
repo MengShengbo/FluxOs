@@ -1,15 +1,15 @@
-import { summarizeModelRequests } from '@fluxagentcore/contracts/modelUsage'
+import { summarizeModelRequests } from '@fluxos/contracts/modelUsage'
 import { describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentTurn, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import { COMPUTER_DETAIL_REDACTED, COMPUTER_RESULT_REDACTED } from '@fluxagentcore/contracts/computerPrivacy'
-import type { ToolExecutor } from '@fluxagentcore/contracts/toolExecutor'
-import type { McpClient } from '@fluxagentcore/extensions/mcp/client'
+import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import { COMPUTER_DETAIL_REDACTED, COMPUTER_RESULT_REDACTED } from '@fluxos/contracts/computerPrivacy'
+import type { ToolExecutor } from '@fluxos/contracts/toolExecutor'
+import type { McpClient } from '@fluxos/extensions/mcp/client'
 import { AgentEngine, countTurnContextChars, downgradeReasoningEffort, splitTurnsForCompaction, type AgentEventType } from './agentEngine'
 import { TaskManager } from './taskManager'
-import { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
+import { NodeToolExecutor } from '@fluxos/tools/nodeToolExecutor'
 import { DefaultAgentStateProvider } from './runtime/stateProvider'
 
 describe('reasoning effort compatibility', () => {
@@ -1298,7 +1298,7 @@ describe('AgentEngine read bandwidth', () => {
       workspacePath: workspace,
     }, executor, stateProvider)
     const dispatchTool = (engine as unknown as {
-      dispatchTool: (name: string, args: Record<string, unknown>) => Promise<{ output: string; retrieval: import('@fluxagentcore/contracts/retrievalTypes').RetrievalResult }>
+      dispatchTool: (name: string, args: Record<string, unknown>) => Promise<{ output: string; retrieval: import('@fluxos/contracts/retrievalTypes').RetrievalResult }>
     }).dispatchTool.bind(engine)
 
     try {
@@ -1342,7 +1342,7 @@ describe('AgentEngine read bandwidth', () => {
       })),
     } as unknown as ToolExecutor, stateProvider)
     const dispatchTool = (engine as unknown as {
-      dispatchTool: (name: string, args: Record<string, unknown>) => Promise<{ output: string; retrieval: import('@fluxagentcore/contracts/retrievalTypes').RetrievalResult }>
+      dispatchTool: (name: string, args: Record<string, unknown>) => Promise<{ output: string; retrieval: import('@fluxos/contracts/retrievalTypes').RetrievalResult }>
     }).dispatchTool.bind(engine)
 
     try {

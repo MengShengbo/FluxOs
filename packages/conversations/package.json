@@ -1,5 +1,5 @@
 {
-  "name": "@fluxagentcore/conversations",
+  "name": "@fluxos/conversations",
   "version": "1.0.1",
   "description": "Conversation event log, persistence, recovery and privacy",
   "type": "module",
@@ -113,10 +113,10 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "@fluxagentcore/agent-runtime": "*",
-    "@fluxagentcore/contracts": "*",
-    "@fluxagentcore/models": "*",
-    "@fluxagentcore/platform": "*",
-    "@fluxagentcore/presentation": "*"
+    "@fluxos/agent-runtime": "*",
+    "@fluxos/contracts": "*",
+    "@fluxos/models": "*",
+    "@fluxos/platform": "*",
+    "@fluxos/presentation": "*"
   }
 }

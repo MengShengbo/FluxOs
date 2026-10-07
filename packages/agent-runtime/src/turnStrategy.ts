@@ -1,4 +1,4 @@
-import type { AgentMode, AgentSession, AgentTurn, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentMode, AgentSession, AgentTurn, ToolResult } from '@fluxos/contracts/agentTypes'
 
 export type TurnIntent = 'model_decides'
 export type TurnScope = 'model_decides'

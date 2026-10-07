@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { AgentEngine, type AgentEventType } from './agentEngine'
 import { DefaultAgentStateProvider } from './runtime/stateProvider'
-import type { ToolExecutor } from '@fluxagentcore/contracts/toolExecutor'
+import type { ToolExecutor } from '@fluxos/contracts/toolExecutor'
 
 describe('runtime-inferred response mode', () => {
   it.each([1, 3])('counts every tool dispatch toward a budget of %i tool rounds', async maxToolRounds => {

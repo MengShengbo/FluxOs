@@ -2,13 +2,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
-import type { SubAgentDefinition } from '@fluxagentcore/contracts/subAgentTypes'
-import type { ToolExecutor } from '@fluxagentcore/contracts/toolExecutor'
+import type { SubAgentDefinition } from '@fluxos/contracts/subAgentTypes'
+import type { ToolExecutor } from '@fluxos/contracts/toolExecutor'
 import type { AgentOrchestrator } from './agentOrchestrator'
 import { AgentEngine } from './agentEngine'
 import { DefaultAgentStateProvider } from './runtime/stateProvider'
 import { registerAgent, syncAgentSkills } from './subAgentRegistry'
-import { SkillRuntime } from '@fluxagentcore/extensions/skills/runtime'
+import { SkillRuntime } from '@fluxos/extensions/skills/runtime'
 
 it('offers built-in delegation in each workspace without leaking project definitions', () => {
   const root = mkdtempSync(join(tmpdir(), 'fluxagent-agent-availability-'))

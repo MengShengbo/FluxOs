@@ -18,7 +18,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import type { Memory, MemoryGroup } from '@fluxagentcore/contracts/memoryTypes'
+import type { Memory, MemoryGroup } from '@fluxos/contracts/memoryTypes'
 import { sanitizeMemoryText } from './sanitizer'
 
 interface LoaderContext {

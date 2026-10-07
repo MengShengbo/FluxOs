@@ -1,4 +1,4 @@
-# @fluxagentcore/automations
+# @fluxos/automations
 
 Automation scheduling, persistence, routing and recovery.
 

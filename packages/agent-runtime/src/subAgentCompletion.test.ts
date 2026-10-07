@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { RuntimeTaskManager } from '@fluxagentcore/tools/runtimeTaskManager'
+import { RuntimeTaskManager } from '@fluxos/tools/runtimeTaskManager'
 import { createSubAgentDelivery } from './subAgentDelivery'
 import { SubAgentTaskManager } from './runtime/subAgentTaskManager'
 

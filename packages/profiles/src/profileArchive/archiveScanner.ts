@@ -12,9 +12,9 @@ import {
   type ProfileArchivePreview,
   type ProfileArchiveReadLimits,
 } from './types'
-import type { AnyConversationEventV2 } from '@fluxagentcore/conversations/conversations/conversationV2Types'
-import { parseConversationEventV2 } from '@fluxagentcore/conversations/conversations/conversationEventStoreV2'
-import { stableConversationV2Id } from '@fluxagentcore/conversations/conversations/conversationV2Ids'
+import type { AnyConversationEventV2 } from '@fluxos/conversations/conversations/conversationV2Types'
+import { parseConversationEventV2 } from '@fluxos/conversations/conversations/conversationEventStoreV2'
+import { stableConversationV2Id } from '@fluxos/conversations/conversations/conversationV2Ids'
 import { containsForbiddenExportData } from './redaction'
 
 const MAX_JSON_BYTES = 32 * 1024 * 1024

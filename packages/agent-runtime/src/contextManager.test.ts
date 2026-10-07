@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
-import type { ContextSegment } from '@fluxagentcore/contracts/stateTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import type { ContextSegment } from '@fluxos/contracts/stateTypes'
 import { ContextManager } from './contextManager'
 
 function userTurn(id: string, content: string): AgentTurn {
@@ -300,8 +300,8 @@ describe('ContextManager', () => {
         progress: [],
         workspace: {},
       },
-      document: '# FluxAgentCore Development Handoff\nfull latest delivery',
-      compactDocument: '# FluxAgentCore Development Handoff\ncompact latest delivery',
+      document: '# FluxOs Development Handoff\nfull latest delivery',
+      compactDocument: '# FluxOs Development Handoff\ncompact latest delivery',
     }
     const segments = [
       segment({

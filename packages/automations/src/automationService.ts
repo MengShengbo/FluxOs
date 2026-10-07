@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
-import type { ApprovalPolicy } from '@fluxagentcore/contracts/agentTypes'
-import { AtomicJsonStore } from '@fluxagentcore/platform/atomicJsonStore'
+import type { ApprovalPolicy } from '@fluxos/contracts/agentTypes'
+import { AtomicJsonStore } from '@fluxos/platform/atomicJsonStore'
 import type {
   AutomationCapabilityPolicy,
   AutomationContextPolicy,
@@ -1167,7 +1167,7 @@ export class AutomationService {
         }
         const late = now - scheduledFor > MISFIRE_GRACE_MS
         if (late && automation.misfirePolicy === 'skip') {
-          this.createTerminalRun(automation, 'skipped', 'scheduled', now, scheduledFor, 'Scheduled time passed while FluxAgentCore was unavailable.')
+          this.createTerminalRun(automation, 'skipped', 'scheduled', now, scheduledFor, 'Scheduled time passed while FluxOs was unavailable.')
           changed = true
           continue
         }
@@ -1562,7 +1562,7 @@ export class AutomationService {
         run.updatedAt = now
         run.completedAt = now
         run.durationMs = Math.max(0, now - run.startedAt)
-        run.error = 'FluxAgentCore exited before this run completed.'
+        run.error = 'FluxOs exited before this run completed.'
         automation.activeRunId = undefined
         automation.lastStatus = 'interrupted'
         automation.lastError = run.error

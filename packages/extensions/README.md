@@ -1,4 +1,4 @@
-# @fluxagentcore/extensions
+# @fluxos/extensions
 
 MCP, Skills, local plugins and work packs.
 

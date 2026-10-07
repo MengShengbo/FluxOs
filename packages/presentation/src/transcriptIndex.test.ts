@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentTurn, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTurn, ToolResult } from '@fluxos/contracts/agentTypes'
 import { TranscriptIndex } from './transcriptIndex'
 
 describe('transcript content revisions', () => {

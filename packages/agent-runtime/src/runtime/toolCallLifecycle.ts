@@ -1,4 +1,4 @@
-import type { AgentTool, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTool, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import { ToolExecutionLedger } from '../toolExecutionLedger'
 import { type AgentRunControl, createAgentRunInterruption, resolveAgentRunInterruption } from './runControl'
 import { settleToolExecution } from './toolExecutionResult'

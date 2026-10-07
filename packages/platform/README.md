@@ -1,4 +1,4 @@
-# @fluxagentcore/platform
+# @fluxos/platform
 
 Node process, filesystem, profile path and network adapters.
 

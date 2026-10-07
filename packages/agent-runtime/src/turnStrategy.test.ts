@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { toolsToOpenAIFormat } from '@fluxagentcore/tools/toolRegistry'
+import { toolsToOpenAIFormat } from '@fluxos/tools/toolRegistry'
 import { TurnStrategyPlanner } from './turnStrategy'
-import type { AgentMode, AgentSession, AgentTurn, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentMode, AgentSession, AgentTurn, ToolResult } from '@fluxos/contracts/agentTypes'
 
 function sessionFor(content: string, mode: AgentMode = 'vibe', extraTurns: AgentTurn[] = []): AgentSession {
   const turns: AgentTurn[] = [

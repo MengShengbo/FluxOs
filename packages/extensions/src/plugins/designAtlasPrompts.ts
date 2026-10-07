@@ -1,4 +1,4 @@
-import type { PluginAgent } from '@fluxagentcore/contracts/pluginTypes'
+import type { PluginAgent } from '@fluxos/contracts/pluginTypes'
 
 export const DESIGN_ATLAS_PROMPT_FILES: Record<string, string> = {
   'skills/design-atlas/SKILL.md': String.raw`# Design Atlas 多方向设计探索总监

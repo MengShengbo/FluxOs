@@ -31,7 +31,7 @@ export function orderedPackages(workspaces = readWorkspaces()) {
     if (!entry) throw new Error(`Unknown package: ${name}`)
     visiting.add(name)
     for (const dependency of Object.keys(entry.manifest.dependencies || {})) {
-      if (dependency.startsWith('@fluxagentcore/')) visit(dependency, [...path, name])
+      if (dependency.startsWith('@fluxos/')) visit(dependency, [...path, name])
     }
     visiting.delete(name)
     visited.add(name)

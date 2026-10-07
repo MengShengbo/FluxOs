@@ -1,4 +1,4 @@
-import { mergeModelRequest } from '@fluxagentcore/contracts/modelUsage'
+import { mergeModelRequest } from '@fluxos/contracts/modelUsage'
 import type {
   AnyConversationEventV2,
   ConversationItemV2,

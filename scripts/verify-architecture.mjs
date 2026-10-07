@@ -60,10 +60,10 @@ export function verifyArchitecture(root = repositoryRoot) {
   try { orderedPackages(workspaces) } catch (error) { failures.push(error.message) }
   for (const workspace of workspaces) {
     const { directory, manifest, kind } = workspace
-    const packageId = manifest.name.replace('@fluxagentcore/', '')
+    const packageId = manifest.name.replace('@fluxos/', '')
     if (kind === 'packages' && !packageDependencies[packageId]) failures.push(`Unclassified package: ${manifest.name}`)
     for (const dependency of Object.keys(manifest.dependencies || {})) {
-      if (kind === 'packages' && dependency.startsWith('@fluxagentcore/') && !packageDependencies[packageId]?.includes(dependency.replace('@fluxagentcore/', ''))) failures.push(`${manifest.name}: forbidden dependency ${dependency}`)
+      if (kind === 'packages' && dependency.startsWith('@fluxos/') && !packageDependencies[packageId]?.includes(dependency.replace('@fluxos/', ''))) failures.push(`${manifest.name}: forbidden dependency ${dependency}`)
     }
     const sourceRoot = kind === 'packages' ? join(directory, 'src') : directory
     for (const file of sourceFiles(sourceRoot)) {
@@ -80,10 +80,10 @@ export function verifyArchitecture(root = repositoryRoot) {
         const name = specifier.startsWith('@') ? specifier.split('/').slice(0, 2).join('/') : specifier.split('/')[0]
         const isNode = specifier.startsWith('node:') || builtin.has(name)
         if (browserPackages.has(packageId) && (isNode || name === 'electron')) failures.push(`${label}: browser package imports ${specifier}`)
-        if (label.replaceAll('\\', '/').startsWith('apps/desktop/renderer/') && !typeOnly && (isNode || name.startsWith('@fluxagentcore/') && !browserPackages.has(name.replace('@fluxagentcore/', '')))) failures.push(`${label}: renderer runtime imports host module ${specifier}`)
+        if (label.replaceAll('\\', '/').startsWith('apps/desktop/renderer/') && !typeOnly && (isNode || name.startsWith('@fluxos/') && !browserPackages.has(name.replace('@fluxos/', '')))) failures.push(`${label}: renderer runtime imports host module ${specifier}`)
         if (isNode) continue
         if (name !== manifest.name && !manifest.dependencies?.[name] && !manifest.devDependencies?.[name]) failures.push(`${label}: undeclared dependency ${name}`)
-        if (!name.startsWith('@fluxagentcore/')) continue
+        if (!name.startsWith('@fluxos/')) continue
         const target = byName.get(name)
         if (!target) { failures.push(`${label}: unknown workspace ${name}`); continue }
         if (target.kind === 'apps' && target !== workspace) failures.push(`${label}: imports application ${name}`)

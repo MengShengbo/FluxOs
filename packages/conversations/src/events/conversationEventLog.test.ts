@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CONVERSATION_EVENT_SCHEMA_VERSION, type AnyConversationEvent } from '@fluxagentcore/contracts/conversationEvent'
+import { CONVERSATION_EVENT_SCHEMA_VERSION, type AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import { ConversationEventLog } from './conversationEventLog'
 
 function runStarted(seq: number, eventId: string, objective = 'test'): AnyConversationEvent {

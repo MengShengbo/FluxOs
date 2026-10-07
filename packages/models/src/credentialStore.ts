@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { quarantineCorruptFileSync, writeFileAtomicSync } from '@fluxagentcore/platform/fileIO'
-import { getActiveProfilePaths } from '@fluxagentcore/platform/profilePaths'
+import { quarantineCorruptFileSync, writeFileAtomicSync } from '@fluxos/platform/fileIO'
+import { getActiveProfilePaths } from '@fluxos/platform/profilePaths'
 
 export interface CredentialSnapshot {
   apiKey?: string
@@ -42,7 +42,7 @@ export function loadCredentialSnapshot(): CredentialSnapshot {
     raw = parsed as Record<string, unknown>
   } catch (error) {
     const backupPath = quarantineCorruptFileSync(credentialsFile())
-    console.warn(`FluxAgentCore preserved an invalid credentials file at ${backupPath}: ${error instanceof Error ? error.message : String(error)}`)
+    console.warn(`FluxOs preserved an invalid credentials file at ${backupPath}: ${error instanceof Error ? error.message : String(error)}`)
     return {}
   }
   if (raw.schemaVersion !== 2 || typeof raw.payload !== 'string' || typeof raw.protected !== 'boolean') throw new Error('Unsupported credential schema')
@@ -50,7 +50,7 @@ export function loadCredentialSnapshot(): CredentialSnapshot {
     const encoded = Buffer.from(raw.payload, 'base64url')
     if (raw.protected === true) {
       if (!credentialProtection) {
-        console.warn('FluxAgentCore credentials are protected but the platform key store is unavailable; keeping the file untouched')
+        console.warn('FluxOs credentials are protected but the platform key store is unavailable; keeping the file untouched')
         return {}
       }
       return parseSnapshot(JSON.parse(credentialProtection.unprotect(encoded).toString('utf-8')))
@@ -58,11 +58,11 @@ export function loadCredentialSnapshot(): CredentialSnapshot {
     return parseSnapshot(JSON.parse(encoded.toString('utf-8')))
   } catch (error) {
     if (raw.protected === true) {
-      console.warn(`FluxAgentCore could not decrypt protected credentials: ${error instanceof Error ? error.message : String(error)}`)
+      console.warn(`FluxOs could not decrypt protected credentials: ${error instanceof Error ? error.message : String(error)}`)
       return {}
     }
     const backupPath = quarantineCorruptFileSync(credentialsFile())
-    console.warn(`FluxAgentCore preserved an invalid credentials file at ${backupPath}: ${error instanceof Error ? error.message : String(error)}`)
+    console.warn(`FluxOs preserved an invalid credentials file at ${backupPath}: ${error instanceof Error ? error.message : String(error)}`)
     return {}
   }
 }

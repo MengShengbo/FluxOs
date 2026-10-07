@@ -1,9 +1,9 @@
-import { isModelRequestRecord } from '@fluxagentcore/contracts/modelUsage'
+import { isModelRequestRecord } from '@fluxos/contracts/modelUsage'
 import { basename, isAbsolute, relative, resolve } from 'node:path'
-import type { AgentTurn, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import { copyToolResultDetails } from '@fluxagentcore/contracts/toolResultData'
-import type { WorkActivity, WorkExecutionSnapshot, WorkRunStatus } from '@fluxagentcore/contracts/workExecutionTypes'
-import type { AnyConversationEvent } from '@fluxagentcore/contracts/conversationEvent'
+import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import { copyToolResultDetails } from '@fluxos/contracts/toolResultData'
+import type { WorkActivity, WorkExecutionSnapshot, WorkRunStatus } from '@fluxos/contracts/workExecutionTypes'
+import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import type { PersistedConversation } from './types'
 import type {
   AnyAppendConversationEventV2Input,

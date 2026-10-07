@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
 import type { SubAgentCompletionDelivery, SubAgentCompletionResult } from './subAgentCompletionCoordinator'
 import type { SubAgentTaskManager } from './runtime/subAgentTaskManager'
 

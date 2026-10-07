@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
 import { planContextCompaction, projectTurnsForModelContext, splitTurnsForCompaction } from './contextCompactionBoundary'
 
 describe('context compaction boundary', () => {

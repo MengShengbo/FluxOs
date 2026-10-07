@@ -4,7 +4,7 @@ import { basename, dirname, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { rgPath } from '@vscode/ripgrep'
 import { Minimatch } from 'minimatch'
-import type { Result, SearchContentOptions, SearchContentPage, SearchFilesOptions, SearchFilesPage } from '@fluxagentcore/contracts/toolExecutor'
+import type { Result, SearchContentOptions, SearchContentPage, SearchFilesOptions, SearchFilesPage } from '@fluxos/contracts/toolExecutor'
 
 const execFileAsync = promisify(execFile)
 const MAX_CAPTURE_BYTES = 8 * 1024 * 1024

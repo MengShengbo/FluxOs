@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ModelRequestTracker } from './modelRequestTracker'
-import type { ModelRequestRecord } from '@fluxagentcore/contracts/agentTypes'
+import type { ModelRequestRecord } from '@fluxos/contracts/agentTypes'
 
 const input={requestId:'logical',protocol:'openai_responses' as const,provider:'custom',model:'test',purpose:'turn' as const,serializedBody:'{"input":"private conversation","model":"test"}'}
 describe('ModelRequestTracker',()=>{

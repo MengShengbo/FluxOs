@@ -1,4 +1,4 @@
-# @fluxagentcore/agent-runtime
+# @fluxos/agent-runtime
 
 Agent execution, context, subagents and lifecycle orchestration.
 

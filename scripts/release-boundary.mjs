@@ -11,13 +11,13 @@ export const productIntegrationTests = new Set([
   'packages/conversations/src/conversations/conversationRuntimeRepositoryV2.test.ts',
 ])
 
-export function verifyReleaseBoundary(root = repositoryRoot, scope = '@fluxagentcore/') {
+export function verifyReleaseBoundary(root = repositoryRoot, scope = '@fluxos/') {
   const failures = []
   const workspaces = readWorkspaces(root)
   const publicNames = new Set(corePackageIds.map(id => scope + id))
   for (const id of corePackageIds) {
     const entry = workspaces.find(item => item.manifest.name === scope + id)
-    if (!entry) { failures.push(`Missing FluxAgentCore package: ${id}`); continue }
+    if (!entry) { failures.push(`Missing FluxOs package: ${id}`); continue }
     const manifest = entry.manifest
     if (manifest.private === true || manifest.license !== 'MIT') failures.push(`${manifest.name}: core must remain publishable with its MIT license`)
     for (const name of Object.keys({ ...manifest.dependencies, ...manifest.devDependencies, ...manifest.peerDependencies, ...manifest.optionalDependencies })) {
@@ -26,7 +26,7 @@ export function verifyReleaseBoundary(root = repositoryRoot, scope = '@fluxagent
     }
   }
   for (const { manifest, kind } of workspaces) {
-    if (!publicNames.has(manifest.name)) failures.push(`${manifest.name}: ${kind} outside FluxAgentCore must be private`)
+    if (!publicNames.has(manifest.name)) failures.push(`${manifest.name}: ${kind} outside FluxOs must be private`)
   }
   return failures
 }

@@ -1,4 +1,4 @@
-import type { AgentTool, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTool, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import { executeToolCallBatches, partitionToolCalls, type ToolCallBatch } from '../toolCallOrchestrator'
 import { interruptionMetadata, resolveAgentRunInterruption } from './runControl'
 import { createInterruptedToolResult, createToolExecutionErrorResult, settleToolExecution } from './toolExecutionResult'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ModelRequestRecord } from '@fluxagentcore/contracts/agentTypes'
+import type { ModelRequestRecord } from '@fluxos/contracts/agentTypes'
 import { SubAgentTelemetry } from './subAgentTelemetry'
 
 const request = (id: string, patch: Partial<ModelRequestRecord> = {}): ModelRequestRecord => ({

@@ -3,7 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync, mkdirSync, realpathSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { PLUGIN_PERMISSIONS, type PluginManifest, type PluginPermission } from '@fluxagentcore/contracts/pluginTypes'
+import { PLUGIN_PERMISSIONS, type PluginManifest, type PluginPermission } from '@fluxos/contracts/pluginTypes'
 
 interface PendingInvocation {
   resolve(value: unknown): void

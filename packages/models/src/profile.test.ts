@@ -5,7 +5,7 @@ import {
   normalizeProfile,
 } from './profile'
 
-describe('FluxAgentCore profile', () => {
+describe('FluxOs profile', () => {
   it('defaults the interface to Simplified Chinese', () => {
     expect(DEFAULT_PROFILE.interfaceLanguage).toBe('zh-CN')
     expect(normalizeProfile({}).interfaceLanguage).toBe('zh-CN')

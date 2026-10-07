@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentRunState } from '@fluxagentcore/contracts/agentTypes'
-import type { WorkRun } from '@fluxagentcore/contracts/workExecutionTypes'
-import type { AnyConversationEvent } from '@fluxagentcore/contracts/conversationEvent'
+import type { AgentRunState } from '@fluxos/contracts/agentTypes'
+import type { WorkRun } from '@fluxos/contracts/workExecutionTypes'
+import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import { createTaskFlowProjection } from './taskFlowProjection'
 import { applyConversationViewEvent, applyConversationViewSnapshot, type ConversationViewState } from './conversationViewProjection'
 

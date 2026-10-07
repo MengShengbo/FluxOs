@@ -1,4 +1,4 @@
-import type { McpClient } from '@fluxagentcore/extensions/mcp/client'
+import type { McpClient } from '@fluxos/extensions/mcp/client'
 
 export interface AgentSystemCapability<TSnapshot> {
   register(client: McpClient): void

@@ -1,4 +1,4 @@
-import type { WorkExecutionSnapshot, WorkRun, WorkRunStatus, WorkStep } from '@fluxagentcore/contracts/workExecutionTypes'
+import type { WorkExecutionSnapshot, WorkRun, WorkRunStatus, WorkStep } from '@fluxos/contracts/workExecutionTypes'
 
 const ACTIVE_WORK_STEP_STATUSES = new Set(['running', 'retrying', 'waiting'])
 const RESOLVED_DEPENDENCY_STATUSES = new Set(['completed', 'skipped'])

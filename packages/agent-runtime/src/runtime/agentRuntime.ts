@@ -4,22 +4,22 @@ import {
   type AgentMode,
   type ApprovalPolicy,
   type CapabilityProfile,
-} from '@fluxagentcore/contracts/agentTypes'
+} from '@fluxos/contracts/agentTypes'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { AgentEngine } from '../agentEngine'
-import { McpClient } from '@fluxagentcore/extensions/mcp/client'
-import { loadMcpSettings } from '@fluxagentcore/extensions/mcp/settings'
-import { SkillRuntime } from '@fluxagentcore/extensions/skills/runtime'
+import { McpClient } from '@fluxos/extensions/mcp/client'
+import { loadMcpSettings } from '@fluxos/extensions/mcp/settings'
+import { SkillRuntime } from '@fluxos/extensions/skills/runtime'
 import { syncAgentSkills } from '../subAgentRegistry'
-import { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
-import { RuntimeTaskManager } from '@fluxagentcore/tools/runtimeTaskManager'
+import { NodeToolExecutor } from '@fluxos/tools/nodeToolExecutor'
+import { RuntimeTaskManager } from '@fluxos/tools/runtimeTaskManager'
 import { SubAgentTaskManager } from './subAgentTaskManager'
 import { ChildAgentController, type ChildLaunch } from './childAgentController'
 import { AGENT_CONTROL_TOOLS } from '../agentOrchestrator'
 import type { SubAgentBudgetConfig } from '../subAgentBudget'
 import { DefaultAgentStateProvider, type AgentRuntimeConfig } from './stateProvider'
-import { buildProfileSystemPromptSection, loadProfile, type FluxAgentProfile } from '@fluxagentcore/models/profile'
+import { buildProfileSystemPromptSection, loadProfile, type FluxAgentProfile } from '@fluxos/models/profile'
 import { createSessionId, SessionRegistry } from './sessionRegistry'
 
 export interface CreateAgentRuntimeOptions {

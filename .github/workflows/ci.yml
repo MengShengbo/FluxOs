@@ -1,4 +1,4 @@
-name: FluxAgentCore CI
+name: FluxOs CI
 on:
   push:
     branches: [main]

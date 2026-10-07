@@ -1,5 +1,5 @@
-import type { RetrievalResult } from '@fluxagentcore/contracts/retrievalTypes'
-import type { SearchContentPage, SearchFilesPage } from '@fluxagentcore/contracts/toolExecutor'
+import type { RetrievalResult } from '@fluxos/contracts/retrievalTypes'
+import type { SearchContentPage, SearchFilesPage } from '@fluxos/contracts/toolExecutor'
 
 export function fileSearchResult(page: Partial<SearchFilesPage> & { matches: string[] }, scope: string, query: string, relativePath: (path: string) => string): RetrievalResult {
   return {

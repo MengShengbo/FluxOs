@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { McpClient } from '../mcp/client'
-import { getSubAgentDefinition, loadDynamicAgents } from '@fluxagentcore/agent-runtime/subAgentRegistry'
+import { getSubAgentDefinition, loadDynamicAgents } from '@fluxos/agent-runtime/subAgentRegistry'
 import { PluginService } from './pluginService'
 
 const directories: string[] = []

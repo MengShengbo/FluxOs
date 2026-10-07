@@ -1,5 +1,5 @@
-import type { AgentTurn, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import type { ChildTranscriptItem } from '@fluxagentcore/contracts/childAgentTypes'
+import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import type { ChildTranscriptItem } from '@fluxos/contracts/childAgentTypes'
 
 export interface ChildToolActivity {
   call: ToolCall

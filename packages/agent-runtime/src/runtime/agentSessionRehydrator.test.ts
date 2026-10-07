@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
 import { TaskManager } from '../taskManager'
 import { AgentSessionRehydrator } from './agentSessionRehydrator'
 

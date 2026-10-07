@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ChildTranscriptItem } from '@fluxagentcore/contracts/childAgentTypes'
+import type { ChildTranscriptItem } from '@fluxos/contracts/childAgentTypes'
 import { childToolGroupLabel, projectChildTranscript } from './childTranscriptProjection'
 let index = 0
 function record(content: Record<string, unknown>, executionId = 'run'): ChildTranscriptItem {

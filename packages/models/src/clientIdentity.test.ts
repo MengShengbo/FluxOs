@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createFluxAgentRequestHeaders, getFluxAgentClientIdentity } from './clientIdentity'
 
-describe('FluxAgentCore client identity', () => {
+describe('FluxOs client identity', () => {
   it('identifies CLI requests with product, version and request id', () => {
     const headers = createFluxAgentRequestHeaders({}, 'request-123')
 

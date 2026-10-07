@@ -1,5 +1,5 @@
 {
-  "name": "@fluxagentcore/platform",
+  "name": "@fluxos/platform",
   "version": "1.0.1",
   "description": "Node process, filesystem, profile path and network adapters",
   "type": "module",

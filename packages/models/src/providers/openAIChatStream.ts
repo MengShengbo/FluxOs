@@ -1,4 +1,4 @@
-import type { TokenUsage } from '@fluxagentcore/contracts/agentTypes'
+import type { TokenUsage } from '@fluxos/contracts/agentTypes'
 import {
   BoundedStreamBuffer,
   MAX_STREAM_REASONING_CHARS,

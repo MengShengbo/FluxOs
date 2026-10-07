@@ -1,5 +1,5 @@
-import type { ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import { copyToolResultDetails } from '@fluxagentcore/contracts/toolResultData'
+import type { ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import { copyToolResultDetails } from '@fluxos/contracts/toolResultData'
 
 const REUSABLE_READ_TOOLS = new Set([
   'read_file',

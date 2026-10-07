@@ -6,12 +6,12 @@ import {
   type AppendConversationEventInput,
   type ConversationEventEnvelope,
   type ConversationEventType,
-} from '@fluxagentcore/contracts/conversationEvent'
+} from '@fluxos/contracts/conversationEvent'
 
 export const DEFAULT_CONVERSATION_EVENT_WINDOW_LIMIT = 4_096
 
-import type { ConversationEventWindowSnapshot } from '@fluxagentcore/contracts/conversationEvent'
-export type { ConversationEventWindowSnapshot } from '@fluxagentcore/contracts/conversationEvent'
+import type { ConversationEventWindowSnapshot } from '@fluxos/contracts/conversationEvent'
+export type { ConversationEventWindowSnapshot } from '@fluxos/contracts/conversationEvent'
 
 export interface ConversationEventLogOptions {
   windowLimit?: number

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ConversationJournalEntry, ConversationMeta, PersistedConversation } from './types'
-import { generatedConversationTitle, normalizeConversationTitleText } from '@fluxagentcore/presentation/conversationTitle'
+import { generatedConversationTitle, normalizeConversationTitleText } from '@fluxos/presentation/conversationTitle'
 
 const CATALOG_VERSION = 1
 const CATALOG_FILENAME = '.conversation-catalog-v1.json'

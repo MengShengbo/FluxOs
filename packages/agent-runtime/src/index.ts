@@ -14,7 +14,7 @@ export type {
   WorkStep,
   WorkStepControlAction,
   WorkStepStatus,
-} from '@fluxagentcore/contracts/workExecutionTypes'
+} from '@fluxos/contracts/workExecutionTypes'
 export { ContextManager } from './contextManager'
 export type { StructuredSummary } from './contextManager'
 export { createAgentRuntime } from './runtime/agentRuntime'
@@ -28,19 +28,19 @@ export {
   getPresetByIdOrModelFrom,
   loadConfig,
   saveConfig,
-} from '@fluxagentcore/models/config'
-export type { ModelCapabilities, ModelMetadataSource, ModelPreset, FluxAgentConfig } from '@fluxagentcore/models/config'
-export { discoverModelPresets, getModelPresets, readCachedModelDiscovery } from '@fluxagentcore/models/modelDiscovery'
-export type { ModelDiscoveryResult } from '@fluxagentcore/models/modelDiscovery'
-export { createFluxAgentRequestHeaders, getFluxAgentClientIdentity } from '@fluxagentcore/models/clientIdentity'
-export { configureNetworkProxy, describeNetworkProxy, readWindowsProxySettings, resolveNetworkProxy } from '@fluxagentcore/platform/networkProxy'
-export type { NetworkProxyConfiguration, NetworkProxyStatus, WindowsProxySettings } from '@fluxagentcore/platform/networkProxy'
+} from '@fluxos/models/config'
+export type { ModelCapabilities, ModelMetadataSource, ModelPreset, FluxAgentConfig } from '@fluxos/models/config'
+export { discoverModelPresets, getModelPresets, readCachedModelDiscovery } from '@fluxos/models/modelDiscovery'
+export type { ModelDiscoveryResult } from '@fluxos/models/modelDiscovery'
+export { createFluxAgentRequestHeaders, getFluxAgentClientIdentity } from '@fluxos/models/clientIdentity'
+export { configureNetworkProxy, describeNetworkProxy, readWindowsProxySettings, resolveNetworkProxy } from '@fluxos/platform/networkProxy'
+export type { NetworkProxyConfiguration, NetworkProxyStatus, WindowsProxySettings } from '@fluxos/platform/networkProxy'
 export { DefaultAgentStateProvider } from './runtime/stateProvider'
 export type { AgentRuntimeConfig } from './runtime/stateProvider'
-export { NodeToolExecutor } from '@fluxagentcore/tools/nodeToolExecutor'
-export { RuntimeTaskManager } from '@fluxagentcore/tools/runtimeTaskManager'
-export { getRuntimeInfo } from '@fluxagentcore/platform/runtime'
-export { getChildProcessSpawnOptions, getDefaultShellSpec, usesProcessGroup } from '@fluxagentcore/platform/process'
+export { NodeToolExecutor } from '@fluxos/tools/nodeToolExecutor'
+export { RuntimeTaskManager } from '@fluxos/tools/runtimeTaskManager'
+export { getRuntimeInfo } from '@fluxos/platform/runtime'
+export { getChildProcessSpawnOptions, getDefaultShellSpec, usesProcessGroup } from '@fluxos/platform/process'
 export { SubAgentTaskManager } from './runtime/subAgentTaskManager'
 export { SubAgentCompletionCoordinator } from './subAgentCompletionCoordinator'
 export { SubAgentBudget, DEFAULT_SUB_AGENT_BUDGET } from './subAgentBudget'
@@ -51,7 +51,7 @@ export type {
   RuntimeTaskManagerOptions,
   RuntimeTaskUpdate,
   RuntimeTaskOutput,
-} from '@fluxagentcore/tools/runtimeTaskManager'
+} from '@fluxos/tools/runtimeTaskManager'
 export type {
   SubAgentCompletionResult,
   SubAgentCompletionStats,
@@ -82,7 +82,7 @@ export type {
   RuntimeTaskFilter,
   RuntimeTaskKind,
   RuntimeTaskStatus,
-} from '@fluxagentcore/contracts/runtimeTaskTypes'
+} from '@fluxos/contracts/runtimeTaskTypes'
 export {
   getAllTools,
   getToolsForMode,
@@ -90,12 +90,12 @@ export {
   getToolsByCategory,
   toolsToOpenAIFormat,
   toolsToAnthropicFormat,
-} from '@fluxagentcore/tools/toolRegistry'
-export { PermissionPipeline, createDefaultPipeline } from '@fluxagentcore/tools/permissions'
+} from '@fluxos/tools/toolRegistry'
+export { PermissionPipeline, createDefaultPipeline } from '@fluxos/tools/permissions'
 export { TurnStrategyPlanner } from './turnStrategy'
 export type { TurnIntent, TurnScope, TurnStrategy } from './turnStrategy'
-export { runModelRequest } from '@fluxagentcore/models/modelRequestOrchestrator'
-export type { ModelProtocolFallback, ModelRequestOrchestratorOptions } from '@fluxagentcore/models/modelRequestOrchestrator'
+export { runModelRequest } from '@fluxos/models/modelRequestOrchestrator'
+export type { ModelProtocolFallback, ModelRequestOrchestratorOptions } from '@fluxos/models/modelRequestOrchestrator'
 export { executeToolCallBatches, partitionToolCalls } from './toolCallOrchestrator'
 export type { ToolCallBatch, ToolCallExecutionOptions, ToolCallPartitionOptions } from './toolCallOrchestrator'
 export { planContextCompaction, splitTurnsForCompaction } from './contextCompactionBoundary'
@@ -103,10 +103,10 @@ export type { ContextCompactionPlan, ContextCompactionPlanOptions } from './cont
 export { dispatchTaskTool } from './taskToolDispatcher'
 export type { TaskSystemCreationEvent, TaskToolDispatchContext } from './taskToolDispatcher'
 
-export * from '@fluxagentcore/platform/profilePaths'
-export * from '@fluxagentcore/platform/networkProxy'
-export * from '@fluxagentcore/models/credentialStore'
-export * from '@fluxagentcore/extensions'
+export * from '@fluxos/platform/profilePaths'
+export * from '@fluxos/platform/networkProxy'
+export * from '@fluxos/models/credentialStore'
+export * from '@fluxos/extensions'
 export * from './runtime/approvalCoordinator'
 export * from './runtime/sessionRegistry'
 export * from './runtime/systems/index'

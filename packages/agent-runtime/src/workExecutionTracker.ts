@@ -1,6 +1,6 @@
-import type { AgentRunPhase, AgentTurn, TaskNode, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import { isBuiltInBrowserTool } from '@fluxagentcore/contracts/browserToolPresentation'
-import { isBuiltInComputerTool } from '@fluxagentcore/contracts/computerToolPresentation'
+import type { AgentRunPhase, AgentTurn, TaskNode, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import { isBuiltInBrowserTool } from '@fluxos/contracts/browserToolPresentation'
+import { isBuiltInComputerTool } from '@fluxos/contracts/computerToolPresentation'
 import {
   WORK_EXECUTION_SCHEMA_VERSION,
   type WorkActivity,
@@ -12,7 +12,7 @@ import {
   type WorkExecutionSegment,
   type WorkStep,
   type WorkStepStatus,
-} from '@fluxagentcore/contracts/workExecutionTypes'
+} from '@fluxos/contracts/workExecutionTypes'
 import type { TaskManager } from './taskManager'
 
 const MAX_RETAINED_RUNS = 24

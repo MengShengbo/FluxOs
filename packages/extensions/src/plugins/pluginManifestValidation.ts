@@ -1,4 +1,4 @@
-import { PLUGIN_PERMISSIONS, type PluginManifest, type PluginPermission } from '@fluxagentcore/contracts/pluginTypes'
+import { PLUGIN_PERMISSIONS, type PluginManifest, type PluginPermission } from '@fluxos/contracts/pluginTypes'
 import { normalizeSubAgentConfig } from '../agents/loader'
 
 const ALLOWED_PERMISSIONS = new Set<PluginPermission>(PLUGIN_PERMISSIONS)
@@ -187,6 +187,6 @@ export function validatePluginManifest(value: unknown): PluginManifest {
     if (optionalArray(contributes[unsupported], `Plugin ${unsupported}`, 128).length > 0) throw new Error('Renderer views and themes are not supported by the sandboxed plugin platform')
   }
   const engine = manifest.engines?.fluxagent
-  if (engine && !['*', '>=1.0.0', '^1.0.0', '1.x'].includes(engine)) throw new Error(`Unsupported FluxAgentCore engine range: ${engine}`)
+  if (engine && !['*', '>=1.0.0', '^1.0.0', '1.x'].includes(engine)) throw new Error(`Unsupported FluxOs engine range: ${engine}`)
   return JSON.parse(JSON.stringify(manifest)) as PluginManifest
 }

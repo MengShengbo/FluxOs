@@ -22,21 +22,21 @@ import type {
   ListTreeOptions,
   WebFetchResponse,
   WebSearchResponse,
-} from '@fluxagentcore/contracts/toolExecutor'
-import type { TreeNode } from '@fluxagentcore/contracts/types'
-import type { Memory, MemoryConfidence, MemoryKind, MemoryScope, MemorySnapshot } from '@fluxagentcore/contracts/memoryTypes'
-import type { TerminalOutputChunk, TerminalSessionInfo, TerminalStartCommandResult } from '@fluxagentcore/contracts/terminalTypes'
-import type { CapabilityProfile } from '@fluxagentcore/contracts/agentTypes'
-import type { RuntimeTaskPresentation } from '@fluxagentcore/contracts/runtimeTaskTypes'
+} from '@fluxos/contracts/toolExecutor'
+import type { TreeNode } from '@fluxos/contracts/types'
+import type { Memory, MemoryConfidence, MemoryKind, MemoryScope, MemorySnapshot } from '@fluxos/contracts/memoryTypes'
+import type { TerminalOutputChunk, TerminalSessionInfo, TerminalStartCommandResult } from '@fluxos/contracts/terminalTypes'
+import type { CapabilityProfile } from '@fluxos/contracts/agentTypes'
+import type { RuntimeTaskPresentation } from '@fluxos/contracts/runtimeTaskTypes'
 import { MemoryService } from './memory/service'
-import { hashText, withFileLockSync, writeFileAtomic } from '@fluxagentcore/platform/fileIO'
+import { hashText, withFileLockSync, writeFileAtomic } from '@fluxos/platform/fileIO'
 import { RuntimeTaskManager } from './runtimeTaskManager'
-import { getChildProcessSpawnOptions, getDefaultShellSpec, getProcessGroupSignal, usesProcessGroup } from '@fluxagentcore/platform/process'
+import { getChildProcessSpawnOptions, getDefaultShellSpec, getProcessGroupSignal, usesProcessGroup } from '@fluxos/platform/process'
 import { RuntimeLogWriter } from './runtimeLogWriter'
 import { CapabilityBoundary, type FilesystemAccess } from './capabilityBoundary'
 import { WebResearchService } from './webResearchService'
 import { searchWorkspaceContent, searchWorkspaceFiles } from './workspaceSearch'
-import { emitStreamTimingTrace, streamTimingTraceEnabled, summarizeTimings } from '@fluxagentcore/platform/streamTimingTrace'
+import { emitStreamTimingTrace, streamTimingTraceEnabled, summarizeTimings } from '@fluxos/platform/streamTimingTrace'
 
 const RETRYABLE_HTTP_STATUS = new Set([408, 409, 425, 429])
 const STREAM_RETRY_DELAYS_MS = [300, 900, 1800, 3600]
@@ -1260,7 +1260,7 @@ export class NodeToolExecutor implements ToolExecutor {
     }
   }
 
-  private runtimeTaskToSession(task: import('@fluxagentcore/contracts/runtimeTaskTypes').RuntimeTask): TerminalSessionInfo {
+  private runtimeTaskToSession(task: import('@fluxos/contracts/runtimeTaskTypes').RuntimeTask): TerminalSessionInfo {
     const sessionId = typeof task.metadata?.sessionId === 'string' ? task.metadata.sessionId : task.id
     const shellId = typeof task.metadata?.shellId === 'string' ? task.metadata.shellId : 'recovered'
     return {

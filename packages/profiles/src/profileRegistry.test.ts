@@ -84,7 +84,7 @@ describe('InstallationProfileRegistry', () => {
     const futureRegistry = JSON.stringify({ schemaVersion: 99, installationId: 'future', activeProfileId: 'future-profile', profiles: [] })
     writeFileSync(registryPath, futureRegistry)
 
-    expect(() => new InstallationProfileRegistry(root, { now: () => 200 }).initialize()).toThrow('compatible FluxAgentCore version')
+    expect(() => new InstallationProfileRegistry(root, { now: () => 200 }).initialize()).toThrow('compatible FluxOs version')
     expect(readFileSync(registryPath, 'utf8')).toBe(futureRegistry)
     expect(existsSync(`${registryPath}.corrupt-200`)).toBe(false)
     expect(readdirSync(join(root, 'profiles'))).toEqual([])

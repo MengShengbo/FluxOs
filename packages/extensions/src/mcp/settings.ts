@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { McpSettings } from './types'
-import { getActiveProfilePaths } from '@fluxagentcore/platform/profilePaths'
+import { getActiveProfilePaths } from '@fluxos/platform/profilePaths'
 
 export function loadMcpSettings(workspacePath: string): McpSettings {
   const projectSettings = join(workspacePath, '.fluxagent', 'settings.json')

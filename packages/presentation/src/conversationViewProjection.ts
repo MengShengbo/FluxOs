@@ -1,6 +1,6 @@
-import type { AgentRunState } from '@fluxagentcore/contracts/agentTypes'
-import type { WorkExecutionSnapshot, WorkRun } from '@fluxagentcore/contracts/workExecutionTypes'
-import type { AnyConversationEvent } from '@fluxagentcore/contracts/conversationEvent'
+import type { AgentRunState } from '@fluxos/contracts/agentTypes'
+import type { WorkExecutionSnapshot, WorkRun } from '@fluxos/contracts/workExecutionTypes'
+import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import { applyTaskFlowEvent, type TaskFlowProjectionState } from './taskFlowProjection'
 
 export type ConversationRuntimeStatus = 'ready' | 'running' | 'paused' | 'awaiting-action' | 'error'

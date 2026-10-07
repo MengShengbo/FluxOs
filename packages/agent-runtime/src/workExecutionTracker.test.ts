@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
-import { WORK_EXECUTION_SCHEMA_VERSION, type WorkExecutionSnapshot } from '@fluxagentcore/contracts/workExecutionTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import { WORK_EXECUTION_SCHEMA_VERSION, type WorkExecutionSnapshot } from '@fluxos/contracts/workExecutionTypes'
 import { TaskManager } from './taskManager'
 import { WorkExecutionTracker } from './workExecutionTracker'
 

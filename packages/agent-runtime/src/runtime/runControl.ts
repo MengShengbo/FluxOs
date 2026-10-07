@@ -1,4 +1,4 @@
-import type { AgentRunInterruption } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentRunInterruption } from '@fluxos/contracts/agentTypes'
 
 export type AgentRunInterruptionKind = AgentRunInterruption['kind']
 

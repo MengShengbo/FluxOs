@@ -1,7 +1,7 @@
-import type { SubAgentDefinition } from '@fluxagentcore/contracts/subAgentTypes'
-import { loadAgentsFromDir, type LoadedAgent } from '@fluxagentcore/extensions/agents/loader'
-import type { SkillRuntime } from '@fluxagentcore/extensions/skills/runtime'
-import type { LoadedSkill } from '@fluxagentcore/extensions/skills/loader'
+import type { SubAgentDefinition } from '@fluxos/contracts/subAgentTypes'
+import { loadAgentsFromDir, type LoadedAgent } from '@fluxos/extensions/agents/loader'
+import type { SkillRuntime } from '@fluxos/extensions/skills/runtime'
+import type { LoadedSkill } from '@fluxos/extensions/skills/loader'
 
 /** Workspace-scoped role discovery. No model requests or tool execution. */
 const builtinResearchAgent: LoadedAgent = {

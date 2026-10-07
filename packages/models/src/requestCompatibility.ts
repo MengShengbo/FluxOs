@@ -1,5 +1,5 @@
-import type { ReasoningEffort } from '@fluxagentcore/contracts/agentTypes'
-import type { APIConfig } from '@fluxagentcore/contracts/stateTypes'
+import type { ReasoningEffort } from '@fluxos/contracts/agentTypes'
+import type { APIConfig } from '@fluxos/contracts/stateTypes'
 import { resolveNativeReasoningRequest } from './modelRegistry'
 
 export function shouldOmitSamplingTemperature(config: APIConfig): boolean {

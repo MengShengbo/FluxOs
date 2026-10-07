@@ -1,5 +1,5 @@
 {
-  "name": "@fluxagentcore/extensions",
+  "name": "@fluxos/extensions",
   "version": "1.0.1",
   "description": "MCP, Skills, local plugins and work packs",
   "type": "module",
@@ -82,8 +82,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@fluxagentcore/contracts": "*",
-    "@fluxagentcore/platform": "*"
+    "@fluxos/contracts": "*",
+    "@fluxos/platform": "*"
   },
   "fluxagent": {
     "runtimeAssets": [

@@ -1,5 +1,5 @@
 import type { PluginRecord, PluginSnapshot } from '../plugins/pluginService'
-import type { WorkPackEntry, WorkPackKind } from '@fluxagentcore/contracts/workPackTypes'
+import type { WorkPackEntry, WorkPackKind } from '@fluxos/contracts/workPackTypes'
 
 export interface WorkPackCatalogSnapshot {
   schemaVersion: 1

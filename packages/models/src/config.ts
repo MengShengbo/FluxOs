@@ -8,7 +8,7 @@ import {
   type ApprovalPolicy,
   type CapabilityProfile,
   type NativeReasoningConfig,
-} from '@fluxagentcore/contracts/agentTypes'
+} from '@fluxos/contracts/agentTypes'
 import {
   getCredentialsFile,
   loadCredentialSnapshot,
@@ -21,11 +21,11 @@ import {
   withFileLockSync,
   writeFileAtomicSync,
   writeFilesAtomicSync,
-} from '@fluxagentcore/platform/fileIO'
-import { getActiveProfilePaths } from '@fluxagentcore/platform/profilePaths'
+} from '@fluxos/platform/fileIO'
+import { getActiveProfilePaths } from '@fluxos/platform/profilePaths'
 
-import type { FluxAgentConfig, ModelPreset, ModelMetadataSource, ModelCapabilities, FluxAgentProvider, FluxAgentConfigKey, FluxAgentApiConfigProfile, ProviderPreset } from '@fluxagentcore/contracts/modelConfigTypes'
-export type { FluxAgentConfig, ModelPreset, ModelMetadataSource, ModelCapabilities, FluxAgentProvider, FluxAgentConfigKey, FluxAgentApiConfigProfile, ProviderPreset } from '@fluxagentcore/contracts/modelConfigTypes'
+import type { FluxAgentConfig, ModelPreset, ModelMetadataSource, ModelCapabilities, FluxAgentProvider, FluxAgentConfigKey, FluxAgentApiConfigProfile, ProviderPreset } from '@fluxos/contracts/modelConfigTypes'
+export type { FluxAgentConfig, ModelPreset, ModelMetadataSource, ModelCapabilities, FluxAgentProvider, FluxAgentConfigKey, FluxAgentApiConfigProfile, ProviderPreset } from '@fluxos/contracts/modelConfigTypes'
 
 function configDirectory(): string {
   return getActiveProfilePaths().configRoot
@@ -597,7 +597,7 @@ export async function loadConfig(): Promise<FluxAgentConfig> {
       userConfig = parsed as Partial<FluxAgentConfig>
     } catch (error) {
       const backupPath = quarantineCorruptFileSync(configFile())
-      console.warn(`FluxAgentCore preserved an invalid configuration file at ${backupPath}: ${error instanceof Error ? error.message : String(error)}`)
+      console.warn(`FluxOs preserved an invalid configuration file at ${backupPath}: ${error instanceof Error ? error.message : String(error)}`)
       const recovered = applyKnownModelMetadata(normalizeConfig(hydrateCredentials(DEFAULT_CONFIG)), MODEL_PRESETS)
       writeConfigDocument(recovered)
       return recovered

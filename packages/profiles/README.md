@@ -1,4 +1,4 @@
-# @fluxagentcore/profiles
+# @fluxos/profiles
 
 Profile isolation, archives, import, export and migration.
 

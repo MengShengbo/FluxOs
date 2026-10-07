@@ -1,5 +1,5 @@
 {
-  "name": "@fluxagentcore/automations",
+  "name": "@fluxos/automations",
   "version": "1.0.1",
   "description": "Automation scheduling, persistence, routing and recovery",
   "type": "module",
@@ -73,7 +73,7 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "@fluxagentcore/contracts": "*",
-    "@fluxagentcore/platform": "*"
+    "@fluxos/contracts": "*",
+    "@fluxos/platform": "*"
   }
 }

@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs'
 import { basename, dirname, isAbsolute, parse, relative, resolve, sep } from 'node:path'
-import type { CapabilityProfile } from '@fluxagentcore/contracts/agentTypes'
+import type { CapabilityProfile } from '@fluxos/contracts/agentTypes'
 
 export type FilesystemAccess = 'read' | 'write'
 

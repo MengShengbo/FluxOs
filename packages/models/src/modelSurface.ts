@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { AgentAttachment, AgentTurn, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentAttachment, AgentTurn, ToolResult } from '@fluxos/contracts/agentTypes'
 import {
   MODEL_SURFACE_SCHEMA_VERSION,
   type ModelSurfaceDifference,
@@ -7,7 +7,7 @@ import {
   type ModelSurfaceSnapshotEvent,
   type ModelSurfaceSnapshotSource,
   type ModelSurfaceState,
-} from '@fluxagentcore/contracts/modelSurfaceTypes'
+} from '@fluxos/contracts/modelSurfaceTypes'
 
 const MODEL_SNAPSHOT_TURN_PREFIX = 'model-surface-snapshot:'
 const STALE_TOOL_RESULT_PREVIEW_CHARS = 80

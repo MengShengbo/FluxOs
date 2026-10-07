@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
 import path from 'node:path'
-import type { SubAgentEvidence } from '@fluxagentcore/contracts/subAgentTypes'
+import type { SubAgentEvidence } from '@fluxos/contracts/subAgentTypes'
 
 export type SubAgentCompletionStatus = 'completed' | 'failed' | 'stopped' | 'interrupted'
 export type SubAgentJoinPolicy = 'required' | 'detached'

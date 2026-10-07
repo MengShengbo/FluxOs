@@ -1,14 +1,14 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
-import type { ToolExecutor } from '@fluxagentcore/contracts/toolExecutor'
+import type { ToolExecutor } from '@fluxos/contracts/toolExecutor'
 
 const DEFAULT_OUTPUT_LIMIT = 60_000
 const MAX_PATHS_PER_OPERATION = 200
 const MAX_GIT_PATH_LENGTH = 1_024
 
-import type { GitDiffScope, GitFileState, GitCommitSummary, GitSnapshot, GitIntegrationPhase, GitOperationState, GitIntegrationState, GitOperationResult } from '@fluxagentcore/contracts/gitTypes'
-export type { GitDiffScope, GitFileState, GitCommitSummary, GitSnapshot, GitIntegrationPhase, GitOperationState, GitIntegrationState, GitOperationResult } from '@fluxagentcore/contracts/gitTypes'
+import type { GitDiffScope, GitFileState, GitCommitSummary, GitSnapshot, GitIntegrationPhase, GitOperationState, GitIntegrationState, GitOperationResult } from '@fluxos/contracts/gitTypes'
+export type { GitDiffScope, GitFileState, GitCommitSummary, GitSnapshot, GitIntegrationPhase, GitOperationState, GitIntegrationState, GitOperationResult } from '@fluxos/contracts/gitTypes'
 
 interface GitCommandResult {
   ok: boolean

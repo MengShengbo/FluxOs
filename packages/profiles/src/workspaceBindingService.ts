@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
-import { AtomicJsonStore } from '@fluxagentcore/platform/atomicJsonStore'
-import { WorkspacePathResolver } from '@fluxagentcore/conversations/conversations/portablePath'
+import { AtomicJsonStore } from '@fluxos/platform/atomicJsonStore'
+import { WorkspacePathResolver } from '@fluxos/conversations/conversations/portablePath'
 import type { ProfileStorageLayout } from './types'
 import { workspaceOverlayRoot } from './profileStorageLayout'
 

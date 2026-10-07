@@ -1,4 +1,4 @@
-import type { ContextPolicyMode } from '@fluxagentcore/contracts/agentTypes'
+import type { ContextPolicyMode } from '@fluxos/contracts/agentTypes'
 
 export interface ContextPolicyProfile {
   mode: ContextPolicyMode

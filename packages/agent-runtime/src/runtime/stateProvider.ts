@@ -1,10 +1,10 @@
-import type { AgentStateProvider, APIConfig, APIModel, ContextCompactionState, ContextReservoirEntry, ContextSegment, WorkspaceInfo } from '@fluxagentcore/contracts/stateTypes'
-import type { ModelCapabilities, FluxAgentApiConfigProfile, FluxAgentProvider } from '@fluxagentcore/models/config'
+import type { AgentStateProvider, APIConfig, APIModel, ContextCompactionState, ContextReservoirEntry, ContextSegment, WorkspaceInfo } from '@fluxos/contracts/stateTypes'
+import type { ModelCapabilities, FluxAgentApiConfigProfile, FluxAgentProvider } from '@fluxos/models/config'
 import type {
   ApprovalPolicy,
   CapabilityProfile,
   NativeReasoningConfig,
-} from '@fluxagentcore/contracts/agentTypes'
+} from '@fluxos/contracts/agentTypes'
 
 export interface AgentRuntimeConfig {
   provider: FluxAgentProvider

@@ -1,4 +1,4 @@
-import { emitStreamTimingTrace, streamTimingTraceEnabled, summarizeTimings } from '@fluxagentcore/platform/streamTimingTrace'
+import { emitStreamTimingTrace, streamTimingTraceEnabled, summarizeTimings } from '@fluxos/platform/streamTimingTrace'
 
 export type AgentEventSink<TEvent> = (event: TEvent) => void
 

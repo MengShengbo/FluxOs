@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { writeFileAtomicSync } from '@fluxagentcore/platform/fileIO'
-import type { WebFetchResponse } from '@fluxagentcore/contracts/toolExecutor'
+import { writeFileAtomicSync } from '@fluxos/platform/fileIO'
+import type { WebFetchResponse } from '@fluxos/contracts/toolExecutor'
 
 interface StoredSource { id: string; url: string; title: string; retrievedAt: string; text: string; truncated: boolean }
 export class WebSourceStore {

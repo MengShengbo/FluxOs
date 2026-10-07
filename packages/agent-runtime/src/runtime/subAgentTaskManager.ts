@@ -9,8 +9,8 @@ import {
 } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { RuntimeTask, RuntimeTaskKind, RuntimeTaskStatus } from '@fluxagentcore/contracts/runtimeTaskTypes'
-import type { RuntimeTaskManager } from '@fluxagentcore/tools/runtimeTaskManager'
+import type { RuntimeTask, RuntimeTaskKind, RuntimeTaskStatus } from '@fluxos/contracts/runtimeTaskTypes'
+import type { RuntimeTaskManager } from '@fluxos/tools/runtimeTaskManager'
 
 import {
   SubAgentCompletionCoordinator,

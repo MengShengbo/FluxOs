@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentEventType } from '@fluxagentcore/agent-runtime/agentEngine'
-import type { AgentSession, AgentTurn, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentEventType } from '@fluxos/agent-runtime/agentEngine'
+import type { AgentSession, AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import { ConversationEventLog } from './conversationEventLog'
 import { ConversationEventNormalizer } from './conversationEventNormalizer'
 

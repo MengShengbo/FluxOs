@@ -1,5 +1,5 @@
 {
-  "name": "@fluxagentcore/presentation",
+  "name": "@fluxos/presentation",
   "version": "1.0.1",
   "description": "Browser-safe deterministic conversation and task projections",
   "type": "module",
@@ -65,7 +65,7 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "@fluxagentcore/contracts": "*",
+    "@fluxos/contracts": "*",
     "diff": "^9.0.0"
   }
 }

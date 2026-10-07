@@ -1,4 +1,4 @@
-# Contributing to FluxAgentCore
+# Contributing to FluxOs
 
 Please use Issues for reproducible bugs, integration proposals and discussions. Core runtime architecture and merge decisions remain with the maintainer. External contributions are best focused on Skills, connectors, integrations, templates, tests and documentation. We are not accepting unsolicited core-runtime pull requests at this time.
 

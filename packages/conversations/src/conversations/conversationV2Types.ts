@@ -1,5 +1,5 @@
-import type { AgentMode, AgentTurn, ApprovalPolicy, ModelRequestRecord, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import type { ResponseMode, WorkExecutionSegment } from '@fluxagentcore/contracts/workExecutionTypes'
+import type { AgentMode, AgentTurn, ApprovalPolicy, ModelRequestRecord, ToolResult } from '@fluxos/contracts/agentTypes'
+import type { ResponseMode, WorkExecutionSegment } from '@fluxos/contracts/workExecutionTypes'
 
 export const CONVERSATION_DATA_SCHEMA_VERSION = 2 as const
 export const CONVERSATION_ITEM_SCHEMA_VERSION = 1 as const

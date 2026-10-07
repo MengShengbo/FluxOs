@@ -3,8 +3,8 @@ import type { AgentEventType } from './agentEngine'
 import { AgentEngine } from './agentEngine'
 import { DefaultAgentStateProvider } from './runtime/stateProvider'
 import type { AgentRunLifecycle } from './runtime/agentRunLifecycle'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
-import type { ToolExecutor } from '@fluxagentcore/contracts/toolExecutor'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import type { ToolExecutor } from '@fluxos/contracts/toolExecutor'
 
 function createEngine() {
   const workspace = process.cwd()

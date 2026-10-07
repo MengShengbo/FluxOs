@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs'
-import type { AgentAttachment, AgentTurn, TokenUsage } from '@fluxagentcore/contracts/agentTypes'
-import type { ContextHandoff, ContextSegment } from '@fluxagentcore/contracts/stateTypes'
+import type { AgentAttachment, AgentTurn, TokenUsage } from '@fluxos/contracts/agentTypes'
+import type { ContextHandoff, ContextSegment } from '@fluxos/contracts/stateTypes'
 import type { ContextPolicyProfile } from './contextPolicy'
 import { blockingContextLimit, resolveContextPolicyProfile } from './contextPolicy'
-import { countMessagesTokens, countTextTokens, type TokenCountResult } from '@fluxagentcore/models/tokenCounter'
+import { countMessagesTokens, countTextTokens, type TokenCountResult } from '@fluxos/models/tokenCounter'
 
 // ==================== Structured Summary ====================
 

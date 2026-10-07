@@ -1,4 +1,4 @@
-import type { AgentTurn, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 
 /** Index once when data arrives, never scan the full transcript for each rendered node. */
 export class TranscriptIndex {

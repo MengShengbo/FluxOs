@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
-import type { ChildAgentMessageReceipt } from '@fluxagentcore/contracts/childAgentTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import type { ChildAgentMessageReceipt } from '@fluxos/contracts/childAgentTypes'
 
 /** Limits are local to one child. Receipts do not retain a second copy of committed text. */
 export const CHILD_MAILBOX_LIMITS = {

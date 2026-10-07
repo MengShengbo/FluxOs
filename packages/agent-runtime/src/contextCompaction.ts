@@ -1,11 +1,11 @@
-import type { AgentTurn, ContextPolicyMode, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTurn, ContextPolicyMode, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import type {
   ContextHandoff,
   ContextHandoffFacts,
   ContextHandoffFileOperation,
-} from '@fluxagentcore/contracts/stateTypes'
+} from '@fluxos/contracts/stateTypes'
 import { compressToolResult } from './tokenCompressor'
-import type { ModelProtocol } from '@fluxagentcore/models/modelProtocol'
+import type { ModelProtocol } from '@fluxos/models/modelProtocol'
 
 export interface ContinuationWorkspaceSnapshot {
   workspacePath?: string | null

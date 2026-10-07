@@ -1,5 +1,5 @@
 {
-  "name": "@fluxagentcore/tools",
+  "name": "@fluxos/tools",
   "version": "1.0.1",
   "description": "Tool execution, search, memory, permissions and runtime processes",
   "type": "module",
@@ -101,8 +101,8 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "@fluxagentcore/contracts": "*",
-    "@fluxagentcore/platform": "*",
+    "@fluxos/contracts": "*",
+    "@fluxos/platform": "*",
     "@vscode/ripgrep": "^1.18.0",
     "minimatch": "^10.2.6",
     "undici": "^7.29.0"

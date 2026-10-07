@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import stripAnsi from 'strip-ansi'
-import { REASONING_EFFORTS, type ReasoningEffort } from '@fluxagentcore/contracts/agentTypes'
+import { REASONING_EFFORTS, type ReasoningEffort } from '@fluxos/contracts/agentTypes'
 import {
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_MAX_TOKENS,
@@ -13,7 +13,7 @@ import {
   type ModelPreset,
   type FluxAgentConfig,
 } from './config'
-import { writeFileAtomicSync } from '@fluxagentcore/platform/fileIO'
+import { writeFileAtomicSync } from '@fluxos/platform/fileIO'
 import { getModelReasoningCapabilities, getSupportedModelSpec, normalizeNativeReasoningConfig } from './modelRegistry'
 import { normalizeBaseUrl } from './normalizeBaseUrl'
 import { createFluxAgentRequestHeaders } from './clientIdentity'

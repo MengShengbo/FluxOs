@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
-import type { SubAgentDefinition, SubAgentThinking } from '@fluxagentcore/contracts/subAgentTypes'
+import type { SubAgentDefinition, SubAgentThinking } from '@fluxos/contracts/subAgentTypes'
 
 // ── Frontmatter 解析 ──────────────────────────────────────────────
 

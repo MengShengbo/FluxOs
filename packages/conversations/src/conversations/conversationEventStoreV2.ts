@@ -1,4 +1,4 @@
-import { isModelRequestRecord, isTokenUsage } from '@fluxagentcore/contracts/modelUsage'
+import { isModelRequestRecord, isTokenUsage } from '@fluxos/contracts/modelUsage'
 import { createHash, randomUUID } from 'node:crypto'
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, renameSync, writeFileSync, writeSync } from 'node:fs'
 
@@ -15,7 +15,7 @@ import type {
 } from './conversationV2Types'
 import { CONVERSATION_DATA_SCHEMA_VERSION } from './conversationV2Types'
 import { isConversationV2Id } from './conversationV2Ids'
-import { withFileLockSync } from '@fluxagentcore/platform/fileIO'
+import { withFileLockSync } from '@fluxos/platform/fileIO'
 import { ConversationJournalIndexes, conversationJournalVersion, type ConversationJournalIndex } from './conversationJournalIndex'
 
 const DEFAULT_PAGE_LIMIT = 200

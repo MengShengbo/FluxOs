@@ -1,15 +1,15 @@
-import { isTokenUsage } from '@fluxagentcore/contracts/modelUsage'
-import type { ModelRequestRecord } from '@fluxagentcore/contracts/agentTypes'
-import type { AgentTurn, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import { copyToolResultDetails } from '@fluxagentcore/contracts/toolResultData'
+import { isTokenUsage } from '@fluxos/contracts/modelUsage'
+import type { ModelRequestRecord } from '@fluxos/contracts/agentTypes'
+import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import { copyToolResultDetails } from '@fluxos/contracts/toolResultData'
 import { ConversationRepositoryV2 } from './conversationRepositoryV2'
 import { planConversationRuntimeEvents } from './conversationRuntimeEvents'
 import { portablePathRefsForToolValue } from './conversationRuntimeEvents'
 import { conversationV2IdFactory } from './conversationV2Ids'
 import type { AnyAppendConversationEventV2Input, ConversationItemV2, ConversationRunV2, ConversationTranscriptProjectionV2, ConversationTurnV2, ConversationV2ItemStatus, ConversationV2RunStatus } from './conversationV2Types'
 import type { ConversationMeta, PersistedConversation } from './types'
-import type { AnyConversationEvent } from '@fluxagentcore/contracts/conversationEvent'
-import type { WorkActivity, WorkExecutionSnapshot, WorkRun, WorkRunStatus, WorkStep, WorkStepStatus } from '@fluxagentcore/contracts/workExecutionTypes'
+import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
+import type { WorkActivity, WorkExecutionSnapshot, WorkRun, WorkRunStatus, WorkStep, WorkStepStatus } from '@fluxos/contracts/workExecutionTypes'
 
 function canonicalEventId(event: AnyConversationEvent, suffix: string = event.type): string {
   return conversationV2IdFactory(event.conversationId).stable('canonical', event.eventId, suffix)

@@ -1,5 +1,5 @@
 import type { TiktokenEncoding } from 'js-tiktoken'
-import { REASONING_EFFORTS, type NativeReasoningConfig, type ReasoningEffort } from '@fluxagentcore/contracts/agentTypes'
+import { REASONING_EFFORTS, type NativeReasoningConfig, type ReasoningEffort } from '@fluxos/contracts/agentTypes'
 import type { ModelCapabilities } from './config'
 
 export type SupportedModelProvider = 'openai' | 'anthropic' | 'deepseek' | 'kimi' | 'glm'

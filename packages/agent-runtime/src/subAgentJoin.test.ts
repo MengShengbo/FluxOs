@@ -1,7 +1,7 @@
 import { AgentJoinCoordinator } from './agentJoinCoordinator'
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
-import type { ToolExecutor } from '@fluxagentcore/contracts/toolExecutor'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import type { ToolExecutor } from '@fluxos/contracts/toolExecutor'
 import { AgentEngine } from './agentEngine'
 import { DefaultAgentStateProvider } from './runtime/stateProvider'
 

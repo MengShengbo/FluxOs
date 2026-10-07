@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
-import type { ApprovalPolicy } from '@fluxagentcore/contracts/agentTypes'
+import type { ApprovalPolicy } from '@fluxos/contracts/agentTypes'
 import type { AutomationRecord } from './automationService'
 import { AUTOMATION_SCHEMA_VERSION, type AutomationDefinition } from './automationTypes'
 

@@ -1,6 +1,6 @@
 # Core Engine
 
-FluxAgentCore core owns the shared assistant runtime for product adapters. This
+FluxOs core owns the shared assistant runtime for product adapters. This
 layer contains the agent loop, system prompt, model config,
 tool schema registry, permission checks, task management, context compression,
 subagents, and provider streaming.

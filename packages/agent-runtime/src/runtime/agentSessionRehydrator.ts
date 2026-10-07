@@ -5,8 +5,8 @@ import type {
   TaskStatus,
   TokenUsage,
   ToolResult,
-} from '@fluxagentcore/contracts/agentTypes'
-import { generateTurnId } from '@fluxagentcore/contracts/agentTypes'
+} from '@fluxos/contracts/agentTypes'
+import { generateTurnId } from '@fluxos/contracts/agentTypes'
 import { TaskManager } from '../taskManager'
 import { interruptionMetadata } from './runControl'
 

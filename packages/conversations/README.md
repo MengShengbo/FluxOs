@@ -1,4 +1,4 @@
-# @fluxagentcore/conversations
+# @fluxos/conversations
 
 Conversation event log, persistence, recovery and privacy.
 

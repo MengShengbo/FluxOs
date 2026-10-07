@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_PROFILE } from '@fluxagentcore/models/profile'
+import { DEFAULT_PROFILE } from '@fluxos/models/profile'
 import { composeRuntimeProfileSystemPrompt, createAgentRuntime } from './agentRuntime'
 
 describe('createAgentRuntime runtime tasks', () => {

@@ -237,7 +237,7 @@ export class InstallationProfileRegistry {
       const parsed: unknown = JSON.parse(readFileSync(this.registryPath, 'utf8'))
       const unsupportedVersion = unsupportedRegistryVersion(parsed)
       if (unsupportedVersion) {
-        throw new UnsupportedProfileDataVersionError(`Profile registry version ${unsupportedVersion} is newer or unsupported. Open this data with a compatible FluxAgentCore version and export it before downgrading.`)
+        throw new UnsupportedProfileDataVersionError(`Profile registry version ${unsupportedVersion} is newer or unsupported. Open this data with a compatible FluxOs version and export it before downgrading.`)
       }
       if (!isRegistry(parsed)) throw new Error('unsupported or inconsistent profile registry')
       return structuredClone(parsed)
@@ -270,7 +270,7 @@ export class InstallationProfileRegistry {
       }
     }).sort((left, right) => left.createdAt - right.createdAt)
     if (unsupported.length > 0) {
-      throw new UnsupportedProfileDataVersionError(`Unsupported local profile data found: ${unsupported.join(', ')}. Open it with a compatible FluxAgentCore version and export it before downgrading.`)
+      throw new UnsupportedProfileDataVersionError(`Unsupported local profile data found: ${unsupported.join(', ')}. Open it with a compatible FluxOs version and export it before downgrading.`)
     }
     const active = profiles.find(profile => profile.state !== 'trashed')
     if (!active) return undefined

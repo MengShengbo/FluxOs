@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { Memory, MemoryWriteResponse } from '@fluxagentcore/contracts/memoryTypes'
+import type { Memory, MemoryWriteResponse } from '@fluxos/contracts/memoryTypes'
 import { MemoryService } from './service'
 import { MemoryWriter } from './writer'
 

@@ -1,4 +1,4 @@
-import type { AgentRunPhase, AgentRunState } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentRunPhase, AgentRunState } from '@fluxos/contracts/agentTypes'
 import { AgentRunControl, type AgentRunControlSnapshot } from './runControl'
 
 export interface PendingSteeringInput {

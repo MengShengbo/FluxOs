@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs'
 import { join } from 'path'
-import type { Skill } from '@fluxagentcore/contracts/skillTypes'
-import { getActiveProfilePaths } from '@fluxagentcore/platform/profilePaths'
+import type { Skill } from '@fluxos/contracts/skillTypes'
+import { getActiveProfilePaths } from '@fluxos/platform/profilePaths'
 
 export interface LoadedSkill extends Skill {
   source: 'system'

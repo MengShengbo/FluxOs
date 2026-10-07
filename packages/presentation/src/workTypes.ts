@@ -1,4 +1,4 @@
-import type { ConversationEventWindowSnapshot } from '@fluxagentcore/contracts/conversationEvent'
+import type { ConversationEventWindowSnapshot } from '@fluxos/contracts/conversationEvent'
 import type { WorkProjectionSnapshot } from './workProjection'
 
 export interface WorkSessionSnapshot {

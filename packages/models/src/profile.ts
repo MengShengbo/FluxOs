@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { ensureDirectories, getConfigDir } from './config'
-import { quarantineCorruptFileSync, withFileLockSync, writeFileAtomicSync } from '@fluxagentcore/platform/fileIO'
+import { quarantineCorruptFileSync, withFileLockSync, writeFileAtomicSync } from '@fluxos/platform/fileIO'
 
 export type FluxAgentInterfaceLanguage = 'zh-CN' | 'en'
 export type FluxAgentAiOutputLanguage = 'follow-user' | 'zh-CN' | 'en' | 'ja' | 'ko' | 'custom'

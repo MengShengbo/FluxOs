@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentTurn } from '@fluxagentcore/contracts/agentTypes'
+import type { AgentTurn } from '@fluxos/contracts/agentTypes'
 import { ModelSurface } from './modelSurface'
 
 function turn(id: string, role: AgentTurn['role'], content: string, timestamp: number): AgentTurn {

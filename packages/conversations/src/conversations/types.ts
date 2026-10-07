@@ -1,9 +1,9 @@
-import type { AgentAttachment, AgentCapabilitySelection, AgentMode, AgentTurn, ApprovalPolicy, ModelRequestRecord, ToolCall, ToolResult } from '@fluxagentcore/contracts/agentTypes'
-import type { ContextCompactionState, ContextSegment } from '@fluxagentcore/contracts/stateTypes'
-import type { ContextReservoirEntry } from '@fluxagentcore/contracts/stateTypes'
-import type { WorkExecutionSnapshot } from '@fluxagentcore/contracts/workExecutionTypes'
-import type { ModelSurfaceState } from '@fluxagentcore/contracts/modelSurfaceTypes'
-import type { WorkflowInstanceState } from '@fluxagentcore/contracts/workflowSurfaceTypes'
+import type { AgentAttachment, AgentCapabilitySelection, AgentMode, AgentTurn, ApprovalPolicy, ModelRequestRecord, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import type { ContextCompactionState, ContextSegment } from '@fluxos/contracts/stateTypes'
+import type { ContextReservoirEntry } from '@fluxos/contracts/stateTypes'
+import type { WorkExecutionSnapshot } from '@fluxos/contracts/workExecutionTypes'
+import type { ModelSurfaceState } from '@fluxos/contracts/modelSurfaceTypes'
+import type { WorkflowInstanceState } from '@fluxos/contracts/workflowSurfaceTypes'
 import type { AnyConversationEvent } from '../events/index'
 
 export interface ConversationMeta {

@@ -1,7 +1,7 @@
-import type { ApprovalPolicy } from '@fluxagentcore/contracts/agentTypes'
-import { browserPermissionGrantGroup } from '@fluxagentcore/contracts/browserToolPresentation'
-import { computerPermissionGrantGroup, computerToolApprovalLevel } from '@fluxagentcore/contracts/computerToolPresentation'
-import type { PermissionRule, PermissionCheckResult, PermissionVerdict } from '@fluxagentcore/contracts/toolTypes'
+import type { ApprovalPolicy } from '@fluxos/contracts/agentTypes'
+import { browserPermissionGrantGroup } from '@fluxos/contracts/browserToolPresentation'
+import { computerPermissionGrantGroup, computerToolApprovalLevel } from '@fluxos/contracts/computerToolPresentation'
+import type { PermissionRule, PermissionCheckResult, PermissionVerdict } from '@fluxos/contracts/toolTypes'
 import { createHash } from 'node:crypto'
 
 // ─── Dangerous Command Patterns ─────────────────────────────────────────────
