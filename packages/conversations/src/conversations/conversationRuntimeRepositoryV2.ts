@@ -1,15 +1,24 @@
 import { isTokenUsage } from '@fluxos/contracts/modelUsage'
 import type { ModelRequestRecord } from '@fluxos/contracts/agentTypes'
 import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
-import { copyToolResultDetails } from '@fluxos/contracts/toolResultData'
+import { copyToolResultDetails, toolResultCallStatus, toolResultExecutionStatus } from '@fluxos/contracts/toolResultData'
 import { ConversationRepositoryV2 } from './conversationRepositoryV2'
 import { planConversationRuntimeEvents } from './conversationRuntimeEvents'
 import { portablePathRefsForToolValue } from './conversationRuntimeEvents'
-import { conversationV2IdFactory } from './conversationV2Ids'
+import { conversationToolCallId, conversationV2IdFactory } from './conversationV2Ids'
 import type { AnyAppendConversationEventV2Input, ConversationItemV2, ConversationRunV2, ConversationTranscriptProjectionV2, ConversationTurnV2, ConversationV2ItemStatus, ConversationV2RunStatus } from './conversationV2Types'
 import type { ConversationMeta, PersistedConversation } from './types'
 import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import type { WorkActivity, WorkExecutionSnapshot, WorkRun, WorkRunStatus, WorkStep, WorkStepStatus } from '@fluxos/contracts/workExecutionTypes'
+
+export type CanonicalConversationContext = Pick<PersistedConversation,
+  'id' | 'title' | 'titleSource' | 'createdAt' | 'updatedAt' | 'mode' | 'provider' | 'model' | 'contextSegments'>
+
+// These are live presentation events. V2 persists their committed content instead.
+const TRANSIENT_CANONICAL_EVENTS = new Set<AnyConversationEvent['type']>([
+  'stream.started', 'stream.delta', 'stream.ended', 'tool.delta', 'usage.updated',
+  'step.started', 'step.completed', 'notification.acknowledged',
+])
 
 function canonicalEventId(event: AnyConversationEvent, suffix: string = event.type): string {
   return conversationV2IdFactory(event.conversationId).stable('canonical', event.eventId, suffix)
@@ -87,6 +96,7 @@ function semanticToolItem(
   at: number,
   scopedId: (kind: string, value: string) => string,
   output?: string,
+  result?: ToolResult,
 ): ConversationItemV2 | null {
   const base = { schemaVersion: 1 as const, conversationId, runId, turnId, status, createdAt: at, updatedAt: at }
   if (toolName.startsWith('browser__')) {
@@ -111,7 +121,7 @@ function semanticToolItem(
       ...base,
       id: scopedId('command-execution', toolCallId),
       kind: 'command_execution',
-      payload: { command, exitCode: numberValue(args.exitCode), output, requiresReview: true },
+      payload: { command, exitCode: result?.data?.kind === 'command' && result.data.process.state === 'exited' ? result.data.process.exitCode : undefined, output, requiresReview: true },
     }
   }
   return null
@@ -121,7 +131,8 @@ function turnFromProjection(turn: ConversationTurnV2, items: ConversationItemV2[
   const message = items.find(item => item.kind === (turn.role === 'assistant' ? 'assistant_message' : 'user_message'))
   const toolCalls = items.filter(item => item.kind === 'tool_call').map(item => {
     const payload = item.payload as Extract<ConversationItemV2, { kind: 'tool_call' }>['payload']
-    return { id: payload.toolCallId, name: payload.toolName, arguments: structuredClone(payload.arguments) } satisfies ToolCall
+    return { id: payload.toolCallId, name: payload.toolName, arguments: structuredClone(payload.arguments),
+      ...(payload.operationIdentity ? { operationIdentity: structuredClone(payload.operationIdentity) } : {}) } satisfies ToolCall
   })
   const toolResults = items.filter(item => item.kind === 'tool_result').map(item => {
     const payload = item.payload as Extract<ConversationItemV2, { kind: 'tool_result' }>['payload']
@@ -156,7 +167,12 @@ function restoredStepStatus(status: string): WorkStepStatus {
 
 function workExecutionFromProjectionV2(projection: ConversationTranscriptProjectionV2): WorkExecutionSnapshot {
   const itemsByRun = new Map<string, ConversationItemV2[]>()
+  const sessionResults = new Map<string, Extract<ConversationItemV2, { kind: 'tool_result' }>>()
   for (const item of projection.items) {
+    if (item.kind === 'tool_result' && item.payload.data?.kind === 'command' && item.payload.data.sessionId) {
+      const prior = sessionResults.get(item.payload.data.sessionId)
+      if (!prior || item.updatedAt >= prior.updatedAt) sessionResults.set(item.payload.data.sessionId, item)
+    }
     if (!item.runId) continue
     const items = itemsByRun.get(item.runId) ?? []
     items.push(item)
@@ -189,20 +205,25 @@ function workExecutionFromProjectionV2(projection: ConversationTranscriptProject
       if (item.kind === 'tool_result' && !resultsByCall.has(item.payload.toolCallId)) resultsByCall.set(item.payload.toolCallId, item)
     }
     for (const call of items.filter((item): item is Extract<ConversationItemV2, { kind: 'tool_call' }> => item.kind === 'tool_call')) {
-      const result = resultsByCall.get(call.payload.toolCallId)
+      const original = resultsByCall.get(call.payload.toolCallId)
+      const sessionId = original?.payload.data?.kind === 'command' ? original.payload.data.sessionId : undefined
+      const result = sessionId ? sessionResults.get(sessionId) ?? original : original
+      const status = result ? toolResultExecutionStatus({ ...result.payload, name: result.payload.toolName })
+        : call.status === 'running' ? 'cancelled' : call.status === 'failed' ? 'failed' : 'completed'
       const kind = call.payload.toolName.startsWith('browser__') ? 'browser' : call.payload.toolName.startsWith('computer__') ? 'computer' : 'tool'
       const activity: WorkActivity = {
         id: `activity-${call.payload.toolCallId}`,
         runId: run.id,
         kind,
         title: call.payload.toolName,
-        status: result ? (result.payload.isError ? 'failed' : 'completed') : call.status === 'running' ? 'cancelled' : call.status === 'failed' ? 'failed' : 'completed',
+        status,
         attempt: 1,
         startedAt: call.createdAt,
         updatedAt: result?.updatedAt ?? call.updatedAt,
-        completedAt: result?.updatedAt ?? (call.status === 'running' ? undefined : call.updatedAt),
-        result: result && !result.payload.isError ? result.payload.output : undefined,
-        error: result?.payload.isError ? result.payload.output : undefined,
+        completedAt: status === 'running' ? undefined : result?.updatedAt ?? (call.status === 'running' ? undefined : call.updatedAt),
+        result: status !== 'failed' ? result?.payload.output : undefined,
+        error: status === 'failed' ? result?.payload.output : undefined,
+        ...(result?.payload.data?.kind === 'command' ? { process: structuredClone(result.payload.data.process), commandSessionId: sessionId } : {}),
         metadata: { arguments: structuredClone(call.payload.arguments) },
       }
       activities[activity.id] = activity
@@ -396,7 +417,8 @@ function canonicalEventsFromProjectionV2(projection: ConversationTranscriptProje
         ...common,
         key: `item:${item.id}:tool-call`,
         type: 'tool.proposed',
-        payload: { toolCall: { id: item.payload.toolCallId, name: item.payload.toolName, arguments: structuredClone(item.payload.arguments) } },
+        payload: { toolCall: { id: item.payload.toolCallId, name: item.payload.toolName, arguments: structuredClone(item.payload.arguments),
+          ...(item.payload.operationIdentity ? { operationIdentity: structuredClone(item.payload.operationIdentity) } : {}) } },
       })
     } else if (item.kind === 'tool_result') {
       add({
@@ -543,12 +565,9 @@ export class ConversationRuntimeRepositoryV2 {
     }
   }
 
-  synchronizeMetadata(conversation: PersistedConversation): void {
-    const current = this.repository.projection(conversation.id).conversation
-    if (!current) {
-      this.persist(conversation)
-      return
-    }
+  synchronizeMetadata(conversation: CanonicalConversationContext): void {
+    const current = this.repository.selectProjection(conversation.id, projection => projection.conversation)
+    if (!current) throw new Error(`Canonical conversation is not initialized: ${conversation.id}`)
     const ids = conversationV2IdFactory(conversation.id)
     const events: AnyAppendConversationEventV2Input[] = []
     if (current.title !== conversation.title || current.titleSource !== (conversation.titleSource ?? 'generated')) {
@@ -603,12 +622,20 @@ export class ConversationRuntimeRepositoryV2 {
     this.synchronizeMetadata(conversation)
   }
 
-  appendCanonical(event: AnyConversationEvent, conversation: PersistedConversation): void {
+  appendCanonical(event: AnyConversationEvent, context: CanonicalConversationContext | (() => CanonicalConversationContext)): void {
+    if (TRANSIENT_CANONICAL_EVENTS.has(event.type)
+      || event.type === 'runtime.event' && ['active:task', 'task:system', 'task:update'].includes(event.payload.kind)) return
+    const conversation = typeof context === 'function' ? context() : context
+    const inputs = this.repository.selectProjection(conversation.id,
+      projection => this.planCanonical(event, conversation, projection))
+    if (inputs.length) this.repository.append(inputs)
+  }
+
+  private planCanonical(event: AnyConversationEvent, conversation: CanonicalConversationContext, projection: ConversationTranscriptProjectionV2): AnyAppendConversationEventV2Input[] {
     const ids = conversationV2IdFactory(conversation.id)
     const portableId = ids.normalize
     const scopedId = ids.scoped
     const eventId = ids.stable
-    let projection = this.repository.projection(conversation.id)
     if (!projection.conversation) {
       this.repository.append([{
         eventId: eventId('canonical', conversation.id, 'created'),
@@ -657,6 +684,8 @@ export class ConversationRuntimeRepositoryV2 {
     const upsertItem = (item: ConversationItemV2, suffix: string): void => {
       const previous = projection.items.find(candidate => candidate.id === item.id)
       if (previous) {
+        if (previous.status === item.status
+          && JSON.stringify(previous.payload) === JSON.stringify(item.payload)) return
         inputs.push({
           ...common,
           eventId: canonicalEventId(event, `${suffix}-updated`),
@@ -711,7 +740,12 @@ export class ConversationRuntimeRepositoryV2 {
         } else if (['completed', 'partial', 'failed', 'cancelled'].includes(status)) {
           inputs.push({ ...common, eventId: canonicalEventId(event, `work-run-${runId}-completed`), runId, type: 'run.completed', payload: { ...timing, status: status as Extract<ConversationV2RunStatus, 'completed' | 'partial' | 'failed' | 'cancelled'>, completedAt: numberValue(workRun.completedAt) ?? event.at, outcome: stringValue(workRun.outcome) ?? stringValue(workRun.error) } })
         } else {
-          inputs.push({ ...common, eventId: canonicalEventId(event, `work-run-${runId}-updated`), runId, type: 'run.state_changed', payload: { ...timing, status, updatedAt: numberValue(workRun.updatedAt) ?? event.at, outcome: stringValue(workRun.outcome) ?? stringValue(workRun.error) } })
+          const previous = projection.runs.find(run => run.id === runId)!
+          if (previous.status !== status || previous.responseMode !== timing.responseMode
+            || JSON.stringify(previous.executionSegments) !== JSON.stringify(timing.executionSegments)
+            || previous.outcome !== (stringValue(workRun.outcome) ?? stringValue(workRun.error))) {
+            inputs.push({ ...common, eventId: canonicalEventId(event, `work-run-${runId}-updated`), runId, type: 'run.state_changed', payload: { ...timing, status, updatedAt: numberValue(workRun.updatedAt) ?? event.at, outcome: stringValue(workRun.outcome) ?? stringValue(workRun.error) } })
+          }
         }
         const steps = record(workRun.steps)
         const plan: ConversationItemV2 = {
@@ -732,6 +766,8 @@ export class ConversationRuntimeRepositoryV2 {
           const sourceActivityId = stringValue(activity?.id)
           const kind = stringValue(activity?.kind)
           if (!activity || !sourceActivityId || !kind) continue
+        // Tool calls/results already have their own durable records.
+        if (['tool', 'browser', 'computer'].includes(kind)) continue
           const activityId = portableId('activity', sourceActivityId)
           const activityStatus = terminalItemStatus(activity.status)
           const activityBase = {
@@ -832,9 +868,9 @@ export class ConversationRuntimeRepositoryV2 {
         break
       case 'tool.proposed': {
         const tool = event.payload.toolCall
-        const toolCallId = portableId('tool', tool.id)
-        const id = scopedId('tool-call', tool.id)
-        const item: ConversationItemV2 = { schemaVersion: 1, id, conversationId: conversation.id, runId: common.runId, turnId: common.turnId, kind: 'tool_call', status: 'running', createdAt: event.at, updatedAt: event.at, payload: { toolCallId, toolName: tool.name, arguments: structuredClone(tool.arguments), pathRefs: portablePathRefsForToolValue(this.workspacePath, this.workspaceId, tool.arguments), requiresReview: true } }
+        const toolCallId = conversationToolCallId(tool.id, tool.operationIdentity)
+        const id = scopedId('tool-call', tool.operationIdentity ? toolCallId : tool.id)
+        const item: ConversationItemV2 = { schemaVersion: 1, id, conversationId: conversation.id, runId: common.runId, turnId: common.turnId, kind: 'tool_call', status: 'running', createdAt: event.at, updatedAt: event.at, payload: { toolCallId, toolName: tool.name, arguments: structuredClone(tool.arguments), ...(tool.operationIdentity ? { operationIdentity: structuredClone(tool.operationIdentity) } : {}), pathRefs: portablePathRefsForToolValue(this.workspacePath, this.workspaceId, tool.arguments), requiresReview: true } }
         inputs.push({ ...common, eventId: canonicalEventId(event), itemId: id, type: 'item.created', payload: { item } })
         const semantic = semanticToolItem(conversation.id, common.runId, common.turnId, toolCallId, tool.name, tool.arguments, 'running', event.at, scopedId)
         if (semantic) upsertItem(semantic, 'semantic-tool')
@@ -842,25 +878,26 @@ export class ConversationRuntimeRepositoryV2 {
       }
       case 'tool.completed': {
         const result = event.payload.toolResult
-        const toolCallId = portableId('tool', result.toolCallId)
-        const id = scopedId('tool-result', result.toolCallId)
-        const item: ConversationItemV2 = { schemaVersion: 1, id, conversationId: conversation.id, runId: common.runId, turnId: common.turnId, kind: 'tool_result', status: result.isError ? 'failed' : 'completed', createdAt: event.at, updatedAt: event.at, payload: { toolCallId, toolName: result.name, output: result.output, isError: result.isError, pathRefs: portablePathRefsForToolValue(this.workspacePath, this.workspaceId, result), ...copyToolResultDetails(result) } }
+        const toolCallId = conversationToolCallId(result.toolCallId, result.operationIdentity)
+        const itemKey = result.operationIdentity ? toolCallId : result.toolCallId
+        const id = scopedId('tool-result', itemKey)
+        const item: ConversationItemV2 = { schemaVersion: 1, id, conversationId: conversation.id, runId: common.runId, turnId: common.turnId, kind: 'tool_result', status: toolResultCallStatus(result), createdAt: event.at, updatedAt: event.at, payload: { toolCallId, toolName: result.name, output: result.output, isError: result.isError, pathRefs: portablePathRefsForToolValue(this.workspacePath, this.workspaceId, result), ...copyToolResultDetails(result) } }
         inputs.push({ ...common, eventId: canonicalEventId(event), itemId: id, type: 'item.created', payload: { item } })
         const call = projection.items.find(candidate => candidate.kind === 'tool_call' && candidate.payload.toolCallId === toolCallId)
         const args = call?.kind === 'tool_call' ? call.payload.arguments : {}
-        const semantic = semanticToolItem(conversation.id, common.runId, common.turnId, toolCallId, result.name, args, result.isError ? 'failed' : 'completed', event.at, scopedId, result.output)
+        const semantic = semanticToolItem(conversation.id, common.runId, common.turnId, toolCallId, result.name, args, toolResultCallStatus(result), event.at, scopedId, result.output, result)
         if (semantic) upsertItem(semantic, 'semantic-tool')
         if (result.changeSummary) {
           const path = portablePathRefsForToolValue(this.workspacePath, this.workspaceId, { path: result.changeSummary.path })[0]
           if (path) {
             const change: ConversationItemV2 = {
               schemaVersion: 1,
-              id: scopedId('file-change', result.toolCallId),
+              id: scopedId('file-change', itemKey),
               conversationId: conversation.id,
               runId: common.runId,
               turnId: common.turnId,
               kind: 'file_change',
-              status: result.isError ? 'failed' : 'completed',
+              status: toolResultCallStatus(result),
               createdAt: event.at,
               updatedAt: event.at,
               payload: { path, change: result.changeSummary.operation === 'write' ? 'created' : result.changeSummary.operation === 'edit' ? 'modified' : 'deleted' },
@@ -930,7 +967,7 @@ export class ConversationRuntimeRepositoryV2 {
       case 'runtime.event': {
         const kind = event.type === 'execution.updated' ? 'work:execution' : event.payload.kind
         const payload = event.type === 'execution.updated'
-          ? { snapshot: event.payload.snapshot } as Record<string, unknown>
+          ? { snapshot: event.payload.update } as Record<string, unknown>
           : event.payload.payload as Record<string, unknown> | undefined
         if (kind === 'subagent:start' && payload) {
           const agentId = portableId('agent', String(payload.agentId))
@@ -978,51 +1015,6 @@ export class ConversationRuntimeRepositoryV2 {
             }
             upsertItem(item, 'context-segment')
           }
-        } else if (kind === 'task:system' && payload) {
-          const item: ConversationItemV2 = {
-            schemaVersion: 1,
-            id: scopedId('plan', common.runId ?? conversation.id),
-            conversationId: conversation.id,
-            runId: common.runId,
-            kind: 'plan',
-            status: 'running',
-            createdAt: event.at,
-            updatedAt: event.at,
-            payload: { steps: flattenTaskSteps(payload.tree, portableId) },
-          }
-          upsertItem(item, 'task-system')
-        } else if (kind === 'active:task' && payload) {
-          const task = record(payload.context)
-          if (task) {
-            const item: ConversationItemV2 = {
-              schemaVersion: 1,
-              id: scopedId('plan', common.runId ?? conversation.id),
-              conversationId: conversation.id,
-              runId: common.runId,
-              kind: 'plan',
-              status: numberValue(task.progress) === 100 ? 'completed' : 'running',
-              createdAt: numberValue(task.startedAt) ?? event.at,
-              updatedAt: event.at,
-              payload: { steps: [{ id: portableId('step', stringValue(task.taskId) ?? 'active-task'), title: stringValue(task.title) ?? 'Active task', status: numberValue(task.progress) === 100 ? 'completed' : 'in_progress' }] },
-            }
-            upsertItem(item, 'active-task')
-          }
-        } else if (kind === 'task:update' && payload) {
-          const taskId = stringValue(payload.taskId)
-          if (taskId) {
-            const item: ConversationItemV2 = {
-              schemaVersion: 1,
-              id: scopedId('plan', common.runId ?? conversation.id),
-              conversationId: conversation.id,
-              runId: common.runId,
-              kind: 'plan',
-              status: numberValue(payload.progress) === 100 ? 'completed' : 'running',
-              createdAt: event.at,
-              updatedAt: event.at,
-              payload: { steps: [{ id: portableId('step', taskId), title: taskId, status: stringValue(payload.status) ?? 'pending' }] },
-            }
-            upsertItem(item, 'task-update')
-          }
         } else if (kind === 'work:execution' && payload) {
           projectExecution(record(payload.snapshot))
         } else if ((kind === 'runtime-task:created' || kind === 'runtime-task:updated' || kind === 'runtime-task:finished') && payload) {
@@ -1041,7 +1033,7 @@ export class ConversationRuntimeRepositoryV2 {
         break
       }
     }
-    if (inputs.length) this.repository.append(inputs)
+    return inputs
   }
 
   load(conversationId: string): PersistedConversation | null {

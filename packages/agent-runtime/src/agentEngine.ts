@@ -1095,6 +1095,8 @@ export class AgentEngine {
 
   setSubAgentBudget(config: Partial<SubAgentBudgetConfig>): SubAgentBudgetConfig { return this.orchestration.setSubAgentBudget(config) }
   getSubAgentBudget(): SubAgentBudgetConfig { return this.orchestration.getSubAgentBudget() }
+  private modelRequestGuard?: () => void
+  setModelRequestGuard(guard?: () => void): void { this.modelRequestGuard = guard }
   setAutomationSubAgentPolicy(policy: AutomationSubAgentPolicy | null): void { this.orchestration.setAutomationSubAgentPolicy(policy) }
 
   getAvailableToolNames(): string[] {
@@ -2504,6 +2506,7 @@ Before retrying:
     let attempt = beginAttempt()
     this.activeModelAttempt = attempt
     try {
+      this.modelRequestGuard?.()
       const result = await this.toolExecutor.streamMessage(url, headers, serializedBody, onLine, {
         ...options,
         onAttempt: index => {
@@ -2511,6 +2514,7 @@ Before retrying:
             attempt.finish('failed')
             attempt = beginAttempt()
             this.activeModelAttempt = attempt
+            this.modelRequestGuard?.()
           }
           options.onAttempt?.(index)
         },
@@ -2545,10 +2549,11 @@ Before retrying:
       this.emit({ type: 'stream:usage', usage, requestId, attemptId: attempt.record.id })
     }
     try {
+      this.modelRequestGuard?.()
       const result = await this.toolExecutor.sendMessage(url, headers, serializedBody, {
         ...options,
         onAttempt: index => {
-          if (index > 0) { attempt.finish('failed'); attempt = beginAttempt() }
+          if (index > 0) { attempt.finish('failed'); attempt = beginAttempt(); this.modelRequestGuard?.() }
           options.onAttempt?.(index)
         },
         onRetry: httpStatus => {

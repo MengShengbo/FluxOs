@@ -1,4 +1,5 @@
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
+import { readRuntimeLog, type RuntimeLogOutput } from './runtimeLogSegments'
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type {
   RuntimeRestartPolicy,
@@ -16,13 +17,7 @@ export interface RuntimeTaskControl {
   write?: (data: string) => Promise<void> | void
 }
 
-export interface RuntimeTaskOutput {
-  taskId: string
-  offset: number
-  nextOffset: number
-  content: string
-  eof: boolean
-}
+export interface RuntimeTaskOutput extends RuntimeLogOutput { taskId: string }
 
 export interface RuntimeTaskManagerOptions {
   defaultOwnerSessionId?: string
@@ -193,30 +188,8 @@ export class RuntimeTaskManager {
   readTaskOutput(taskId: string, offset = 0, maxBytes = 256 * 1024): RuntimeTaskOutput {
     const task = this.tasks.get(taskId)
     if (!task) throw new Error(`Runtime task not found: ${taskId}`)
-    if (!task.logPath || !existsSync(task.logPath)) {
-      return { taskId, offset: Math.max(0, offset), nextOffset: Math.max(0, offset), content: '', eof: true }
-    }
-    const fileSize = statSync(task.logPath).size
-    const requestedStart = Math.max(0, Math.min(Math.floor(offset), fileSize))
-    const limit = Math.max(1, Math.min(Math.floor(maxBytes), 2 * 1024 * 1024))
-    const readLength = Math.min(fileSize - requestedStart, limit + 8)
-    const buffer = Buffer.allocUnsafe(readLength)
-    const fd = openSync(task.logPath, 'r')
-    let bytesRead = 0
-    try {
-      bytesRead = readSync(fd, buffer, 0, readLength, requestedStart)
-    } finally {
-      closeSync(fd)
-    }
-    const value = buffer.subarray(0, bytesRead)
-    let localStart = 0
-    while (localStart < bytesRead && isUtf8ContinuationByte(value[localStart])) localStart += 1
-    let localEnd = Math.min(localStart + limit, bytesRead)
-    while (localEnd < bytesRead && !isValidUtf8(value.subarray(localStart, localEnd))) localEnd += 1
-    const start = requestedStart + localStart
-    const nextOffset = requestedStart + localEnd
-    const content = value.subarray(localStart, localEnd).toString('utf8')
-    return { taskId, offset: start, nextOffset, content, eof: nextOffset >= fileSize }
+    if (!task.logPath) return { taskId, offset, nextOffset: offset, content: '', eof: true, startOffset: 0, endOffset: 0, omittedBytes: 0 }
+    return { taskId, ...readRuntimeLog(task.logPath, offset, maxBytes) }
   }
 
   listTasks(filter: RuntimeTaskFilter = {}): RuntimeTask[] {
@@ -372,7 +345,7 @@ export class RuntimeTaskManager {
   private finishTask(taskId: string, status: Extract<RuntimeTaskStatus, 'completed' | 'failed' | 'stopped' | 'interrupted'>, patch: RuntimeTaskUpdate): RuntimeTask | null {
     const task = this.tasks.get(taskId)
     if (!task) return null
-    const nextStatus = task.status === 'stopping' ? 'stopped' : TERMINAL_STATUSES.has(task.status) ? task.status : status
+    const nextStatus = task.status === 'stopping' && status !== 'interrupted' ? 'stopped' : TERMINAL_STATUSES.has(task.status) ? task.status : status
     const finished = this.setStatus(task, nextStatus, patch, true)
     this.controls.delete(taskId)
     this.pruneTerminalTasks()
@@ -573,18 +546,5 @@ function processIsAlive(pid: number): boolean {
     return true
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'EPERM'
-  }
-}
-
-function isUtf8ContinuationByte(byte: number): boolean {
-  return (byte & 0b1100_0000) === 0b1000_0000
-}
-
-function isValidUtf8(value: Buffer): boolean {
-  try {
-    new TextDecoder('utf-8', { fatal: true }).decode(value)
-    return true
-  } catch {
-    return false
   }
 }

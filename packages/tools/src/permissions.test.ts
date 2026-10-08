@@ -192,10 +192,10 @@ describe('PermissionPipeline', () => {
 
     it('shares an explicit run grant across browser page-changing actions', () => {
       const pipeline = new PermissionPipeline('ask')
-      pipeline.grantRun('browser__click', { ref: 'e1' })
+      pipeline.grantRun('browser__click', { ref: 'e1' }, { trustedHostTool: true })
 
-      expect(pipeline.check('browser__type', { ref: 'e2', text: 'hello' }).verdict).toBe('allow')
-      expect(pipeline.check('browser__drag', { from_x: 1, from_y: 1, to_x: 20, to_y: 20 }).verdict).toBe('allow')
+      expect(pipeline.check('browser__type', { ref: 'e2', text: 'hello' }, { trustedHostTool: true }).verdict).toBe('allow')
+      expect(pipeline.check('browser__drag', { from_x: 1, from_y: 1, to_x: 20, to_y: 20 }, { trustedHostTool: true }).verdict).toBe('allow')
       expect(pipeline.check('files__write', { path: 'a.txt' }).verdict).toBe('ask')
     })
 
@@ -204,18 +204,18 @@ describe('PermissionPipeline', () => {
       const keynote = { app_name: 'Keynote', bundle_id: 'com.apple.Keynote' }
       const pages = { app_name: 'Pages', bundle_id: 'com.apple.Pages' }
 
-      pipeline.grantSession('computer__click', keynote)
+      pipeline.grantSession('computer__click', keynote, { trustedHostTool: true })
 
-      expect(pipeline.check('computer__double_click', keynote).verdict).toBe('ask')
-      expect(pipeline.check('computer__type_text', keynote).verdict).toBe('ask')
-      expect(pipeline.check('computer__click', pages).verdict).toBe('ask')
+      expect(pipeline.check('computer__double_click', keynote, { trustedHostTool: true }).verdict).toBe('ask')
+      expect(pipeline.check('computer__type_text', keynote, { trustedHostTool: true }).verdict).toBe('ask')
+      expect(pipeline.check('computer__click', pages, { trustedHostTool: true }).verdict).toBe('ask')
     })
 
     it('does not create reusable computer grants without an app identity', () => {
       const pipeline = new PermissionPipeline('ask')
-      pipeline.grantSession('computer__click', {})
+      pipeline.grantSession('computer__click', {}, { trustedHostTool: true })
 
-      expect(pipeline.check('computer__click', {}).verdict).toBe('ask')
+      expect(pipeline.check('computer__click', {}, { trustedHostTool: true }).verdict).toBe('ask')
     })
 
     it('clears run grants independently from session grants', () => {
@@ -315,35 +315,35 @@ describe('PermissionPipeline', () => {
       const askPipeline = new PermissionPipeline('ask')
       const fullPipeline = new PermissionPipeline('full')
 
-      expect(askPipeline.check('computer__observe', {}).verdict).toBe('allow')
-      expect(askPipeline.check('computer__click', { app_name: 'Keynote' }).verdict).toBe('ask')
-      expect(fullPipeline.check('computer__click', { app_name: 'Keynote' }).verdict).toBe('ask')
+      expect(askPipeline.check('computer__observe', {}, { trustedHostTool: true }).verdict).toBe('allow')
+      expect(askPipeline.check('computer__click', { app_name: 'Keynote' }, { trustedHostTool: true }).verdict).toBe('ask')
+      expect(fullPipeline.check('computer__click', { app_name: 'Keynote' }, { trustedHostTool: true }).verdict).toBe('ask')
     })
 
     it('blocks payment actions and ignores reusable grants under full policy', () => {
       const pipeline = new PermissionPipeline('full')
       const args = { app_name: 'Safari', safety_class: 'payment' }
 
-      expect(pipeline.check('computer__click', args).verdict).toBe('deny')
-      pipeline.grantSession('computer__click', args)
-      expect(pipeline.check('computer__click', args).verdict).toBe('deny')
+      expect(pipeline.check('computer__click', args, { trustedHostTool: true }).verdict).toBe('deny')
+      pipeline.grantSession('computer__click', args, { trustedHostTool: true })
+      expect(pipeline.check('computer__click', args, { trustedHostTool: true }).verdict).toBe('deny')
     })
 
     it('locally escalates broad observation and ambiguous input despite routine model labels', () => {
       const pipeline = new PermissionPipeline('full')
 
-      expect(pipeline.check('computer__observe', { scope: 'display' }).verdict).toBe('ask')
-      expect(pipeline.check('computer__click', { x: 20, y: 30, safety_class: 'routine' }).verdict).toBe('ask')
-      expect(pipeline.check('computer__press', { keys: ['ENTER'], safety_class: 'routine' }).verdict).toBe('ask')
-      expect(pipeline.check('computer__type_text', { text: 'one\ntwo', safety_class: 'routine' }).verdict).toBe('ask')
-      expect(pipeline.check('computer__click', { description: '确认付款', safety_class: 'routine' }).verdict).toBe('deny')
+      expect(pipeline.check('computer__observe', { scope: 'display' }, { trustedHostTool: true }).verdict).toBe('ask')
+      expect(pipeline.check('computer__click', { x: 20, y: 30, safety_class: 'routine' }, { trustedHostTool: true }).verdict).toBe('ask')
+      expect(pipeline.check('computer__press', { keys: ['ENTER'], safety_class: 'routine' }, { trustedHostTool: true }).verdict).toBe('ask')
+      expect(pipeline.check('computer__type_text', { text: 'one\ntwo', safety_class: 'routine' }, { trustedHostTool: true }).verdict).toBe('ask')
+      expect(pipeline.check('computer__click', { description: '确认付款', safety_class: 'routine' }, { trustedHostTool: true }).verdict).toBe('deny')
     })
 
     it('blocks credential entry and unknown computer operations under full policy', () => {
       const pipeline = new PermissionPipeline('full')
 
-      expect(pipeline.check('computer__type_text', { field_type: 'password' }).verdict).toBe('deny')
-      expect(pipeline.check('computer__raw_script', { script: 'unsafe()' }).verdict).toBe('deny')
+      expect(pipeline.check('computer__type_text', { field_type: 'password' }, { trustedHostTool: true }).verdict).toBe('deny')
+      expect(pipeline.check('computer__raw_script', { script: 'unsafe()' }, { trustedHostTool: true }).verdict).toBe('deny')
     })
 
     it.each([

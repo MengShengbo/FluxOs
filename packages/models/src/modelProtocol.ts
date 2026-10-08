@@ -210,7 +210,10 @@ export function compactProtocolError(message: string, maxLength = 700): string {
   return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}…` : compact
 }
 
-export function toResponsesTools(tools: unknown[]): Array<Record<string, unknown>> {
+/** Maps an explicitly enabled custom tool to its single canonical string input. */
+export type ResponsesCustomToolInputs = Readonly<Record<string, string>>
+
+export function toResponsesTools(tools: unknown[], customInputs: ResponsesCustomToolInputs = {}): Array<Record<string, unknown>> {
   const converted: Array<Record<string, unknown>> = []
   for (const tool of tools) {
     if (!tool || typeof tool !== 'object') continue
@@ -219,6 +222,14 @@ export function toResponsesTools(tools: unknown[]): Array<Record<string, unknown
       ? record.function as Record<string, unknown>
       : null
     if (record.type !== 'function' || !fn || typeof fn.name !== 'string') continue
+    if (Object.prototype.hasOwnProperty.call(customInputs, fn.name)) {
+      converted.push({
+        type: 'custom', name: fn.name,
+        description: `${typeof fn.description === 'string' ? fn.description : ''}\nPass the literal ${customInputs[fn.name]} text. Do not wrap it in JSON or a code fence.`,
+        format: { type: 'text' },
+      })
+      continue
+    }
     converted.push({
       type: 'function',
       name: fn.name,
@@ -232,8 +243,9 @@ export function toResponsesTools(tools: unknown[]): Array<Record<string, unknown
   return converted
 }
 
-export function toResponsesInput(messages: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+export function toResponsesInput(messages: Array<Record<string, unknown>>, customInputs: ResponsesCustomToolInputs = {}): Array<Record<string, unknown>> {
   const input: Array<Record<string, unknown>> = []
+  const customCallIds = new Set<string>()
   for (const message of messages) {
     const role = typeof message.role === 'string' ? message.role : ''
     if (role === 'system' || role === 'developer') continue
@@ -242,7 +254,7 @@ export function toResponsesInput(messages: Array<Record<string, unknown>>): Arra
       const callId = typeof message.tool_call_id === 'string' ? message.tool_call_id : ''
       if (!callId) continue
       input.push({
-        type: 'function_call_output',
+        type: customCallIds.has(callId) ? 'custom_tool_call_output' : 'function_call_output',
         call_id: callId,
         output: stringifyResponseContent(message.content),
       })
@@ -261,6 +273,18 @@ export function toResponsesInput(messages: Array<Record<string, unknown>>): Arra
           : null
         if (!fn || typeof fn.name !== 'string') continue
         const callId = typeof record.id === 'string' && record.id ? record.id : `call_${input.length}`
+        if (Object.prototype.hasOwnProperty.call(customInputs, fn.name)) {
+          let args: unknown = fn.arguments
+          try { if (typeof args === 'string') args = JSON.parse(args) } catch { /* Preserve malformed history in its function envelope. */ }
+          const key = customInputs[fn.name]
+          if (args && typeof args === 'object' && !Array.isArray(args)
+            && Object.keys(args).length === 1 && Object.prototype.hasOwnProperty.call(args, key)
+            && typeof (args as Record<string, unknown>)[key] === 'string') {
+            customCallIds.add(callId)
+            input.push({ type: 'custom_tool_call', call_id: callId, name: fn.name, input: (args as Record<string, unknown>)[key] })
+            continue
+          }
+        }
         input.push({
           type: 'function_call',
           call_id: callId,

@@ -38,6 +38,8 @@ export interface TerminalSessionInfo {
   canWrite?: boolean
   exitCode?: number | null
   exitSignal?: string | null
+  expectedExitCodes?: number[]
+  stopped?: boolean
   error?: string
 }
 

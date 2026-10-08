@@ -40,7 +40,13 @@ async function runGit(
     return { ok: false, stdout: '', stderr: '', exitCode: 1, error: 'Safe process execution is unavailable' }
   }
   try {
-    const result = await runProcess('git', args, workspacePath, options.env || {}, options.timeout || 10_000)
+    const env = options.access === 'read' ? {
+      ...options.env,
+      // Reading a repository must not execute its configured filesystem monitor.
+      GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.fsmonitor', GIT_CONFIG_VALUE_0: 'false',
+      GIT_OPTIONAL_LOCKS: '0',
+    } : options.env || {}
+    const result = await runProcess('git', args, workspacePath, env, options.timeout || 10_000)
     return {
       ok: result.success && result.data?.exitCode === 0,
       stdout: result.data?.stdout || '',
@@ -276,7 +282,7 @@ export async function fetchGitDiff(
     const path = normalizeOptionalPath(workspacePath, filePath)
     const context = Math.max(0, Math.min(50, Math.floor(contextLines)))
     const makeArgs = (staged: boolean) => [
-      'diff', '--no-ext-diff', '--no-color', `--unified=${context}`,
+      'diff', '--no-ext-diff', '--no-textconv', '--no-color', `--unified=${context}`,
       ...(staged ? ['--cached'] : []),
       ...(path ? ['--', path] : []),
     ]
@@ -333,7 +339,7 @@ export async function fetchGitShow(
     const safeRevision = validateRevision(revision)
     const path = normalizeOptionalPath(workspacePath, filePath)
     const result = await runGit(workspacePath, [
-      'show', '--no-ext-diff', '--no-color', '--format=fuller', safeRevision,
+      'show', '--no-ext-diff', '--no-textconv', '--no-color', '--format=fuller', safeRevision,
       ...(path ? ['--', path] : []),
     ], executor, { access: 'read' })
     return result.ok

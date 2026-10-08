@@ -2,17 +2,29 @@ import type { TreeNode } from './types'
 import type { MemoryKind, MemoryScope } from './memoryTypes'
 import type { TerminalBufferResult, TerminalSessionInfo, TerminalStartCommandResult } from './terminalTypes'
 import type { RuntimeTaskPresentation } from './runtimeTaskTypes'
+import type { ToolResult } from './agentTypes'
+import type { ToolRecovery } from './toolResultData'
+import type { CodeNavigationRequest, CodeNavigationResult } from './codeNavigation'
+export type { CodeNavigationRequest, CodeNavigationResult, CodeLocation } from './codeNavigation'
 
 export interface Result<T = any> {
   success: boolean
   data?: T
   error?: string
+  errorKind?: ToolResult['errorKind']
+  recovery?: ToolRecovery
   retryAfterMs?: number
   receivedStreamData?: boolean
   // TODO: remove this index signature once all IPC/tool results migrate to
   // the `data` envelope pattern instead of flat extra properties.
   [key: string]: any
 }
+
+/** Facts about the target file, separate from invocation and durability errors. */
+export type FileMutationState = 'committed' | 'not_committed' | 'unknown'
+export type FileMutationResult =
+  | { success: true; mutation: 'committed'; error?: never }
+  | { success: false; mutation: FileMutationState; error: string; errorKind?: ToolResult['errorKind'] }
 
 export interface SearchContentHit {
   file: string
@@ -25,6 +37,8 @@ export interface SearchContentHit {
 }
 
 export interface SearchContentOptions {
+  /** Continue the same captured results. Mutually exclusive with offset. */
+  cursor?: string
   offset?: number
   limit?: number
   contextBefore?: number
@@ -39,6 +53,9 @@ export interface SearchContentOptions {
 }
 
 export interface SearchContentPage {
+  nextCursor?: string
+  snapshot?: SearchSnapshot
+  incompleteReasons?: SearchIncompleteReason[]
   hits: SearchContentHit[]
   files?: Array<{ file: string; count?: number }>
   outputMode?: 'content' | 'files' | 'count'
@@ -60,6 +77,7 @@ export interface SearchContentBatchRequest {
 }
 
 export interface SearchFilesOptions {
+  cursor?: string
   offset?: number
   limit?: number
   includeIgnored?: boolean
@@ -67,6 +85,9 @@ export interface SearchFilesOptions {
 }
 
 export interface SearchFilesPage {
+  nextCursor?: string
+  snapshot?: SearchSnapshot
+  incompleteReasons?: SearchIncompleteReason[]
   matches: string[]
   offset: number
   limit: number
@@ -77,6 +98,16 @@ export interface SearchFilesPage {
   warning?: string
 }
 
+export type SearchIncompleteReason = 'capture_budget' | 'timeout' | 'path_error' | 'decode_error' | 'result_budget'
+
+/** A bounded capture, not an atomic filesystem snapshot or live workspace view. */
+export interface SearchSnapshot {
+  id: string
+  capturedAt: string
+  expiresAt: string
+  consistency: 'captured_results'
+}
+
 export interface FileRangeResult {
   content: string
   startLine: number
@@ -84,6 +115,22 @@ export interface FileRangeResult {
   truncated: boolean
   bytesRead: number
   partialLine?: boolean
+}
+
+export interface FileByteRangeOptions {
+  offset?: number
+  maxBytes?: number
+  version?: string
+  signal?: AbortSignal
+}
+
+export interface FileByteRangeResult {
+  content: string
+  version: string
+  offset: number
+  endOffset: number
+  totalBytes: number
+  nextOffset?: number
 }
 
 export interface WebSearchResult {
@@ -148,12 +195,20 @@ export interface WebFetchResponse {
 export interface CommandOutput {
   stdout: string
   stderr: string
-  exitCode: number
+  exitCode: number | null
+  exitSignal?: string
   timedOut?: boolean
   aborted?: boolean
   truncated?: boolean
   logPath?: string
   outputBytes?: number
+  /** Local termination evidence only; command/remote side effects remain unknown. */
+  termination?: {
+    status: 'confirmed' | 'unknown'
+    scope: 'owned_group_and_observed_descendants' | 'windows_taskkill_tree'
+    escalated: boolean
+    error?: string
+  }
 }
 
 export interface RequestOptions {
@@ -163,6 +218,8 @@ export interface RequestOptions {
   retry?: boolean
   /** Called for each physical transport attempt, including built-in retries. */
   onAttempt?: (index: number) => void
+  /** Called before backoff when a physical attempt fails and transport will retry. */
+  onRetry?: (httpStatus?: number) => void
 }
 
 export interface ListTreeOptions {
@@ -171,20 +228,32 @@ export interface ListTreeOptions {
   maxNodes?: number
 }
 
+export interface PatchPathIdentity {
+  /** Native canonical path, preserving real filesystem spelling. */
+  path: string
+  /** Native path relative to the canonical operation base. */
+  relativePath: string
+  /** Operation-local identity only; never persist it as a durable file id. */
+  identity: string
+}
+
 export interface ToolExecutor {
   // File operations
+  resolvePatchPaths(paths: string[], basePath: string, signal?: AbortSignal): Promise<Result<PatchPathIdentity[]>>
   readFile(path: string): Promise<Result<string>>
   readFileRange?(path: string, offset?: number, limit?: number, maxBytes?: number): Promise<Result<FileRangeResult>>
-  writeFile(path: string, content: string, metadata?: Record<string, unknown>): Promise<Result<void>>
-  deleteFile(path: string, options?: Record<string, any>): Promise<Result<void>>
+  readFileBytes?(path: string, options?: FileByteRangeOptions): Promise<Result<FileByteRangeResult>>
+  writeFile(path: string, content: string, metadata?: Record<string, unknown>): Promise<FileMutationResult>
+  deleteFile(path: string, options?: Record<string, any>): Promise<FileMutationResult>
   moveFile?(sourcePath: string, destinationPath: string, options?: { expectedHash?: string; expectedDestinationHash?: string }): Promise<Result<void>>
   listTree(path: string, options?: ListTreeOptions): Promise<Result<TreeNode>>
 
   // Search operations
-  searchFiles(pattern: string, basePath: string, options?: SearchFilesOptions): Promise<Result<{ matches: string[]; truncated?: boolean; offset?: number; limit?: number; totalMatches?: number; totalIsExact?: boolean; nextOffset?: number; warning?: string }>>
+  searchFiles(pattern: string, basePath: string, options?: SearchFilesOptions): Promise<Result<Pick<SearchFilesPage, 'matches'> & Partial<Omit<SearchFilesPage, 'matches'>>>>
   searchContent(pattern: string, basePath: string, filePattern?: string, caseInsensitive?: boolean): Promise<Result<SearchContentHit[]>>
   searchContentPage?(pattern: string, basePath: string, filePattern?: string, caseInsensitive?: boolean, options?: SearchContentOptions): Promise<Result<SearchContentPage>>
   searchContentBatch?(requests: SearchContentBatchRequest[]): Promise<Array<Result<SearchContentPage>>>
+  navigateCode?(request: CodeNavigationRequest): Promise<Result<CodeNavigationResult>>
   webSearch?(query: Record<string, any>): Promise<Result<WebSearchResponse>>
   readWebSource?(query: { source_id: string; offset?: number; limit?: number; query?: string }): Promise<Result<Record<string, unknown>>>
   webFetch?(query: Record<string, any>): Promise<Result<WebFetchResponse>>
@@ -198,13 +267,13 @@ export interface ToolExecutor {
   memoryGetRelevantInjection?(query: Record<string, any>): Promise<Result<any>>
 
   // Terminal operations
-  runCommand(command: string, cwd: string, env?: Record<string, string>, timeout?: number, approved?: boolean, signal?: AbortSignal): Promise<Result<CommandOutput>>
+  runCommand(command: string, cwd: string, env?: Record<string, string>, timeout?: number, approved?: boolean, signal?: AbortSignal, expectedExitCodes?: number[], presentation?: RuntimeTaskPresentation): Promise<Result<CommandOutput>>
   /** Execute a process while resolving its working directory through read access. */
   readOnlyProcess?(command: string, args: string[], cwd: string, env?: Record<string, string>, timeout?: number, signal?: AbortSignal): Promise<Result<CommandOutput>>
   runProcess?(command: string, args: string[], cwd: string, env?: Record<string, string>, timeout?: number, signal?: AbortSignal): Promise<Result<CommandOutput>>
   validateCommand?(command: string, cwd: string): Promise<Result<void>>
-  startBackgroundCommand?(command: string, cwd: string, env?: Record<string, string>, approved?: boolean, presentation?: RuntimeTaskPresentation): Promise<Result<TerminalStartCommandResult>>
-  ptyCreate?(options?: { shell?: string; cwd?: string; env?: Record<string, string>; presentation?: RuntimeTaskPresentation }): Promise<Result<{ sessionId: string; session?: TerminalSessionInfo }>>
+  startBackgroundCommand?(command: string, cwd: string, env?: Record<string, string>, approved?: boolean, presentation?: RuntimeTaskPresentation, expectedExitCodes?: number[], signal?: AbortSignal): Promise<Result<TerminalStartCommandResult>>
+  ptyCreate?(options?: { shell?: string; cwd?: string; env?: Record<string, string>; presentation?: RuntimeTaskPresentation; expectedExitCodes?: number[]; signal?: AbortSignal }): Promise<Result<{ sessionId: string; session?: TerminalSessionInfo }>>
   ptyWrite?(sessionId: string, data: string): Promise<Result<void>>
   ptyGetBuffer?(sessionId: string, sinceSeq?: number): Promise<Result<string> & TerminalBufferResult>
   ptyInterruptCommand?(sessionId: string): Promise<Result<void>>

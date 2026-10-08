@@ -1,15 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeBuiltInToolArguments } from './toolArgumentNormalization'
 
-const options = {
-  workspacePath: '/workspace',
-  resolvePath: (basePath: string, path: string) => `${basePath}/${path}`,
-  isFile: (path: string) => path === '/workspace/package.json' || path === '/workspace/apps/web/package.json',
-}
-
 describe('built-in tool argument normalization', () => {
-  it('uses the workspace root for an empty directory path', () => {
-    expect(normalizeBuiltInToolArguments('list_directory', { path: '' }, options)).toEqual({ path: '.' })
+  it('preserves an empty required directory path so validation can reject it', () => {
+    expect(normalizeBuiltInToolArguments('list_directory', { path: '' })).toEqual({ path: '' })
   })
 
   it('preserves a concrete file scope without matching same-named descendants', () => {
@@ -17,22 +11,28 @@ describe('built-in tool argument normalization', () => {
       path: 'apps/web/package.json',
       pattern: 'scripts',
       context_after: 2,
-    }, options)).toEqual({
+    })).toEqual({
       path: 'apps/web/package.json',
       pattern: 'scripts',
       context_after: 2,
     })
   })
 
-  it('accepts the common glob alias without leaking an unknown parameter', () => {
+  it('preserves undeclared fields and invalid paths for admission to reject', () => {
     expect(normalizeBuiltInToolArguments('search_content', {
       path: '',
       pattern: 'AgentEngine',
       glob: '*.ts',
-    }, options)).toEqual({
-      path: '.',
+    })).toEqual({
+      path: '',
       pattern: 'AgentEngine',
-      file_pattern: '*.ts',
+      glob: '*.ts',
     })
+  })
+  it.each([{}, { path: null }, { path: undefined }])('defaults only an omitted optional search path: %j', args => {
+    expect(normalizeBuiltInToolArguments('search_content', { pattern: 'needle', ...args })).toEqual({ pattern: 'needle', path: '.' })
+  })
+  it('preserves spaces that are part of a valid path', () => {
+    expect(normalizeBuiltInToolArguments('search_content', { path: ' folder ', pattern: 'x' })).toEqual({ path: ' folder ', pattern: 'x' })
   })
 })

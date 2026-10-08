@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { PersistedConversation } from './types'
 import type { ConversationJournalWriterStats } from './journalWriter'
+import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 
 export interface ConversationRecoveryExportHealth {
   status: 'healthy' | 'degraded'
@@ -15,6 +16,8 @@ export interface ConversationRecoveryBundle {
   exportedAt: number
   readOnlyRecovery: true
   conversation: PersistedConversation
+  /** Unacknowledged facts for manual recovery; never treated as committed history. */
+  pendingCanonicalEvents?: AnyConversationEvent[]
   persistence: ConversationRecoveryExportHealth
   journalStats: ConversationJournalWriterStats
 }
@@ -23,11 +26,15 @@ const SECRET_KEY_PATTERN = /(?:api[_-]?key|authorization|cookie|password|secret|
 const BEARER_TOKEN_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi
 const SECRET_TOKEN_PATTERN = /\bsk-[A-Za-z0-9_-]{12,}\b/g
 const ASSIGNED_SECRET_PATTERN = /\b((?:api[_-]?key|password|secret|access[_-]?token|refresh[_-]?token)\s*[=:]\s*)[^\s,;]+/gi
+const JSON_SECRET_PATTERN = /("(?:api[_-]?key|authorization|cookie|password|secret|access[_-]?token|refresh[_-]?token|signature)"\s*:\s*)"(?:\\.|[^"\\])*"/gi
+const HTTP_SECRET_HEADER_PATTERN = /\b((?:authorization|proxy-authorization|cookie|set-cookie)\s*:\s*)[^\r\n]+/gi
 
 export function redactRecoveryValue(value: unknown, key = ''): unknown {
   if (SECRET_KEY_PATTERN.test(key)) return '[REDACTED]'
   if (typeof value === 'string') {
     return value
+      .replace(JSON_SECRET_PATTERN, '$1"[REDACTED]"')
+      .replace(HTTP_SECRET_HEADER_PATTERN, '$1[REDACTED]')
       .replace(BEARER_TOKEN_PATTERN, '[REDACTED]')
       .replace(SECRET_TOKEN_PATTERN, '[REDACTED]')
       .replace(ASSIGNED_SECRET_PATTERN, '$1[REDACTED]')

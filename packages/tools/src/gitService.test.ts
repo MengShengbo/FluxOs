@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -98,6 +98,43 @@ describe('Git status parsing', () => {
 })
 
 describe('Git runtime access', () => {
+  it.skipIf(process.platform === 'win32')('does not execute repository text conversion while reading a commit', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'fluxagent-git-read-converter-'))
+    try {
+      await execFileAsync('git', ['init', workspace])
+      await writeFile(join(workspace, 'source.txt'), 'source')
+      await writeFile(join(workspace, '.gitattributes'), '*.txt diff=fixture')
+      await execFileAsync('git', ['-C', workspace, 'add', '.'])
+      await execFileAsync('git', ['-C', workspace, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgSign=false', 'commit', '-m', 'fixture'])
+      const converter = join(workspace, 'converter.sh')
+      await writeFile(converter, '#!/bin/sh\nprintf unsafe > "$PWD/converter-ran.txt"\ncat "$1"\n')
+      await chmod(converter, 0o700)
+      await execFileAsync('git', ['-C', workspace, 'config', 'diff.fixture.textconv', converter])
+      const result = await fetchGitShow(workspace, new NodeToolExecutor(workspace, { capabilityProfile: 'read-only' }), 'HEAD')
+      expect(result.ok).toBe(true)
+      expect(result.output).toContain('source')
+      await expect(readFile(join(workspace, 'converter-ran.txt'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally { await rm(workspace, { recursive: true, force: true }) }
+  })
+
+  it.skipIf(process.platform === 'win32')('does not execute a repository fsmonitor hook while reading status in read-only mode', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'fluxagent-git-read-hook-'))
+    const marker = join(workspace, 'hook-ran.txt')
+    try {
+      await execFileAsync('git', ['init', workspace])
+      await writeFile(join(workspace, 'source.txt'), 'source')
+      await execFileAsync('git', ['-C', workspace, 'add', 'source.txt'])
+      const hook = join(workspace, 'fsmonitor.sh')
+      await writeFile(hook, '#!/bin/sh\nprintf unsafe > "$PWD/hook-ran.txt"\n')
+      await chmod(hook, 0o700)
+      await execFileAsync('git', ['-C', workspace, 'config', 'core.fsmonitor', hook])
+      const executor = new NodeToolExecutor(workspace, { capabilityProfile: 'read-only' })
+      const snapshot = await fetchGitSnapshot(workspace, executor)
+      expect(snapshot).toMatchObject({ stagedCount: 1 })
+      await expect(readFile(marker, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally { await rm(workspace, { recursive: true, force: true }) }
+  })
+
   it('reads repository state through a read-only capability profile', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'fluxagent-git-readonly-'))
     try {

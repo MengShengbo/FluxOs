@@ -10,18 +10,10 @@ import {
   type NativeReasoningConfig,
 } from '@fluxos/contracts/agentTypes'
 import {
-  getCredentialsFile,
-  loadCredentialSnapshot,
-  serializeCredentialSnapshot,
-  type CredentialSnapshot,
-} from './credentialStore'
-import {
   quarantineCorruptFileSync,
-  recoverFilesAtomicSync,
   withFileLockSync,
-  writeFileAtomicSync,
-  writeFilesAtomicSync,
 } from '@fluxos/platform/fileIO'
+import { readModelConfiguration, writeModelConfiguration, recoverModelConfiguration } from '@fluxos/platform/modelConfigurationStorage'
 import { getActiveProfilePaths } from '@fluxos/platform/profilePaths'
 
 import type { FluxAgentConfig, ModelPreset, ModelMetadataSource, ModelCapabilities, FluxAgentProvider, FluxAgentConfigKey, FluxAgentApiConfigProfile, ProviderPreset } from '@fluxos/contracts/modelConfigTypes'
@@ -35,45 +27,19 @@ function configFile(): string {
   return join(configDirectory(), 'config.json')
 }
 
-function configTransactionFile(): string {
-  return join(configDirectory(), '.config-transaction.json')
-}
-
 function configLockFile(): string {
   return join(configDirectory(), '.config.lock')
 }
 
-function hydrateCredentials(raw: Partial<FluxAgentConfig>): Partial<FluxAgentConfig> {
-  const stored = loadCredentialSnapshot()
-  const envApiKey = process.env.FLUXAGENT_API_KEY?.trim()
-  const activeId = typeof raw.activeApiConfigId === 'string'
-    ? raw.activeApiConfigId
-    : Array.isArray(raw.apiConfigs) ? raw.apiConfigs[0]?.id : undefined
-  const profiles = Array.isArray(raw.apiConfigs)
-    ? raw.apiConfigs.map(profile => ({
-        ...profile,
-        apiKey: envApiKey && profile.id === activeId
-          ? envApiKey
-          : stored.apiConfigs?.[profile.id] || '',
-      }))
-    : raw.apiConfigs
-  return {
-    ...raw,
-    apiKey: envApiKey || stored.apiKey || '',
-    apiConfigs: profiles,
-  }
-}
-
-function stripCredentials(config: FluxAgentConfig): FluxAgentConfig {
-  return {
-    ...config,
-    apiKey: '',
-    apiConfigs: config.apiConfigs?.map(profile => ({ ...profile, apiKey: '' })),
-  }
+function applyApiKeyOverride(raw: Partial<FluxAgentConfig>): Partial<FluxAgentConfig> {
+  const apiKey = process.env.FLUXAGENT_API_KEY?.trim()
+  if (!apiKey) return raw
+  const activeId = raw.activeApiConfigId ?? raw.apiConfigs?.[0]?.id
+  return { ...raw, apiKey, apiConfigs: raw.apiConfigs?.map(profile => profile.id === activeId ? { ...profile, apiKey } : profile) }
 }
 
 function writeConfigDocument(config: FluxAgentConfig): void {
-  writeFileAtomicSync(configFile(), JSON.stringify(stripCredentials(config), null, 2), 0o600)
+  writeModelConfiguration(configDirectory(), config)
 }
 
 export const DEFAULT_FREE_MODEL = ''
@@ -542,80 +508,59 @@ export function ensureDirectories(workspacePath?: string): void {
   }
 }
 
-function credentialSnapshotForSave(config: FluxAgentConfig, fallback: CredentialSnapshot = {}): CredentialSnapshot {
-  const stored = loadCredentialSnapshot()
-  const envApiKey = process.env.FLUXAGENT_API_KEY?.trim()
-  const activeId = config.activeApiConfigId
-  const persistentActiveKey = activeId
-    ? stored.apiConfigs?.[activeId] ?? fallback.apiConfigs?.[activeId] ?? stored.apiKey ?? fallback.apiKey
-    : stored.apiKey ?? fallback.apiKey
-  const apiConfigs = Object.fromEntries((config.apiConfigs || []).flatMap(profile => {
-    const key = envApiKey && profile.id === activeId && profile.apiKey === envApiKey
-      ? stored.apiConfigs?.[profile.id] ?? fallback.apiConfigs?.[profile.id] ?? persistentActiveKey
-      : profile.apiKey
-    return key ? [[profile.id, key]] : []
-  }))
-  const apiKey = envApiKey && config.apiKey === envApiKey
-    ? persistentActiveKey
-    : config.apiKey || undefined
-  return { apiKey, apiConfigs }
-}
-
-function persistConfig(config: FluxAgentConfig, fallbackCredentials?: CredentialSnapshot): FluxAgentConfig {
+function persistConfig(config: FluxAgentConfig): FluxAgentConfig {
   const normalized = syncActiveProfile(normalizeConfig(config))
-  const credentials = credentialSnapshotForSave(normalized, fallbackCredentials)
-  writeFilesAtomicSync([
-    {
-      filePath: getCredentialsFile(),
-      content: serializeCredentialSnapshot(credentials),
-      mode: 0o600,
-    },
-    {
-      filePath: configFile(),
-      content: JSON.stringify(stripCredentials(normalized), null, 2),
-      mode: 0o600,
-    },
-  ], configTransactionFile())
+  const apiKey = process.env.FLUXAGENT_API_KEY?.trim()
+  let document = normalized
+  if (apiKey) {
+    const stored = existsSync(configFile()) ? readModelConfiguration(configDirectory()) as Partial<FluxAgentConfig> : {}
+    document = {
+      ...normalized,
+      apiKey: normalized.apiKey === apiKey ? stored.apiKey || '' : normalized.apiKey,
+      apiConfigs: normalized.apiConfigs?.map(profile => ({ ...profile, apiKey: profile.id === normalized.activeApiConfigId && profile.apiKey === apiKey
+        ? stored.apiConfigs?.find(item => item.id === profile.id)?.apiKey ?? stored.apiKey ?? '' : profile.apiKey })),
+    }
+  }
+  writeConfigDocument(document)
   return normalized
 }
 
 export async function loadConfig(): Promise<FluxAgentConfig> {
   ensureDirectories()
   return withFileLockSync(configLockFile(), () => {
-    recoverFilesAtomicSync(configTransactionFile())
+    recoverModelConfiguration(configDirectory())
     if (!existsSync(configFile())) {
-      const initial = applyKnownModelMetadata(normalizeConfig(hydrateCredentials(DEFAULT_CONFIG)), MODEL_PRESETS)
+      const initial = applyKnownModelMetadata(normalizeConfig(DEFAULT_CONFIG), MODEL_PRESETS)
       writeConfigDocument(initial)
-      return initial
+      return normalizeConfig(applyApiKeyOverride(initial))
     }
 
     let userConfig: Partial<FluxAgentConfig>
     try {
-      const raw = readFileSync(configFile(), 'utf-8').replace(/^\uFEFF/, '')
-      const parsed = JSON.parse(raw)
+      const parsed = JSON.parse(readFileSync(configFile(), 'utf8').replace(/^\uFEFF/, ''))
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Configuration must be a JSON object')
-      userConfig = parsed as Partial<FluxAgentConfig>
+      userConfig = {}
     } catch (error) {
       const backupPath = quarantineCorruptFileSync(configFile())
       console.warn(`FluxOs preserved an invalid configuration file at ${backupPath}: ${error instanceof Error ? error.message : String(error)}`)
-      const recovered = applyKnownModelMetadata(normalizeConfig(hydrateCredentials(DEFAULT_CONFIG)), MODEL_PRESETS)
+      const recovered = applyKnownModelMetadata(normalizeConfig({ ...DEFAULT_CONFIG, ...readModelConfiguration(configDirectory()) }), MODEL_PRESETS)
       writeConfigDocument(recovered)
-      return recovered
+      return normalizeConfig(applyApiKeyOverride(recovered))
     }
 
-    const merged = normalizeConfig(hydrateCredentials({ ...DEFAULT_CONFIG, ...userConfig }))
+    userConfig = readModelConfiguration(configDirectory()) as Partial<FluxAgentConfig>
+    const merged = normalizeConfig({ ...DEFAULT_CONFIG, ...userConfig })
     const withBackendMetadata = applyKnownModelMetadata(merged, MODEL_PRESETS)
     if (withBackendMetadata.contextWindow !== merged.contextWindow || withBackendMetadata.maxTokens !== merged.maxTokens || withBackendMetadata.model !== merged.model) {
-      return persistConfig(withBackendMetadata)
+      return normalizeConfig(applyApiKeyOverride(persistConfig(withBackendMetadata)))
     }
-    return syncActiveProfile(withBackendMetadata, false)
+    return normalizeConfig(applyApiKeyOverride(syncActiveProfile(withBackendMetadata, false)))
   })
 }
 
 export function saveConfig(config: FluxAgentConfig): FluxAgentConfig {
   ensureDirectories()
   return withFileLockSync(configLockFile(), () => {
-    recoverFilesAtomicSync(configTransactionFile())
     return persistConfig(config)
   })
 }

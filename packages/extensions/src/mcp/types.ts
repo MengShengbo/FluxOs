@@ -1,4 +1,5 @@
 import type { AgentAttachment } from '@fluxos/contracts/agentTypes'
+import type { HostToolPolicy } from '@fluxos/contracts/toolAccess'
 import type { OAuthClientMetadata } from '@modelcontextprotocol/sdk/shared/auth.js'
 import type { McpOAuthTokenStore } from './oauth'
 
@@ -35,6 +36,7 @@ export interface McpToolInfo {
   inputSchema: Record<string, unknown>
   serverName: string
   instructions?: string
+  hostPolicy?: HostToolPolicy
   annotations?: {
     readOnlyHint?: boolean
     destructiveHint?: boolean
@@ -48,6 +50,7 @@ export interface McpLocalToolDefinition {
   description: string
   inputSchema: Record<string, unknown>
   annotations?: McpToolInfo['annotations']
+  hostPolicy?: HostToolPolicy
 }
 
 export interface McpLocalToolResult {

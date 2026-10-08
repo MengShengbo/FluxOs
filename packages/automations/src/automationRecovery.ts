@@ -66,8 +66,9 @@ export function validateAutomationRecovery(options: AutomationRecoveryValidation
   try {
     workspaceIdentity = captureAutomationWorkspaceIdentity(options.workspacePath)
     if (!workspaceIdentity.complete) {
-      if (options.explicitUserChoice) warnings.push('The workspace could not be fully fingerprinted; inspect it before continuing.')
-      else issues.push('The workspace could not be fully fingerprinted for automatic recovery.')
+      const details = workspaceIdentity.coverage.issues.map(issue => `${issue.code}${issue.path ? ` (${issue.path})` : ''}`).join(', ')
+      if (options.explicitUserChoice) warnings.push(`The workspace could not be fully fingerprinted; inspect it before continuing. ${details}`)
+      else issues.push(`The workspace could not be fully fingerprinted for automatic recovery. ${details}`)
     }
     if (workspaceIdentity.fingerprint !== checkpoint.workspaceFingerprint) {
       if (options.explicitUserChoice) warnings.push('The workspace changed after the checkpoint; the recovery choice must account for those changes.')

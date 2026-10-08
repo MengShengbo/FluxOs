@@ -18,10 +18,11 @@ const LINE_NUMBER_PREFIX_RE = new RegExp(`^[ \\t]*\\d+${LINE_NUMBER_ARROW}`)
  *  - If any non-empty line lacks the prefix, return unchanged. This keeps
  *    legitimate arrows in source code from being garbled.
  *  - Otherwise, strip the prefix from every line.
- *  - undefined / non-string inputs return ''.
+ *  - Non-string inputs are rejected; they must never become an empty deletion.
  */
-export function stripLineNumberPrefix(value: string | undefined): string {
-  if (typeof value !== 'string' || !value) return value ?? ''
+export function stripLineNumberPrefix(value: string): string {
+  if (typeof value !== 'string') throw new TypeError('Edit content must be a string')
+  if (!value) return value
   if (!value.includes(LINE_NUMBER_ARROW)) return value
   const lines = value.split('\n')
   const nonEmpty = lines.filter(l => l.trim().length > 0)
@@ -50,6 +51,9 @@ export function applyEdit(
 ): EditStepResult {
   if (typeof oldContent !== 'string' || oldContent.length === 0) {
     return { error: `old_string cannot be empty (${pathLabel})` }
+  }
+  if (typeof newContent !== 'string') {
+    return { error: `new_string must be a string (${pathLabel})` }
   }
   if (oldContent === newContent) {
     return { error: `old_string and new_string are identical - no-op edit not allowed (${pathLabel})` }

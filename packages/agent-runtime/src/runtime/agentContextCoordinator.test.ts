@@ -17,6 +17,18 @@ function createCoordinator() {
 }
 
 describe('AgentContextCoordinator', () => {
+  it('keeps the last successful file read instead of treating a later failed read as file contents', () => {
+    const { coordinator } = createCoordinator()
+    const turns: AgentTurn[] = [
+      { id: 'a1', role: 'assistant', content: '', timestamp: 1, toolCalls: [{ id: 'ok', name: 'read_file', arguments: { path: 'README.md' } }] },
+      { id: 'r1', role: 'tool_result', content: '', timestamp: 2, toolResults: [{ toolCallId: 'ok', name: 'read_file', output: 'actual file', isError: false }] },
+      { id: 'a2', role: 'assistant', content: '', timestamp: 3, toolCalls: [{ id: 'failed', name: 'read_file', arguments: { path: 'README.md' } }] },
+      { id: 'r2', role: 'tool_result', content: '', timestamp: 4, toolResults: [{ toolCallId: 'failed', name: 'read_file', output: 'Error: read denied', isError: true }] },
+    ]
+    expect(coordinator.collectPreservedFiles(turns)).toEqual([{ path: 'README.md', content: 'actual file' }])
+    expect(coordinator.collectPreservedFiles(turns.slice(2))).toEqual([])
+  })
+
   it('preserves the wire prefix and full tool evidence when a follow-up fits the context window', () => {
     const { coordinator } = createCoordinator()
     const surface = new ModelSurface()

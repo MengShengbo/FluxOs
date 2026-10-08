@@ -137,7 +137,7 @@ describe('ContextManager', () => {
       expect(messages[1]).toMatchObject({
         role: 'tool',
         tool_call_id: 'call-1',
-        content: '{"viewport":"current"}',
+        content: JSON.stringify({ status: 'completed', isError: false, output: '{"viewport":"current"}' }),
       })
       expect(messages[2]?.role).toBe('user')
       const visualContent = messages[2]?.content as Array<Record<string, any>>
@@ -241,7 +241,7 @@ describe('ContextManager', () => {
 
       const content = messages[1]?.content as Array<Record<string, any>>
       expect(content[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'call-1' })
-      expect(content[0]?.content[0]).toEqual({ type: 'text', text: '{"viewport":"current"}' })
+      expect(content[0]?.content[0]).toEqual({ type: 'text', text: JSON.stringify({ status: 'completed', isError: false, output: '{"viewport":"current"}' }) })
       expect(content[0]?.content[1]).toMatchObject({
         type: 'image',
         source: { type: 'base64', media_type: 'image/png' },
@@ -431,7 +431,7 @@ describe('ContextManager', () => {
 
     expect(toolMessages[0]?.content).toContain('oldHint')
     expect(toolMessages[0]?.content).toContain('large stale body')
-    expect(toolMessages[1]?.content).toBe('latest range content')
+    expect(toolMessages[1]?.content).toBe(JSON.stringify({ status: 'completed', isError: false, output: 'latest range content' }))
   })
 
   it('keeps earlier duplicate reads immutable for prefix caching', () => {
@@ -471,8 +471,8 @@ describe('ContextManager', () => {
     const messages = manager.buildMessages(turns, 'system prompt', 1_000_000, 'openai', 4096, undefined, undefined, 'gpt-5.5')
     const toolMessages = messages.filter(message => message.role === 'tool')
 
-    expect(toolMessages[0]?.content).toBe('old range content')
-    expect(toolMessages[1]?.content).toBe('new range content')
+    expect(toolMessages[0]?.content).toBe(JSON.stringify({ status: 'completed', isError: false, output: 'old range content' }))
+    expect(toolMessages[1]?.content).toBe(JSON.stringify({ status: 'completed', isError: false, output: 'new range content' }))
   })
 
   it('keeps the rendered message prefix stable as tool results are appended', () => {

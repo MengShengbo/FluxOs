@@ -4,6 +4,7 @@ import { createAgentRunInterruption } from './runControl'
 import { ToolExecutionCoordinator, type ToolExecutionCoordinatorOptions } from './toolExecutionCoordinator'
 
 const readTool: AgentTool = {
+  access: { source: 'builtin', exposure: 'resident', output: 'ToolResult', resources: [{ kind: 'filesystem', access: 'read', scope: 'workspace' }] },
   name: 'read',
   description: 'read',
   category: 'read',

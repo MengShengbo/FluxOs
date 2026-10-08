@@ -11,6 +11,10 @@
     "LICENSE"
   ],
   "exports": {
+    "./testing/workExecutionFixture": {
+      "types": "./dist/testing/workExecutionFixture.d.ts",
+      "import": "./dist/testing/workExecutionFixture.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
@@ -134,6 +138,10 @@
     "./childAgentTypes": {
       "types": "./dist/childAgentTypes.d.ts",
       "import": "./dist/childAgentTypes.js"
+    },
+    "./toolAccess": {
+      "types": "./dist/toolAccess.d.ts",
+      "import": "./dist/toolAccess.js"
     }
   },
   "scripts": {

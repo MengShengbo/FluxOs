@@ -1,5 +1,6 @@
 import type { AgentStateProvider, ContextCompactionState, ContextReservoirEntry, ContextSegment } from '@fluxos/contracts/stateTypes'
 import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import { toolInvocationKey, toolResultExecutionStatus } from '@fluxos/contracts/toolResultData'
 import { ContextManager } from '../contextManager'
 import { ModelSurface } from '@fluxos/models/modelSurface'
 import type { ModelSurfaceState } from '@fluxos/contracts/modelSurfaceTypes'
@@ -95,7 +96,7 @@ export class AgentContextCoordinator {
       if (turn.role !== 'assistant' || !turn.toolCalls) continue
       for (const call of turn.toolCalls) {
         if ((call.name === 'read_file' || call.name === 'read_file_full') && typeof call.arguments.path === 'string') {
-          pathByToolCallId.set(call.id, call.arguments.path)
+          pathByToolCallId.set(toolInvocationKey(call.id, call.operationIdentity), call.arguments.path)
         }
       }
     }
@@ -108,7 +109,8 @@ export class AgentContextCoordinator {
       if (turn.role !== 'tool_result' || !turn.toolResults) continue
       for (const result of turn.toolResults) {
         if (result.name !== 'read_file' && result.name !== 'read_file_full') continue
-        const path = pathByToolCallId.get(result.toolCallId)
+        if (toolResultExecutionStatus(result) !== 'completed') continue
+        const path = pathByToolCallId.get(toolInvocationKey(result.toolCallId, result.operationIdentity))
         if (!path || seenPaths.has(path)) continue
         seenPaths.add(path)
         const content = result.output.length > maxChars
@@ -146,7 +148,7 @@ export class AgentContextCoordinator {
     options.modelSurface.syncTurns(options.candidateTurns)
     options.modelSurface.appendSnapshot('work_execution', options.workExecutionContext)
     const activeSkillSources = new Set((options.activatedSkills ?? []).map(skill => `activated_skill:${skill.id}`))
-    for (const source of Object.keys(options.modelSurface.getState().snapshotHeads)) {
+    for (const source of options.modelSurface.getSnapshotSources()) {
       if (source.startsWith('activated_skill:') && !activeSkillSources.has(source)) {
         options.modelSurface.appendSnapshot(source, null)
       }

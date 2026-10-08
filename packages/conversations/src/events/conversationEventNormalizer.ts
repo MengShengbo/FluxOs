@@ -1,6 +1,6 @@
 import type { AgentEventType } from '@fluxos/agent-runtime/agentEngine'
 import type { AgentAttachment, AgentCapabilitySelection, AgentRunState, AgentTurn, ApprovalPolicy } from '@fluxos/contracts/agentTypes'
-import type { WorkRun } from '@fluxos/contracts/workExecutionTypes'
+import type { WorkRun, WorkActivity, WorkExecutionSnapshot, WorkExecutionUpdate } from '@fluxos/contracts/workExecutionTypes'
 import type {
   AnyAppendConversationEventInput,
   AppendConversationEventInput,
@@ -79,6 +79,7 @@ export class ConversationEventNormalizer {
   private runStateSequence = 0
   private runtimeSequence = 0
   private notificationSequence = 0
+  private executionActivities = new Map<string, Record<string, WorkActivity>>()
 
   constructor(conversationId: string, threadId = conversationId, options: ConversationEventNormalizerOptions = {}) {
     this.conversationId = conversationId
@@ -88,6 +89,7 @@ export class ConversationEventNormalizer {
 
   activate(conversationId: string, threadId = conversationId, at = this.now()): readonly AnyAppendConversationEventInput[] {
     const previousConversationId = this.conversationId
+    this.executionActivities.clear()
     this.conversationId = conversationId
     this.threadId = threadId
     this.resetRun()
@@ -345,7 +347,7 @@ export class ConversationEventNormalizer {
       case 'work:execution': {
         const current = event.snapshot.runs.find(run => run.id === this.runId)
         if (current && ['completed', 'partial', 'failed', 'cancelled'].includes(current.status)) return []
-        return [this.event('execution.updated', { snapshot: event.snapshot }, {
+        return [this.event('execution.updated', { update: this.executionUpdate(event.snapshot) }, {
           at,
           source: 'agent',
           provenance,
@@ -353,6 +355,10 @@ export class ConversationEventNormalizer {
           eventId: this.eventId('execution', String(this.nextRuntimeSequence())),
         })]
       }
+      // Execution updates carry this state without repeating all previous tool results.
+      case 'active:task':
+      case 'task:system':
+      case 'task:update':
       case 'error':
       case 'session:complete':
         return []
@@ -436,6 +442,28 @@ export class ConversationEventNormalizer {
     }
     this.resetRun()
     return events
+  }
+
+  private executionUpdate(snapshot: WorkExecutionSnapshot): WorkExecutionUpdate {
+    const retainedRunIds = snapshot.runs.map(run => run.id)
+    for (const id of this.executionActivities.keys()) if (!retainedRunIds.includes(id)) this.executionActivities.delete(id)
+    const removedActivityIds: Record<string, string[]> = {}
+    const runs = snapshot.runs.map(run => {
+      const previous = this.executionActivities.get(run.id) ?? {}
+      const changed: Record<string, WorkActivity> = {}
+      for (const [id, activity] of Object.entries(run.activities)) {
+        const old = previous[id]
+        const same = old && Object.keys(activity).length === Object.keys(old).length
+          && Object.entries(activity).every(([key, value]) => key === 'metadata'
+            ? JSON.stringify(value) === JSON.stringify(old.metadata)
+            : value === old[key as keyof WorkActivity])
+        if (!same) changed[id] = activity
+      }
+      removedActivityIds[run.id] = Object.keys(previous).filter(id => !(id in run.activities))
+      this.executionActivities.set(run.id, run.activities)
+      return { ...run, activities: changed }
+    })
+    return {currentRunId: snapshot.currentRunId, retainedRunIds, runs, removedActivityIds}
   }
 
   private streamDelta(

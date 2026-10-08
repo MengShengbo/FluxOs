@@ -1,4 +1,5 @@
 import type { SpawnOptions } from 'node:child_process'
+export { createProcessTerminator, terminateOwnedProcess, type ProcessTerminationReceipt } from './processTermination'
 
 export interface ShellSpec {
   command: string

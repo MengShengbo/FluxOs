@@ -21,3 +21,32 @@ describe('ModelRequestTracker',()=>{
     try{const record=new ModelRequestTracker(()=>{}).begin(input).finish('interrupted');expect(record.durationMs).toBeGreaterThanOrEqual(0)}finally{now.mockRestore()}
   })
 })
+
+it('records first semantic chunks once, without token-event amplification or private settings', () => {
+  const events: ModelRequestRecord[] = []
+  const attempt = new ModelRequestTracker(record => events.push(record)).begin({ ...input,
+    serializedBody: JSON.stringify({ input: 'PRIVATE', max_output_tokens: 2000, reasoning: { effort: 'high' }, temperature: .5, api_key: 'SECRET' }),
+  })
+  attempt.outputChunk('answer', false)
+  expect(attempt.record.outputTiming).toBeUndefined()
+  attempt.outputChunk('reasoning', true)
+  const first = attempt.record.outputTiming!.firstReasoningChunkMs
+  for (let i = 0; i < 1000; i++) attempt.outputChunk('reasoning', true)
+  attempt.outputChunk('tool', true)
+  attempt.outputChunk('answer', true)
+  expect(events).toHaveLength(1)
+  const finished = attempt.finish('interrupted')
+  expect(events).toHaveLength(2)
+  expect(finished.outputTiming).toMatchObject({ firstOutputChunkMs: first, firstReasoningChunkMs: first })
+  expect(finished.outputTiming!.firstAnswerChunkMs).toBeGreaterThanOrEqual(first!)
+  expect(finished.requestSettings).toEqual({ maxOutputTokens: 2000, reasoningEffort: 'high', temperature: .5 })
+  expect(JSON.stringify(events)).not.toMatch(/PRIVATE|SECRET|api_key/)
+  attempt.outputChunk('answer', true)
+  expect(attempt.record.outputTiming).toEqual(finished.outputTiming)
+})
+
+it('captures Anthropic reasoning budget and leaves no-output failure latency unknown', () => {
+  const attempt = new ModelRequestTracker(() => {}).begin({ ...input, serializedBody: JSON.stringify({ max_tokens: 100, thinking: { type: 'enabled', budget_tokens: 60 } }) })
+  expect(attempt.finish('failed').outputTiming).toBeUndefined()
+  expect(attempt.record.requestSettings).toEqual({ maxOutputTokens: 100, reasoningBudgetTokens: 60, thinkingType: 'enabled' })
+})

@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import type { AutomationWorkspaceIdentity } from './automationWorkspaceIdentity'
+export { captureAutomationWorkspaceIdentity, DEFAULT_AUTOMATION_WORKSPACE_SCAN_LIMITS, type AutomationWorkspaceIdentity } from './automationWorkspaceIdentity'
 import type {
   AutomationContextSnapshot,
   AutomationPermissionSnapshot,
@@ -21,12 +20,6 @@ export interface AutomationCheckpointState {
   contextSummary?: string
 }
 
-export interface AutomationWorkspaceIdentity {
-  fingerprint: string
-  gitHead?: string
-  complete: boolean
-}
-
 export function automationPermissionDigest(snapshot: AutomationPermissionSnapshot): string {
   return createHash('sha256').update(JSON.stringify({
     definitionRevision: snapshot.definitionRevision,
@@ -38,39 +31,6 @@ export function automationPermissionDigest(snapshot: AutomationPermissionSnapsho
     pluginIds: snapshot.pluginIds,
     pluginVersions: snapshot.pluginVersions ?? {},
   })).digest('hex')
-}
-
-function fileIdentity(path: string): string {
-  if (!existsSync(path)) return 'missing'
-  const stat = statSync(path)
-  return `${stat.size}:${Math.floor(stat.mtimeMs)}:${stat.mode}`
-}
-
-export function captureAutomationWorkspaceIdentity(workspacePath: string): AutomationWorkspaceIdentity {
-  const normalized = realpathSync(workspacePath)
-  let gitHead: string | undefined
-  let gitStatus: string | undefined
-  try {
-    gitHead = execFileSync('git', ['-C', normalized, 'rev-parse', 'HEAD'], {
-      encoding: 'utf8',
-      timeout: 5_000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim() || undefined
-    gitStatus = execFileSync('git', ['-C', normalized, 'status', '--porcelain=v2', '-z', '--untracked-files=all'], {
-      encoding: 'utf8',
-      timeout: 10_000,
-      maxBuffer: 16 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-  } catch {}
-  const identity = gitStatus !== undefined
-    ? `git\0${normalized}\0${gitHead ?? 'unborn'}\0${gitStatus}`
-    : `filesystem\0${normalized}\0${fileIdentity(normalized)}\0${fileIdentity(join(normalized, '.git', 'HEAD'))}\0${fileIdentity(join(normalized, '.git', 'index'))}`
-  return {
-    fingerprint: createHash('sha256').update(identity).digest('hex'),
-    gitHead,
-    complete: gitStatus !== undefined,
-  }
 }
 
 export function createAutomationCheckpoint(input: {
@@ -100,11 +60,12 @@ export function createAutomationCheckpoint(input: {
     pendingApprovalId: input.state.pendingApprovalId,
     artifactIds: [...input.state.artifactIds],
     workspaceFingerprint: input.workspaceIdentity.fingerprint,
+    workspaceCoverage: structuredClone(input.workspaceIdentity.coverage),
     gitHead: input.workspaceIdentity.gitHead,
     contextSummary: input.state.contextSummary,
     resumable: replaySafe && input.workspaceIdentity.complete,
     nonResumableReason: replaySafe
-      ? input.workspaceIdentity.complete ? undefined : 'Workspace state could not be fully fingerprinted.'
+      ? input.workspaceIdentity.complete ? undefined : `Workspace state could not be fully fingerprinted: ${input.workspaceIdentity.coverage.issues.map(issue => `${issue.code}${issue.path ? ` (${issue.path})` : ''}`).join(', ')}.`
       : `Tool ${uncertain?.toolName ?? 'unknown'} may have produced a non-replayable external effect.`,
     reason: input.reason,
     createdAt: now,

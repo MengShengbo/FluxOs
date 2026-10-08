@@ -16,10 +16,51 @@ function workspace() {
     writeFileSync(target, content)
     return target
   }
-  return { root, write, executor: new NodeToolExecutor(root) }
+  return { root, write, executor: new NodeToolExecutor(root, { memoryRoot: join(root, '.fluxagent', 'memory'), runtimeLogsRoot: join(root, '.fluxagent', 'logs') }) }
 }
 
 describe('workspace search contract', () => {
+  it('continues a captured path inventory without duplicates after the workspace changes', async () => {
+    const { root, write, executor } = workspace()
+    for (const file of ['a.ts', 'b.ts', 'c.ts', 'd.ts']) write(file, 'needle')
+    const first = await executor.searchFiles('*.ts', root, { limit: 2 })
+    expect(first.data?.nextCursor).toBeTypeOf('string')
+    write('0-new.ts', 'needle')
+    const second = await executor.searchFiles('*.ts', root, { limit: 2, cursor: first.data!.nextCursor })
+    expect([...first.data!.matches, ...second.data!.matches]).toEqual(['a.ts', 'b.ts', 'c.ts', 'd.ts'].map(file => join(root, file)))
+    expect(second.data?.snapshot).toMatchObject({ id: first.data!.snapshot!.id, consistency: 'captured_results' })
+    expect(second.data?.warning).toContain('changes after capture are not included')
+    expect((await executor.searchFiles('*.ts', root)).data?.totalMatches).toBe(5)
+  })
+
+  it('labels captured content explicitly instead of silently mixing live edits into later pages', async () => {
+    const { root, write, executor } = workspace()
+    write('a.ts', 'needle original a'); write('b.ts', 'needle original b')
+    const first = await executor.searchContentPage('needle', root, undefined, false, { limit: 1 })
+    expect(first.data?.nextCursor).toBeTypeOf('string')
+    write('b.ts', 'no longer a match')
+    const second = await executor.searchContentPage('needle', root, undefined, false, { cursor: first.data!.nextCursor, limit: 1 })
+    expect(second.data?.hits[0]?.text).toBe('needle original b')
+    expect(second.data?.snapshot?.consistency).toBe('captured_results')
+    expect(second.data?.warning).toContain('changes after capture are not included')
+    expect((await executor.searchContentPage('needle', root, undefined, false)).data?.totalMatches).toBe(1)
+  })
+
+  it('binds cursors to query, scope, mode, filters and executor ownership', async () => {
+    const { root, write, executor } = workspace()
+    write('a.ts', 'needle\nneedle\n'); write('b.ts', 'needle')
+    const first = await executor.searchContentPage('needle', root, undefined, false, { limit: 1 })
+    const cursor = first.data?.nextCursor
+    expect(cursor).toBeTypeOf('string')
+    for (const response of [
+      await executor.searchContentPage('different', root, undefined, false, { cursor }),
+      await executor.searchContentPage('needle', root, undefined, false, { cursor, outputMode: 'count' }),
+      await executor.searchContentPage('needle', root, undefined, false, { cursor, includeIgnored: true }),
+      await executor.searchContentPage('needle', root, undefined, false, { cursor, offset: 1 }),
+      await new NodeToolExecutor(root, { memoryRoot: join(root, '.fluxagent', 'other-memory'), runtimeLogsRoot: join(root, '.fluxagent', 'other-logs') }).searchContentPage('needle', root, undefined, false, { cursor }),
+    ]) expect(response.success).toBe(false)
+  })
+
   it('preserves all 30 matches when increasing the result limit', async () => {
     const { root, write, executor } = workspace()
     write('owner.ts', Array.from({ length: 30 }, (_, i) => `needle ${i}`).join('\n'))
@@ -34,8 +75,8 @@ describe('workspace search contract', () => {
     const { root, write, executor } = workspace()
     for (const file of ['c.ts', 'a.ts', 'b.ts']) write(file, 'needle 1\nneedle 2\nneedle 3\n')
     const first = await executor.searchContentPage('needle', root, undefined, false, { limit: 4 })
-    const second = await executor.searchContentPage('needle', root, undefined, false, { limit: 4, offset: first.data?.nextOffset })
-    const third = await executor.searchContentPage('needle', root, undefined, false, { limit: 4, offset: second.data?.nextOffset })
+    const second = await executor.searchContentPage('needle', root, undefined, false, { limit: 4, cursor: first.data?.nextCursor })
+    const third = await executor.searchContentPage('needle', root, undefined, false, { limit: 4, cursor: second.data?.nextCursor })
     const hits = [first, second, third].flatMap(page => page.data?.hits || [])
     expect(new Set(hits.map(hit => `${hit.file}:${hit.line}`)).size).toBe(9)
     expect(hits.map(hit => hit.file)).toEqual(['a.ts', 'a.ts', 'a.ts', 'b.ts', 'b.ts', 'b.ts', 'c.ts', 'c.ts', 'c.ts'].map(file => join(root, file)))

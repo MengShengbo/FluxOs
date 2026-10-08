@@ -38,6 +38,8 @@ export type ModelMetadataSource = 'api' | 'gateway' | 'models.dev' | 'builtin' |
 
 export interface ModelCapabilities {
   tools?: boolean
+  /** Explicit endpoint capability; never inferred from a provider/model name. */
+  responsesCustomTools?: boolean
   vision?: boolean
   reasoning?: boolean
   structuredOutput?: boolean

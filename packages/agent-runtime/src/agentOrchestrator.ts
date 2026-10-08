@@ -1,9 +1,10 @@
+import { toolFailure, type ToolDispatchOutput } from './runtime/toolDispatchResult'
+import { toolResultCallStatus } from '@fluxos/contracts/toolResultData'
 import { randomUUID } from 'node:crypto'
 import type { AgentConfig } from '@fluxos/contracts/agentTypes'
 import type { AgentStateProvider } from '@fluxos/contracts/stateTypes'
 import type { ToolExecutor } from '@fluxos/contracts/toolExecutor'
 import type { RuntimeTask } from '@fluxos/contracts/runtimeTaskTypes'
-import type { ToolResultData } from '@fluxos/contracts/toolResultData'
 import type { SubAgentDefinition, SubAgentEvent, SubAgentEvidence } from '@fluxos/contracts/subAgentTypes'
 import { childCapabilityProfile, normalizeChildName, type ChildCapabilityMode } from '@fluxos/contracts/childAgentTypes'
 import type { AgentEventType } from './agentEngine'
@@ -180,7 +181,7 @@ export class AgentOrchestrator {
     return lines.join('\n')
   }
 
-  async dispatchTool(name: string, args: Record<string, unknown>, operationSignal?: AbortSignal): Promise<string | { output: string; data: ToolResultData }> {
+  async dispatchTool(name: string, args: Record<string, unknown>, operationSignal?: AbortSignal): Promise<ToolDispatchOutput> {
     switch (name) {
       case 'list_agents': {
         const named = this.childAgents?.list(this.host.getConfig().conversationId || '') || []
@@ -190,7 +191,7 @@ export class AgentOrchestrator {
       case 'read_agent': {
         const owner = this.host.getConfig().conversationId || ''
         const agentId = String(args.agent_id || '').trim()
-        if (!agentId) return 'Error: agent_id is required'
+        if (!agentId) return toolFailure('Error: agent_id is required', 'validation', 'none')
         if (!this.childAgents) throw new Error('Child sessions are unavailable')
         const identity = this.childAgents.list(owner).find(agent => agent.agentId === agentId)
         const resolved = identity?.agentId || this.resolveTask(agentId).agentSessionId
@@ -199,7 +200,7 @@ export class AgentOrchestrator {
       }
 
       case 'send_agent_message': {
-        if (!this.childAgents) return 'Error: reusable child sessions are unavailable'
+        if (!this.childAgents) return toolFailure('Error: reusable child sessions are unavailable', 'environment', 'none')
         const receipt = this.childAgents.message(String(args.agent_id), this.host.getConfig().conversationId || '', String(args.message || ''), {
           messageId: typeof args.message_id === 'string' ? args.message_id : undefined,
           sourceWorkRunId: this.host.getRunId() || undefined,
@@ -210,7 +211,7 @@ export class AgentOrchestrator {
         return this.followupChildAgent(String(args.agent_id), String(args.message || ''))
       }
       case 'close_agent': {
-        if (!this.childAgents) return 'Error: reusable child sessions are unavailable'
+        if (!this.childAgents) return toolFailure('Error: reusable child sessions are unavailable', 'environment', 'none')
         await this.close(String(args.agent_id))
         return 'Child session closed.'
       }
@@ -230,30 +231,30 @@ export class AgentOrchestrator {
           })
           return this.formatWaitAgentsResult(result)
         } catch (error) {
-          if ((error as { name?: string })?.name === 'AbortError') return 'Error: wait_agents aborted because the parent run stopped.'
-          return 'Error: ' + (error instanceof Error ? error.message : String(error))
+          if ((error as { name?: string })?.name === 'AbortError') return toolFailure('Error: wait_agents aborted because the parent run stopped.', 'abort', 'none')
+          return toolFailure('Error: ' + (error instanceof Error ? error.message : String(error)), 'execution', 'none')
         }
       }
 
       case 'detach_agent': {
         const agentId = String(args.agent_id || '').trim()
-        if (agentId.length === 0) return 'Error: agent_id is required'
+        if (agentId.length === 0) return toolFailure('Error: agent_id is required', 'validation', 'none')
         try {
           const task = this.subAgentTaskManager.setJoinPolicy(this.resolveTask(agentId).id, 'detached')
           return 'Subagent ' + agentId + ' detached from the parent run. Current status: ' + task.runtimeTask.status + '.'
         } catch (error) {
-          return 'Error: ' + (error instanceof Error ? error.message : String(error))
+          return toolFailure('Error: ' + (error instanceof Error ? error.message : String(error)), 'execution', 'unknown')
         }
       }
 
       case 'cancel_agent': {
         const agentId = String(args.agent_id || '').trim()
-        if (!agentId) return 'Error: agent_id is required'
+        if (!agentId) return toolFailure('Error: agent_id is required', 'validation', 'none')
         try {
           const task = await this.stop(agentId)
           return `Subagent ${agentId} is ${task.status}.`
         } catch (error) {
-          return `Error: ${error instanceof Error ? error.message : String(error)}`
+          return toolFailure(`Error: ${error instanceof Error ? error.message : String(error)}`, 'execution', 'unknown')
         }
       }
 
@@ -262,24 +263,24 @@ export class AgentOrchestrator {
         const objective = String(args.objective || '').trim()
         const extraContext = typeof args.context === 'string' ? args.context.trim() : ''
         const joinPolicy = args.join_policy === 'detached' ? 'detached' : 'required'
-        if (agentType.length === 0) return 'Error: agent_type is required'
-        if (objective.length === 0) return 'Error: objective is required'
+        if (agentType.length === 0) return toolFailure('Error: agent_type is required', 'validation', 'none')
+        if (objective.length === 0) return toolFailure('Error: objective is required', 'validation', 'none')
         const def = getSubAgentDefinition(agentType, this.host.registry)
-        if (def === undefined) return 'Error: unknown agent_type "' + agentType + '". Available: ' + getAvailableAgentTypes(this.host.registry).join(', ') + '.'
+        if (def === undefined) return toolFailure('Error: unknown agent_type "' + agentType + '". Available: ' + getAvailableAgentTypes(this.host.registry).join(', ') + '.', 'validation', 'none')
         if (this.host.getConfig().workspacePath === undefined || this.host.getConfig().workspacePath === '') {
-          return 'Error: no workspace open; cannot spawn subagent.'
+          return toolFailure('Error: no workspace open; cannot spawn subagent.', 'environment', 'none')
         }
         const parentObjective = this.host.getParentObjective()
         const enrichedObjective = [objective, extraContext ? 'Additional context from parent agent:\n' + extraContext : '', parentObjective ? 'Parent task objective (context, your assigned objective above remains your scope):\n' + parentObjective.slice(0, 4000) : ''].filter(Boolean).join('\n\n')
         const retryOf = typeof args.retry_of === 'string' ? args.retry_of.trim() : undefined
         const previous = retryOf ? this.resolveTask(retryOf) : null
         if (retryOf && (!previous || previous.ownerSessionId !== this.host.getConfig().conversationId || previous.workRunId !== this.host.getRunId())) {
-          return 'Error: retry_of must identify a child belonging to this conversation and run.'
+          return toolFailure('Error: retry_of must identify a child belonging to this conversation and run.', 'validation', 'none')
         }
         if (previous && !['failed', 'stopped', 'interrupted', 'orphaned'].includes(previous.runtimeTask.status)) {
-          return 'Error: retry_of must identify failed, stopped or interrupted work.'
+          return toolFailure('Error: retry_of must identify failed, stopped or interrupted work.', 'validation', 'none')
         }
-        if (previous && previous.agentType !== def.id) return 'Error: a retry must preserve the original child role.'
+        if (previous && previous.agentType !== def.id) return toolFailure('Error: a retry must preserve the original child role.', 'validation', 'none')
         const priorIdentity = previous?.agentSessionId ? this.childAgents?.get(previous.agentSessionId, previous.ownerSessionId || '') : undefined
         const childName = priorIdentity?.name ?? normalizeChildName(args.name)
         const mode: ChildCapabilityMode = priorIdentity?.mode ?? (args.capability_mode === 'read_only' ? 'read_only' : 'full')
@@ -362,7 +363,7 @@ export class AgentOrchestrator {
 
     }
 
-    const budgetTasks: SubAgentBudgetTaskView[] = this.subAgentTaskManager.listTasks().map(task => {
+    const budgetTasks = (): SubAgentBudgetTaskView[] => this.subAgentTaskManager.listTasks().map(task => {
       const stats = task.stats
       return {
         ownerSessionId: task.ownerSessionId,
@@ -377,7 +378,7 @@ export class AgentOrchestrator {
     const budgetCheck = this.subAgentBudget.checkSpawn({
       ownerSessionId,
       workRunId,
-      tasks: budgetTasks,
+      tasks: budgetTasks(),
       pendingResults: this.subAgentTaskManager.listPendingCompletions(ownerSessionId, workRunId).length,
       pendingResultBytes: this.subAgentTaskManager.pendingCompletionBytes(ownerSessionId, workRunId),
     })
@@ -436,10 +437,14 @@ export class AgentOrchestrator {
               limits: { maxToolRounds: definition.maxTurns, maxParallelTools: definition.maxParallel, maxOutputTokens: definition.maxOutputTokens, requestTimeoutMs: definition.requestTimeoutMs },
               requiredToolCalls: definition.requiredToolCalls,
               parentConfig: parentChildConfig, modelConfig: { ...activeChildConfig },
+              beforeModelRequest: () => {
+                const check = this.subAgentBudget.checkModelRequest({ ownerSessionId, workRunId, tasks: budgetTasks() })
+                if (!check.allowed) throw new Error(check.reason + ' (' + check.code + ')')
+              },
             }, signal, event => {
               if (event.type === 'model:request') recordEvent({ type: 'model_request', request: event.request })
               if (event.type === 'tool:call') onSubEvent({ type: 'tool_call', toolCallId: event.toolCall.id, tool: event.toolCall.name, args: event.toolCall.arguments, turn: turns + 1 })
-              if (event.type === 'tool:result') onSubEvent({ type: 'tool_result', toolCallId: event.toolResult.toolCallId, tool: event.toolResult.name, ok: !event.toolResult.isError, summary: event.toolResult.output.slice(0, 500), turn: turns + 1 })
+              if (event.type === 'tool:result') onSubEvent({ type: 'tool_result', toolCallId: event.toolResult.toolCallId, tool: event.toolResult.name, ok: toolResultCallStatus(event.toolResult) === 'completed', summary: event.toolResult.output.slice(0, 500), turn: turns + 1 })
               if (event.type === 'turn:complete' && event.turn.role === 'assistant') {
                 turns++
                 onSubEvent({ type: 'turn_complete', turn: turns, calls: event.turn.toolCalls?.length || 0,

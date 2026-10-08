@@ -132,13 +132,22 @@ export class ModelSurface {
     return clone(this.state)
   }
 
+  getSnapshotSources(): ModelSurfaceSnapshotSource[] {
+    return Object.keys(this.state.snapshotHeads) as ModelSurfaceSnapshotSource[]
+  }
+
   projectTurns(): AgentTurn[] {
+    return clone(this.readProjectedTurns())
+  }
+
+  /** Internal read view. Replacements copy changed turns; callers never mutate stored turns. */
+  private readProjectedTurns(): AgentTurn[] {
     let projected: AgentTurn[] = []
     for (const event of this.state.events) {
       if (event.kind === 'replacement') {
-        projected = clone(event.turns)
+        projected = [...event.turns]
       } else if (event.kind === 'turn') {
-        projected.push(clone(event.turn))
+        projected.push(event.turn)
       } else {
         projected.push(snapshotTurn(event))
       }
@@ -238,7 +247,7 @@ export class ModelSurface {
   }
 
   pruneStaleToolResults(activeWorkRunId?: string): boolean {
-    const turns = this.projectTurns()
+    const turns = this.readProjectedTurns()
     let latestUserIndex = -1
     for (let index = turns.length - 1; index >= 0; index -= 1) {
       if (turns[index]?.role === 'user' && !isSnapshotTurn(turns[index]!)) {
@@ -280,7 +289,7 @@ export class ModelSurface {
     const maxImages = options.maxImages ?? DEFAULT_MAX_REQUEST_IMAGES
     const maxImageBytes = options.maxImageBytes ?? DEFAULT_MAX_DIRECT_IMAGE_BYTES
     const maxTotalBytes = options.maxTotalBytes ?? DEFAULT_MAX_REQUEST_IMAGE_BYTES
-    const turns = this.projectTurns()
+    const turns = this.readProjectedTurns()
     const candidates = attachmentCandidates(turns)
     const selected = new Set<string>()
     let totalBytes = 0

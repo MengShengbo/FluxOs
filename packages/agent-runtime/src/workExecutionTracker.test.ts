@@ -5,6 +5,30 @@ import { TaskManager } from './taskManager'
 import { WorkExecutionTracker } from './workExecutionTracker'
 
 describe('WorkExecutionTracker', () => {
+  it.each([
+    ['failed', false, 'failed'], ['failed', true, 'partial'],
+    ['cancelled', false, 'cancelled'], ['cancelled', true, 'partial'],
+  ] as const)('preserves a recorded %s step after journal recovery (has success=%s)', (outcome, hasSuccess, expected) => {
+    const manager = new TaskManager()
+    manager.setCurrentWorkRunId('run-1')
+    const task = manager.createTask({ title: 'Publish', description: '', priority: 'major',
+      metadata: outcome === 'cancelled' ? { workControlOutcome: 'cancel' } : undefined })
+    manager.updateTask(task.id, { status: 'failed', error: 'not published' })
+    if (hasSuccess) {
+      const done = manager.createTask({ title: 'Prepare', description: '', priority: 'major' })
+      manager.updateTask(done.id, { status: 'completed' })
+    }
+    const tracker = new WorkExecutionTracker('conversation-1')
+    tracker.restoreFromTurns([
+      { id: 'user', role: 'user', content: 'Publish', timestamp: 1, metadata: { workRunId: 'run-1' } },
+      { id: 'answer', role: 'assistant', content: 'Finished responding', timestamp: 2, metadata: { workRunId: 'run-1' } },
+    ], manager)
+    const recovered = tracker.getSnapshot(manager)
+    expect(recovered.currentRunId).toBeNull()
+    expect(recovered.runs[0]).toMatchObject({ status: expected, phase: expected })
+    expect(recovered.runs[0].steps[task.id].status).toBe(outcome)
+  })
+
   it('restarts an edited run without its previous mode, timing or activity state', () => {
     const tracker = new WorkExecutionTracker('conversation-1')
     tracker.startRun('run-1', 'Original task', 1_000)

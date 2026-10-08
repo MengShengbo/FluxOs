@@ -1,4 +1,35 @@
-export const CANCELLED_TOOL_RESULT_TEXT = 'Cancelled before the tool completed.'
+import type { ToolResult } from '@fluxos/contracts/agentTypes'
+import { toolResultExecutionStatus } from '@fluxos/contracts/toolResultData'
+
+/** Provider-independent control metadata; output stays a quoted, uninterpreted payload. */
+export function formatToolResultForModel(result: ToolResult): string {
+  const data = result.data
+  const receipt = data?.kind === 'patch' ? {
+    kind: data.kind, status: data.status,
+    counts: { committed: data.committed.length, pending: data.pending.length, unknown: data.unknown.length },
+    ...(data.failure ? { failureStage: data.failure.stage } : {}),
+  } : data?.kind === 'tasks' ? {
+    kind: data.kind, status: data.status, acknowledgedTasks: data.tasks.length, failures: data.failures.length,
+  } : undefined
+  return JSON.stringify({
+    status: toolResultExecutionStatus(result),
+    isError: result.isError,
+    ...(result.errorKind ? { errorKind: result.errorKind } : {}),
+    ...(result.recovery ? { recovery: result.recovery } : {}),
+    ...(result.operation ? { operation: result.operation } : {}),
+    ...(result.interruption ? { interruption: result.interruption } : {}),
+    ...(result.outputSource ? { outputSource: result.outputSource } : {}),
+    ...(result.retrieval?.navigation ? { navigation: result.retrieval.navigation } : {}),
+    ...(result.retrieval?.snapshot ? { search: { snapshot: result.retrieval.snapshot, nextCursor: result.retrieval.nextCursor,
+      total: result.retrieval.total, totalIsExact: result.retrieval.totalIsExact, truncated: result.retrieval.truncated, incompleteReasons: result.retrieval.incompleteReasons } } : {}),
+    ...(result.retrieval?.byteRange ? { byteRange: result.retrieval.byteRange } : {}),
+    ...(data?.kind === 'command' ? { process: data.process, expectedExitCodes: data.expectedExitCodes, ...(data.sessionId ? { sessionId: data.sessionId } : {}) } : {}),
+    ...(receipt ? { receipt } : {}),
+    output: result.output,
+  })
+}
+
+export const UNAVAILABLE_TOOL_RESULT_TEXT = 'The tool result is unavailable. Inspect current state before deciding whether any work can be retried.'
 
 function contentBlocks(message: Record<string, unknown>): Array<Record<string, unknown>> {
   if (Array.isArray(message.content)) {
@@ -55,7 +86,9 @@ export function normalizeAnthropicToolMessages(
     const resultBlocks = toolUseIds.map(toolUseId => resultsById.get(toolUseId) ?? {
       type: 'tool_result',
       tool_use_id: toolUseId,
-      content: CANCELLED_TOOL_RESULT_TEXT,
+      // Protocol pairing repair is not evidence of success, cancellation, or absence of effects.
+      content: formatToolResultForModel({ toolCallId: toolUseId, name: '', output: UNAVAILABLE_TOOL_RESULT_TEXT,
+        isError: true, errorKind: 'environment', recovery: { effects: 'unknown', retry: 'after_inspection' } }),
       is_error: true,
     })
     normalized.push({ role: 'user', content: [...resultBlocks, ...trailingUserBlocks] })

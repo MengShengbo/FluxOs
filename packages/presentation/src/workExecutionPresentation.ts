@@ -1,4 +1,29 @@
 import type { WorkExecutionSnapshot, WorkRun, WorkRunStatus, WorkStep } from '@fluxos/contracts/workExecutionTypes'
+import type { ToolResultData } from '@fluxos/contracts/toolResultData'
+
+export function patchOutcomePresentation(data: Extract<ToolResultData, { kind: 'patch' }>): { label: string; detail: string; failureStage?: string } {
+  const label = { completed: '文件修改已完成', partial: '部分修改已提交', failed: '修改未提交', unknown: '修改结果未确认' }[data.status]
+  const stages = { parse: '解析补丁', paths: '检查文件路径', preflight: '预检内容', snapshot: '读取修改前内容', write: '写入文件', delete: '删除文件', move_target: '写入移动目标', move_cleanup: '删除移动源文件', cancelled: '停止执行' }
+  return {
+    label,
+    detail: `已提交 ${data.committed.length} 项 · 未提交 ${data.pending.length} 项 · 结果未知 ${data.unknown.length} 项`,
+    ...(data.failure ? { failureStage: stages[data.failure.stage] } : {}),
+  }
+}
+
+export function commandProcessPresentation(data: Extract<ToolResultData, { kind: 'command' }>): { label: string; failed: boolean } {
+  const { process, expectedExitCodes } = data
+  if (process.state === 'running') return { label: '运行中', failed: false }
+  if (process.state === 'exited') {
+    const expected = expectedExitCodes.includes(process.exitCode)
+    return { label: `退出码 ${process.exitCode}${expected && process.exitCode !== 0 ? '（符合预期）' : ''}`, failed: !expected }
+  }
+  if (process.state === 'signaled') return { label: `信号 ${process.signal}`, failed: true }
+  if (process.state === 'timed_out') return { label: '执行超时', failed: true }
+  if (process.state === 'aborted') return { label: process.termination?.status === 'unknown'
+    ? '调用已取消，进程终止未确认' : process.termination?.status === 'confirmed' ? '已停止' : '调用已取消', failed: false }
+  return { label: process.state === 'unknown' ? '进程结果未确认' : '执行失败', failed: true }
+}
 
 const ACTIVE_WORK_STEP_STATUSES = new Set(['running', 'retrying', 'waiting'])
 const RESOLVED_DEPENDENCY_STATUSES = new Set(['completed', 'skipped'])
@@ -185,12 +210,4 @@ export function selectWorkRun(execution: WorkExecutionSnapshot, requestedRunId?:
     if (current) return current
   }
   return runs.at(-1)
-}
-
-export function selectProjectedWorkRun(
-  execution: WorkExecutionSnapshot,
-  projectedRunId?: string | null,
-): WorkRun | undefined {
-  if (!projectedRunId) return undefined
-  return execution.runs.find(run => run.id === projectedRunId && run.presentation === 'work')
 }

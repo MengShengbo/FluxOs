@@ -1,4 +1,5 @@
 import type { AgentTurn, ToolCall, ToolResult } from './agentTypes'
+import { toolResultExecutionStatus } from './toolResultData'
 import { isBuiltInComputerTool } from './computerToolPresentation'
 import type { ContextHandoff, ContextHandoffFacts, ContextReservoirEntry, ContextSegment } from './stateTypes'
 
@@ -16,6 +17,7 @@ export function redactComputerToolCall(toolCall: ToolCall): ToolCall {
     id: toolCall.id,
     name: toolCall.name,
     arguments: {},
+    ...(toolCall.operationIdentity ? { operationIdentity: { ...toolCall.operationIdentity } } : {}),
   }
 }
 
@@ -27,12 +29,21 @@ export function redactComputerToolResult(toolResult: ToolResult): ToolResult {
     output: computerResultMessage(toolResult),
     isError: toolResult.isError,
     errorKind: toolResult.errorKind,
+    // Guidance can quote sensitive output; only enum-valued facts cross this privacy boundary.
+    ...(toolResult.recovery ? { recovery: { effects: toolResult.recovery.effects, retry: toolResult.recovery.retry } } : {}),
+    ...(toolResult.operation ? { operation: {
+      id: toolResult.operation.id, state: toolResult.operation.state, replay: toolResult.operation.replay,
+      persistence: toolResult.operation.persistence, coordination: toolResult.operation.coordination,
+      effects: toolResult.operation.effects, previousStatus: toolResult.operation.previousStatus,
+    } } : {}),
+    ...(toolResult.interruption ? { interruption: { ...toolResult.interruption } } : {}),
+    ...(toolResult.operationIdentity ? { operationIdentity: { ...toolResult.operationIdentity } } : {}),
   }
 }
 
 function persistedToolResultContent(results: ToolResult[]): string {
   return results
-    .map(result => `${result.name}: ${result.isError ? '[failed]' : '[ok]'} ${(result.output || '').slice(0, 500)}`)
+    .map(result => `${result.name}: [${toolResultExecutionStatus(result)}] ${(result.output || '').slice(0, 500)}`)
     .join('\n\n')
 }
 

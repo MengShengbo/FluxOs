@@ -1,6 +1,6 @@
 import { isModelRequestRecord } from '@fluxos/contracts/modelUsage'
 import { createHash } from 'node:crypto'
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { withFileLockSync } from '@fluxos/platform/fileIO'
 import { ConversationEventStoreV2, parseConversationEventV2, type ConversationEventAppendReceiptV2 } from './conversationEventStoreV2'
@@ -70,7 +70,9 @@ interface CachedProjection {
 }
 
 interface ProjectionWatermarks {
-  schemaVersion: 1
+  schemaVersion: 2
+  catalogChecksum: string
+  searchIndexChecksum: string
   conversations: Record<string, ProjectionWatermark>
 }
 
@@ -153,12 +155,6 @@ function digest(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')
 }
 
-function syncFile(handle: number): void {
-  try { fsyncSync(handle) } catch (error) {
-    if (process.platform !== 'win32' || (error as NodeJS.ErrnoException).code !== 'EPERM') throw error
-  }
-}
-
 function recoveryEventId(kind: string, ...parts: Array<string | number>): string {
   return stableConversationV2Id(`recovery-${kind}`, ...parts)
 }
@@ -167,12 +163,8 @@ function atomicJson(path: string, value: unknown): void {
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
   try {
     writeFileSync(temporary, `${JSON.stringify(value)}\n`, { mode: 0o600 })
-    const handle = openSync(temporary, 'r')
-    try {
-      syncFile(handle)
-    } finally {
-      closeSync(handle)
-    }
+    // All files written here are rebuildable caches. The event store fsyncs the
+    // source journal before these writes; checksums reject incomplete cache commits.
     renameSync(temporary, path)
   } finally {
     rmSync(temporary, { force: true })
@@ -366,12 +358,17 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
   }
 
   projection(conversationId: string): ConversationTranscriptProjectionV2 {
+    return this.selectProjection(conversationId, projection => projection)
+  }
+
+  /** Select while holding the journal lock, copying only the requested data. */
+  selectProjection<T>(conversationId: string, select: (projection: ConversationTranscriptProjectionV2) => T): T {
     this.snapshotPath(conversationId)
     return withFileLockSync(this.projectionLockPath, () =>
       withFileLockSync(join(this.eventsRoot, `.${conversationId}.lock`), () => {
         const watermark = this.ensureProjectionsCurrent(conversationId).conversations[conversationId]
         const state = watermark && this.loadProjection(conversationId, watermark)
-        return state ? clone(state.projector.projection) : this.rebuildLocked(conversationId)
+        return clone(select(state ? state.projector.projection : this.rebuildLocked(conversationId)))
       }))
   }
 
@@ -505,6 +502,7 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
     }
     const catalog = { schemaVersion: CATALOG_SCHEMA_VERSION, records, updatedAt: this.now() } satisfies ConversationCatalogV2File
     atomicJson(this.catalogPath, catalog)
+    this.publishCacheChecksum('catalogChecksum', catalog.records)
     return clone(catalog)
   }
 
@@ -516,7 +514,7 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
     this.cachedProjection = undefined
     const records: ConversationRecordV2[] = []
     const searchEntries: ConversationSearchIndexEntryV2[] = []
-    const watermarks: ProjectionWatermarks = { schemaVersion: 1, conversations: {} }
+    const watermarks: ProjectionWatermarks = { schemaVersion: 2, catalogChecksum: '', searchIndexChecksum: '', conversations: {} }
     let eventCount = 0
     for (const entry of readdirSync(this.eventsRoot, { withFileTypes: true })) {
       if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue
@@ -544,6 +542,8 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
     }
     atomicJson(this.catalogPath, { schemaVersion: CATALOG_SCHEMA_VERSION, records, updatedAt: this.now() } satisfies ConversationCatalogV2File)
     atomicJson(this.searchIndexPath, { schemaVersion: SEARCH_INDEX_SCHEMA_VERSION, entries: searchEntries, updatedAt: this.now() } satisfies ConversationSearchIndexV2File)
+    watermarks.catalogChecksum = digest(records)
+    watermarks.searchIndexChecksum = digest(searchEntries)
     atomicJson(this.watermarksPath, watermarks)
     return { conversations: records.length, events: eventCount, searchEntries: searchEntries.length }
   }
@@ -678,12 +678,18 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
     return { repairedJournals, interruptedRuns, interruptedItems, recoveredConversations }
   }
 
+  private publishCacheChecksum(field: 'catalogChecksum' | 'searchIndexChecksum', values: unknown): void {
+    const watermarks = this.loadWatermarks()
+    watermarks[field] = digest(values)
+    atomicJson(this.watermarksPath, watermarks)
+  }
+
   private loadCatalog(): ConversationCatalogV2File {
     if (!existsSync(this.catalogPath)) return this.rebuildCatalog()
     try {
       this.options.onRead?.('catalog', this.catalogPath)
       const value: unknown = JSON.parse(readFileSync(this.catalogPath, 'utf8'))
-      if (validCatalog(value)) return value
+      if (validCatalog(value) && digest(value.records) === this.loadWatermarks().catalogChecksum) return value
     } catch {}
     return this.rebuildCatalog()
   }
@@ -701,14 +707,15 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
   private loadWatermarks(): ProjectionWatermarks {
     try {
       const value = JSON.parse(readFileSync(this.watermarksPath, 'utf8')) as ProjectionWatermarks
-      if (value?.schemaVersion === 1 && value.conversations && typeof value.conversations === 'object'
+      if (value?.schemaVersion === 2 && typeof value.catalogChecksum === 'string'
+        && typeof value.searchIndexChecksum === 'string' && value.conversations && typeof value.conversations === 'object'
         && !Array.isArray(value.conversations)
         && Object.values(value.conversations).every(entry => entry && Number.isSafeInteger(entry.throughSeq)
           && entry.throughSeq >= 0 && typeof entry.journalVersion === 'string')) return value
     } catch (error) {
       if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    return { schemaVersion: 1, conversations: {} }
+    return { schemaVersion: 2, catalogChecksum: '', searchIndexChecksum: '', conversations: {} }
   }
 
   private ensureProjectionsCurrent(conversationId?: string): ProjectionWatermarks {
@@ -736,6 +743,7 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
     else catalog.records.push(clone(record))
     catalog.updatedAt = this.now()
     atomicJson(this.catalogPath, catalog)
+    this.publishCacheChecksum('catalogChecksum', catalog.records)
   }
 
   private loadSearchIndex(): ConversationSearchIndexV2File {
@@ -745,7 +753,7 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
     try {
       this.options.onRead?.('search-index', this.searchIndexPath)
       const value: unknown = JSON.parse(readFileSync(this.searchIndexPath, 'utf8'))
-      if (validSearchIndex(value)) return value
+      if (validSearchIndex(value) && digest(value.entries) === this.loadWatermarks().searchIndexChecksum) return value
     } catch {}
     return this.rebuildSearchIndex()
   }
@@ -764,6 +772,7 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
     }
     const index = { schemaVersion: SEARCH_INDEX_SCHEMA_VERSION, entries, updatedAt: this.now() } satisfies ConversationSearchIndexV2File
     atomicJson(this.searchIndexPath, index)
+    this.publishCacheChecksum('searchIndexChecksum', index.entries)
     return index
   }
 
@@ -771,6 +780,7 @@ export class ConversationRepositoryV2 implements ConversationSearchRepositoryV2 
     const entries = this.loadSearchIndex().entries.filter(entry => entry.conversationId !== conversationId)
     entries.push(...this.searchEntries(projection))
     atomicJson(this.searchIndexPath, { schemaVersion: SEARCH_INDEX_SCHEMA_VERSION, entries, updatedAt: this.now() } satisfies ConversationSearchIndexV2File)
+    this.publishCacheChecksum('searchIndexChecksum', entries)
   }
 
   private searchEntries(projection: ConversationTranscriptProjectionV2): ConversationSearchIndexEntryV2[] {

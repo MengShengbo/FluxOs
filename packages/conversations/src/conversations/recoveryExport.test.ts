@@ -11,6 +11,15 @@ afterEach(() => {
 })
 
 describe('conversation recovery export', () => {
+  it('redacts credentials embedded in JSON tool output and HTTP headers', () => {
+    const content = 'Keep this task. {"apiKey": "fixture-inline-key", "refresh_token":"fixture-refresh"}\nAuthorization: Basic dXNlcjpwYXNz\nCookie: session=fixture-session; csrf=fixture-csrf'
+    const redacted = redactRecoveryValue({ content }) as { content: string }
+    for (const secret of ['fixture-inline-key', 'fixture-refresh', 'dXNlcjpwYXNz', 'fixture-session', 'fixture-csrf']) {
+      expect(redacted.content).not.toContain(secret)
+    }
+    expect(redacted.content).toContain('Keep this task.')
+  })
+
   it('redacts credential keys and common inline tokens without removing recovery text', () => {
     expect(redactRecoveryValue({
       apiKey: 'secret-key',

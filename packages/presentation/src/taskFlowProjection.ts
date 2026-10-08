@@ -1,3 +1,4 @@
+import { toolInvocationKey, toolResultExecutionStatus } from '@fluxos/contracts/toolResultData'
 import type { AgentTurn } from '@fluxos/contracts/agentTypes'
 import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import type { WorkNode, WorkProjectionSnapshot } from './workProjection'
@@ -14,6 +15,7 @@ export interface TaskFlowNode {
   turnId?: string
   responseId?: string
   callId?: string
+  invocationId?: string
   toolName?: string
   parentId?: string
   ordinal: number
@@ -60,6 +62,7 @@ function taskNodeForWorkNode(node: WorkNode, activeRunId?: string): TaskFlowNode
     turnId: node.turnId,
     responseId: node.responseId,
     callId: node.callId,
+    invocationId: node.invocationId,
     toolName: node.toolName,
     parentId: node.responseId || node.runId,
     ordinal: node.ordinal,
@@ -188,7 +191,13 @@ function eventStatus(event: AnyConversationEvent, fallback: TaskFlowNodeStatus):
   if (event.type === 'stream.committed') return 'completed'
   if (event.type === 'stream.ended') return event.payload.interrupted ? 'interrupted' : 'completed'
   if (event.type === 'approval.requested') return 'waiting'
-  if (event.type === 'tool.completed') return event.payload.toolResult.interruption?.kind === 'pause' ? 'interrupted' : event.payload.toolResult.errorKind === 'abort' ? 'cancelled' : event.payload.toolResult.isError ? 'failed' : 'completed'
+  if (event.type === 'tool.completed') {
+    const result = event.payload.toolResult
+    if (result.interruption?.kind === 'pause') return 'interrupted'
+    const status = toolResultExecutionStatus(result)
+    // The launch/poll call settled; a separately reported process may still run.
+    return status === 'running' ? 'completed' : status
+  }
   if (event.type === 'approval.resolved') return 'completed'
   if (event.type === 'approval.cancelled') return 'cancelled'
   if (event.type === 'input.state_changed') {
@@ -213,6 +222,8 @@ function eventContent(event: AnyConversationEvent, previous = ''): string {
 }
 
 function eventNodeId(event: AnyConversationEvent, kind: TaskFlowNodeKind): string | undefined {
+  if (event.type === 'tool.proposed') return `tool:${toolInvocationKey(event.payload.toolCall.id, event.payload.toolCall.operationIdentity)}`
+  if (event.type === 'tool.completed') return `tool:${toolInvocationKey(event.payload.toolResult.toolCallId, event.payload.toolResult.operationIdentity)}`
   if (kind === 'phase') return `phase:${event.runId || event.conversationId}`
   if (kind === 'input' && event.type === 'turn.started') return `input:${event.payload.turn.id}`
   if (kind === 'thinking' || kind === 'answer') {
@@ -284,6 +295,14 @@ export function applyTaskFlowEvent(
   }
   const kind = eventNodeKind(event)
   const nodeId = kind ? eventNodeId(event, kind) : undefined
+  if (event.type === 'tool.proposed' && event.payload.toolCall.operationIdentity) {
+    const provisional = `tool:${event.payload.toolCall.id}`
+    if (nodeId !== provisional && next.nodes[provisional] && !next.nodes[provisional]!.settled) {
+      const nodes = { ...next.nodes }
+      delete nodes[provisional]
+      next = { ...next, nodes, order: next.order.filter(id => id !== provisional) }
+    }
+  }
   if (!kind || !nodeId) {
     if (event.type === 'run.completed') {
       const terminalStatus: TaskFlowNodeStatus = event.payload.outcome === 'failed'
@@ -335,13 +354,18 @@ export function applyTaskFlowEvent(
       settled: node.settled || settled,
     }),
   )
-  if (event.type === 'tool.delta' || event.type === 'tool.proposed') {
+  if (event.type === 'tool.delta' || event.type === 'tool.proposed' || event.type === 'tool.completed') {
     const node = next.nodes[nodeId]!
+    const callId = event.type === 'tool.proposed' ? event.payload.toolCall.id
+      : event.type === 'tool.completed' ? event.payload.toolResult.toolCallId : event.payload.toolCallId
+    const identity = event.type === 'tool.proposed' ? event.payload.toolCall.operationIdentity
+      : event.type === 'tool.completed' ? event.payload.toolResult.operationIdentity : undefined
     next.nodes = { ...next.nodes, [nodeId]: {
       ...node,
-      callId: event.itemId,
-      toolName: eventContent(event),
-      responseId: event.type === 'tool.delta' && event.stepId ? `step:${event.stepId}` : undefined,
+      callId,
+      invocationId: toolInvocationKey(callId, identity),
+      toolName: event.type === 'tool.completed' ? event.payload.toolResult.name : eventContent(event),
+      responseId: event.type === 'tool.delta' && event.stepId ? `step:${event.stepId}` : node.responseId,
     } }
   }
   return next

@@ -1,4 +1,6 @@
 import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import { toolInvocationKey } from '@fluxos/contracts/toolResultData'
+import type { WorkProjectionSnapshot } from './workProjection'
 
 /** Index once when data arrives, never scan the full transcript for each rendered node. */
 export class TranscriptIndex {
@@ -16,13 +18,23 @@ export class TranscriptIndex {
   }
 
   setCall(call: ToolCall): void {
-    this.calls.set(call.id, call)
-    this.record(`call:${call.id}`, call)
+    const key = toolInvocationKey(call.id, call.operationIdentity)
+    this.calls.set(key, call)
+    this.record(`call:${key}`, call)
   }
 
   setResult(result: ToolResult): void {
-    this.results.set(result.toolCallId, result)
-    this.record(`result:${result.toolCallId}`, result)
+    const key = toolInvocationKey(result.toolCallId, result.operationIdentity)
+    this.results.set(key, result)
+    this.record(`result:${key}`, result)
+  }
+
+  setWorkProjection(projection: Pick<WorkProjectionSnapshot, 'nodes'>): void {
+    // Tool facts can belong to a run without belonging to an assistant turn.
+    for (const node of Object.values(projection.nodes)) {
+      if (node.toolCall) this.setCall(node.toolCall)
+      if (node.toolResult) this.setResult(node.toolResult)
+    }
   }
 
   turnVersion(id: string): number { return this.versions.get(`turn:${id}`)?.revision || 0 }

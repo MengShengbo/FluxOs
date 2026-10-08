@@ -1,4 +1,4 @@
-import type { AgentMode, AgentTurn, ApprovalPolicy, ModelRequestRecord, ToolResult } from '@fluxos/contracts/agentTypes'
+import type { AgentMode, AgentTurn, ApprovalPolicy, ModelRequestRecord, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import type { ResponseMode, WorkExecutionSegment } from '@fluxos/contracts/workExecutionTypes'
 
 export const CONVERSATION_DATA_SCHEMA_VERSION = 2 as const
@@ -106,8 +106,8 @@ export type ConversationItemV2 =
   | ConversationItemBase<'user_message', { text: string; attachmentIds: string[] }>
   | ConversationItemBase<'assistant_message', { text: string; citations?: string[] }>
   | ConversationItemBase<'reasoning', { text?: string; omitted: boolean; summary?: string }>
-  | ConversationItemBase<'tool_call', { toolCallId: string; toolName: string; arguments: Record<string, unknown>; pathRefs?: PortablePathRef[]; requiresReview?: boolean }>
-  | ConversationItemBase<'tool_result', { toolCallId: string; toolName: string; output: string; isError: boolean; pathRefs?: PortablePathRef[] } & Pick<ToolResult, 'retrieval' | 'data' | 'errorKind' | 'interruption' | 'changeSummary' | 'attachments'>>
+  | ConversationItemBase<'tool_call', { toolCallId: string; toolName: string; arguments: Record<string, unknown>; operationIdentity?: ToolCall['operationIdentity']; pathRefs?: PortablePathRef[]; requiresReview?: boolean }>
+  | ConversationItemBase<'tool_result', { toolCallId: string; toolName: string; output: string; isError: boolean; pathRefs?: PortablePathRef[] } & Pick<ToolResult, 'retrieval' | 'data' | 'errorKind' | 'recovery' | 'interruption' | 'changeSummary' | 'attachments' | 'outputSource' | 'operation' | 'operationIdentity'>>
   | ConversationItemBase<'approval', { requestId: string; requestKind: 'permission' | 'input'; question: string; decision?: string; policy?: ApprovalPolicy }>
   | ConversationItemBase<'file_change', { path: PortablePathRef; change: 'created' | 'modified' | 'deleted' | 'renamed'; previousPath?: PortablePathRef }>
   | ConversationItemBase<'command_execution', { command: string; cwd?: PortablePathRef; exitCode?: number; output?: string; requiresReview: boolean }>

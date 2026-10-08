@@ -25,7 +25,10 @@ export * from './conversationEvent'
 export * from './modelConfigTypes'
 export * from './gitTypes'
 export type { ToolExecutor, Result } from './toolExecutor'
+export type { CodeNavigationRequest, CodeNavigationResult, CodeLocation } from './codeNavigation'
 
 export * from './modelUsage'
 
 export * from './childAgentTypes'
+
+export type { ToolAccessContract, ToolResourceAccess, HostToolPolicy, ToolPermissionContext } from './toolAccess'

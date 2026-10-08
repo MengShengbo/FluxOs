@@ -51,7 +51,6 @@ export interface ProfileStorageLayout {
   profileMetadataPath: string
   configRoot: string
   configPath: string
-  credentialsPath: string
   personaPath: string
   settingsPath: string
   conversationsRoot: string

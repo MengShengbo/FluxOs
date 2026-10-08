@@ -1,8 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { RuntimeLogWriter } from './runtimeLogWriter'
+import { runtimeLogSegments } from './runtimeLogSegments'
 
 describe('RuntimeLogWriter', () => {
   it('flushes JSONL asynchronously and rotates bounded log files', async () => {
@@ -20,10 +21,11 @@ describe('RuntimeLogWriter', () => {
       writer.append('stdout', 'final-output', 17)
       await writer.close()
 
-      expect(existsSync(`${logPath}.1`)).toBe(true)
-      expect(readFileSync(`${logPath}.1`, 'utf8')).toContain('a'.repeat(20))
-      expect(readFileSync(logPath, 'utf8')).toContain('final-output')
-      expect(JSON.parse(readFileSync(logPath, 'utf8').trim())).toMatchObject({ seq: 17, data: 'final-output' })
+      const segments = runtimeLogSegments(logPath)
+      expect(segments).toHaveLength(2)
+      expect(readFileSync(segments[0].path, 'utf8')).toContain('a'.repeat(20))
+      expect(readFileSync(segments[1].path, 'utf8')).toContain('final-output')
+      expect(JSON.parse(readFileSync(segments[1].path, 'utf8').trim())).toMatchObject({ seq: 17, data: 'final-output' })
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

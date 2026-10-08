@@ -64,7 +64,7 @@ describe('normalizeAnthropicToolMessages', () => {
         {
           type: 'tool_result',
           tool_use_id: 'tc2',
-          content: 'Cancelled before the tool completed.',
+          content: JSON.stringify({ status: 'failed', isError: true, errorKind: 'environment', recovery: { effects: 'unknown', retry: 'after_inspection' }, output: 'The tool result is unavailable. Inspect current state before deciding whether any work can be retried.' }),
           is_error: true,
         },
         { type: 'text', text: 'continue' },

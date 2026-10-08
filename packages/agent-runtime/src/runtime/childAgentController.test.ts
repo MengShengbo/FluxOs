@@ -41,6 +41,65 @@ async function spawn(f: ReturnType<typeof fixture>, name: string, mode: 'full' |
 }
 
 describe('named shared-runtime children', () => {
+  it('admits only one of concurrent different-name launches and releases capacity after settlement', async () => {
+    const f = fixture()
+    f.engine.setSubAgentBudget({ maxParallelPerSession: 1 })
+    streamModel(() => ({ text: 'done' }))
+    const receipts = await Promise.allSettled(['first', 'second', 'third'].map(name =>
+      f.engine.dispatchTool('spawn_agent', { name, agent_type: 'worker', capability_mode: 'read_only', objective: 'Read only fixture' })))
+    const admitted = receipts.filter(receipt => receipt.status === 'fulfilled')
+    expect(admitted).toHaveLength(1)
+    expect(receipts.filter(receipt => receipt.status === 'rejected' && String(receipt.reason).includes('subagent_parallel_budget'))).toHaveLength(2)
+    const id = String((admitted[0] as PromiseFulfilledResult<unknown>).value).match(/Agent ID: ([\w-]+)/)![1]
+    await f.engine.dispatchTool('wait_agents', { agent_ids: [id], mode: 'all', timeout_ms: 3000 })
+    expect(await spawn(f, 'fourth', 'read_only')).toMatch(/^agent-/)
+  })
+
+  it('returns admission after a synchronous task-start failure', async () => {
+    const f = fixture()
+    f.engine.setSubAgentBudget({ maxParallelPerSession: 1 })
+    streamModel(() => ({ text: 'done' }))
+    vi.spyOn(f.engine.subAgentTaskManager, 'startTask').mockImplementationOnce(() => { throw new Error('fixture start failure') })
+    await expect(f.engine.dispatchTool('spawn_agent', { name: 'retry-name', agent_type: 'worker', capability_mode: 'read_only', objective: 'Fixture' })).rejects.toThrow('fixture start failure')
+    expect(await spawn(f, 'retry-name', 'read_only')).toMatch(/^agent-/)
+  })
+  it.each([
+    { maxRequestsPerRun: 1, maxTokensPerRun: 0 },
+    { maxRequestsPerRun: 0, maxTokensPerRun: 40 },
+  ])('stops an already-running child at the existing run request/token budget %j', async budget => {
+    const f = fixture()
+    f.engine.setSubAgentBudget(budget)
+    writeFileSync(join(f.path, 'budget.txt'), 'test')
+    const transport = streamModel(() => ({ tools: [{ name: 'read_file', args: { path: 'budget.txt' } }] }))
+    const id = await spawn(f, '有界', 'read_only')
+    expect(transport).toHaveBeenCalledTimes(1)
+    expect(f.engine.getChildAgentController().get(id, 'root-session').lastOutcome).toBe('failed')
+  })
+
+  it('blocks a transport retry before a second HTTP request consumes the child request budget', async () => {
+    const f = fixture()
+    f.engine.setSubAgentBudget({ maxRequestsPerRun: 1, maxTokensPerRun: 0 })
+    const http = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('busy', { status: 503 }))
+    const id = await spawn(f, '止重试', 'read_only')
+    expect(http).toHaveBeenCalledTimes(1)
+    expect(f.engine.getChildAgentController().get(id, 'root-session').lastOutcome).toBe('failed')
+  })
+
+  it('applies the same guard to compaction retries before another HTTP request', async () => {
+    const f = fixture()
+    let requests = 0
+    const remove = f.runtime.engine.subscribe(event => {
+      if (event.type === 'model:request' && event.request.status === 'running') requests++
+    })
+    f.runtime.engine.setModelRequestGuard(() => { if (requests > 1) throw new Error('request budget exceeded') })
+    const http = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('busy', { status: 503 }))
+    try {
+      await expect(f.engine.sendCompactionAttempt('summary', 'openai_chat', f.runtime.stateProvider.getActiveConfig(),
+        'http://fixture.invalid', {}, '{}', {})).rejects.toThrow('request budget exceeded')
+      expect(http).toHaveBeenCalledTimes(1)
+    } finally { remove() }
+  })
+
   it('keeps names independent of roles and intersects authority', () => {
     expect(normalizeChildName(' 星河 ')).toBe('星河')
     expect(() => normalizeChildName('bad\nname')).toThrow()
@@ -143,7 +202,8 @@ describe('named shared-runtime children', () => {
     const f = fixture()
     const writes = vi.fn(async () => 'MCP_WRITE')
     f.runtime.mcpClient.registerLocalServer({ name: 'fixture', tools: [
-      { name: 'read', description: 'Read data', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true } },
+      { name: 'read', description: 'Read data', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: true },
+        hostPolicy: { isReadOnly: true, isDestructive: false, isConcurrencySafe: true, resources: [{ kind: 'external', access: 'read', scope: 'external' }] } },
       { name: 'write', description: 'Write data', inputSchema: { type: 'object', properties: {} }, annotations: { readOnlyHint: false } },
     ], handler: async name => name === 'write' ? writes() : 'MCP_READ' })
     let round = 0
@@ -258,6 +318,19 @@ describe('named shared-runtime children', () => {
     expect(workingRequests).toBe(1)
     expect(child.lastOutcome).toBe('partial')
     expect(child.finalText).toContain('Stopped after 1 tool rounds')
+  })
+  it('does not widen a parent tool-round limit when a child role allows more rounds', async () => {
+    const f = fixture()
+    f.engine.updateRuntimeConfiguration({ maxToolRounds: 1 })
+    writeFileSync(join(f.path, 'source.txt'), 'source')
+    registerAgent({ id: 'parent_limit_fixture', label: 'Parent bounded', description: 'Parent bounded', systemPrompt: 'Read', maxTurns: 3, maxParallel: 3 })
+    let requests = 0
+    streamModel(() => { requests++; return { tools: [{ name: 'read_file', args: { path: 'source.txt' } }] } })
+    const receipt = await f.engine.dispatchTool('spawn_agent', { name: '守界', agent_type: 'parent_limit_fixture', objective: 'Read' })
+    const id = String(receipt).match(/Agent ID: ([a-zA-Z0-9_-]+)/)![1]
+    await f.engine.dispatchTool('wait_agents', { agent_ids: [id], timeout_ms: 3000 })
+    expect(requests).toBe(1)
+    expect(f.engine.getChildAgentController().get(id, 'root-session').finalText).toContain('Stopped after 1 tool rounds')
   })
   it('rejects a completed-looking answer when role evidence requirements are unmet', async () => {
     const f = fixture(); streamModel(() => ({ text: 'An unverified claim' }))

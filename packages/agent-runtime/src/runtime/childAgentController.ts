@@ -1,3 +1,4 @@
+import { toolInvocationKey, toolResultExecutionStatus } from '@fluxos/contracts/toolResultData'
 import { toolCallSignature } from '../toolExecutionLedger'
 import { mkdirSync, readFileSync, readdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -34,6 +35,7 @@ export interface ChildLaunch {
   limits?: { maxToolRounds: number; maxParallelTools: number; maxOutputTokens?: number; requestTimeoutMs?: number }
   requiredToolCalls?: Record<string, number>
   modelConfig: APIConfig
+  beforeModelRequest?: () => void
 }
 interface ChildRecord {
   schemaVersion: 2
@@ -155,7 +157,7 @@ export class ChildAgentController {
         }
       }
       if (event.type === 'tool:call') calls.set(event.toolCall.id, { name: event.toolCall.name, signature: toolCallSignature(event.toolCall) })
-      if (event.type === 'tool:result' && !event.toolResult.isError) {
+      if (event.type === 'tool:result' && toolResultExecutionStatus(event.toolResult) === 'completed') {
         const call = calls.get(event.toolResult.toolCallId)
         if (call) {
           const signatures = successfulCalls.get(call.name) || new Set<string>()
@@ -340,11 +342,13 @@ export class ChildAgentController {
       }
       // Repair a crash between a durable tool result and the next model turn.
       // Never re-execute uncertain writes merely to manufacture a result.
-      const results = new Map(record.items.flatMap(item => item.kind === 'tool_result' ? [[item.toolResult.toolCallId, item.toolResult] as const] : []))
-      const paired = new Set(record.turns.flatMap(turn => turn.toolResults?.map(result => result.toolCallId) || []))
+      const results = new Map(record.items.flatMap(item => item.kind === 'tool_result' ? [[toolInvocationKey(item.toolResult.toolCallId, item.toolResult.operationIdentity), item.toolResult] as const] : []))
+      const paired = new Set(record.turns.flatMap(turn => turn.toolResults?.map(result => toolInvocationKey(result.toolCallId, result.operationIdentity)) || []))
       record.turns = record.turns.flatMap(turn => {
-        const missing = (turn.toolCalls || []).filter(call => !paired.has(call.id)).map(call => results.get(call.id) || {
+        const missing = (turn.toolCalls || []).filter(call => !paired.has(toolInvocationKey(call.id, call.operationIdentity))).map(call => results.get(toolInvocationKey(call.id, call.operationIdentity)) || {
           toolCallId: call.id, name: call.name, isError: true, errorKind: 'abort' as const,
+          ...(call.operationIdentity ? { operationIdentity: structuredClone(call.operationIdentity) } : {}),
+          recovery: { effects: 'unknown' as const, retry: 'after_inspection' as const },
           output: 'Execution was interrupted before its result was durably recorded. Inspect existing effects before retrying.',
         })
         return missing.length ? [turn, { id: turn.id + ':recovered-results', role: 'tool_result' as const, content: '', timestamp: turn.timestamp + 1, toolResults: missing }] : [turn]

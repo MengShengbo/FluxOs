@@ -1,0 +1,57 @@
+{
+  "repository": "https://github.com/openai/codex",
+  "commit": "822e58cc3d666166c7446c5b1ea2e52f5d09594c",
+  "source_directory": "codex-rs/apply-patch/tests/fixtures/scenarios",
+  "license": "Apache-2.0; LICENSE included",
+  "scenarios": [
+    "003_multiple_chunks",
+    "016_pure_addition_update_chunk",
+    "022_update_file_end_of_file_marker"
+  ],
+  "files": [
+    {
+      "path": "003_multiple_chunks/expected/multi.txt",
+      "sha256": "e32d16d64119533b3fd1521cb84c1850b15ed961381fc0dfe1d7cd9f3475e5b8"
+    },
+    {
+      "path": "003_multiple_chunks/input/multi.txt",
+      "sha256": "9a1fd5560147da610cde03a9e0cf1db3d4f93b53f46ac67e754cb42fb7fb911a"
+    },
+    {
+      "path": "003_multiple_chunks/patch.txt",
+      "sha256": "b8fb2de70747f6316cec64bb3e13d5799c4ec5c4db760ff9016a28ec1acd5e97"
+    },
+    {
+      "path": "016_pure_addition_update_chunk/expected/input.txt",
+      "sha256": "013834138420c9775178b8fcbcd6b03488b704fed7d44bf37dc385d53e443913"
+    },
+    {
+      "path": "016_pure_addition_update_chunk/input/input.txt",
+      "sha256": "2751a3a2f303ad21752038085e2b8c5f98ecff61a2e4ebbd43506a941725be80"
+    },
+    {
+      "path": "016_pure_addition_update_chunk/patch.txt",
+      "sha256": "888228c23cf6db16ad3194af46d2b6b7567dac7691053c0b67be1f5df179acd9"
+    },
+    {
+      "path": "022_update_file_end_of_file_marker/expected/tail.txt",
+      "sha256": "b8074f984c9d414b623d1ea91f01912de5972a208a962cd66bf7ae0b467f6cd5"
+    },
+    {
+      "path": "022_update_file_end_of_file_marker/input/tail.txt",
+      "sha256": "dbea9325179efe46ea2add94f7b6b745ca983fabb208dc6d34aa064623d7ee23"
+    },
+    {
+      "path": "022_update_file_end_of_file_marker/patch.txt",
+      "sha256": "350b3b8a57211b8bf0d2a09a573b4bb69e3765979c94cb4fca00307ed7192f3c"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc"
+    },
+    {
+      "path": "NOTICE",
+      "sha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915"
+    }
+  ]
+}

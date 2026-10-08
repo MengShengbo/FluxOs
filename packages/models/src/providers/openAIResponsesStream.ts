@@ -1,4 +1,5 @@
 import type { TokenUsage } from '@fluxos/contracts/agentTypes'
+import type { ResponsesCustomToolInputs } from '../modelProtocol'
 import {
   MAX_STREAM_REASONING_CHARS,
   MAX_STREAM_TEXT_CHARS,
@@ -48,8 +49,9 @@ export class OpenAIResponsesStreamParser {
   private receivedData = false
   private readonly toolCallMap = new Map<string, OpenAIResponsesStreamToolCall>()
   private readonly toolCallAliases = new Map<string, string>()
+  private readonly customInputs = new Map<string, { text: string; complete: boolean }>()
 
-  constructor(private readonly callbacks: OpenAIResponsesStreamCallbacks = {}) {}
+  constructor(private readonly callbacks: OpenAIResponsesStreamCallbacks = {}, private readonly customToolInputs: ResponsesCustomToolInputs = {}) {}
 
   get hasReceivedData(): boolean {
     return this.receivedData
@@ -68,6 +70,7 @@ export class OpenAIResponsesStreamParser {
   }
 
   snapshot(): OpenAIResponsesStreamSnapshot {
+    const incompleteCustom = [...this.customInputs.values()].some(input => !input.complete)
     return {
       text: this.textContent,
       reasoning: this.reasoningContent,
@@ -77,7 +80,7 @@ export class OpenAIResponsesStreamParser {
       reasoningTokens: this.reasoningTokens,
       cacheReadTokens: this.cacheReadTokens,
       sawTerminalEvent: this.sawTerminalEvent,
-      streamFailure: this.streamFailure,
+      streamFailure: this.streamFailure || (incompleteCustom ? 'Responses custom tool input is incomplete' : ''),
       receivedData: this.receivedData,
     }
   }
@@ -111,12 +114,19 @@ export class OpenAIResponsesStreamParser {
     }
 
     if (eventType === 'response.output_item.added' || eventType === 'response.output_item.done') {
-      if (event.item?.type === 'function_call') this.ensureToolCall(event.item, event.output_index)
+      if (event.item?.type === 'function_call' || event.item?.type === 'custom_tool_call') {
+        this.ensureToolCall(event.item, event.output_index, eventType === 'response.output_item.done')
+      }
       return
     }
 
     if (eventType === 'response.function_call_arguments.delta' || eventType === 'response.function_call_arguments.done') {
       this.handleToolCallArguments(event, eventType.endsWith('.done'))
+      return
+    }
+
+    if (eventType === 'response.custom_tool_call_input.delta' || eventType === 'response.custom_tool_call_input.done') {
+      this.handleToolCallArguments(event, eventType.endsWith('.done'), true)
       return
     }
 
@@ -141,13 +151,24 @@ export class OpenAIResponsesStreamParser {
     }
   }
 
-  private ensureToolCall(item: Record<string, any>, outputIndex?: number): OpenAIResponsesStreamToolCall {
+  private ensureToolCall(item: Record<string, any>, outputIndex?: number, complete = false): OpenAIResponsesStreamToolCall {
     const id = typeof item.call_id === 'string' && item.call_id
       ? item.call_id
       : typeof item.id === 'string' && item.id
         ? item.id
         : `call_${outputIndex ?? this.toolCallMap.size}`
-    let entry = this.toolCallMap.get(id)
+    const aliases = [item.id, item.call_id, typeof outputIndex === 'number' ? `idx-${outputIndex}` : undefined]
+      .filter((alias): alias is string => typeof alias === 'string')
+    const priorId = aliases.map(alias => this.toolCallAliases.get(alias) || alias).find(alias => this.toolCallMap.has(alias))
+    let entry = this.toolCallMap.get(id) || (priorId ? this.toolCallMap.get(priorId) : undefined)
+    if (entry && entry.id !== id) {
+      this.toolCallMap.delete(entry.id)
+      const custom = this.customInputs.get(entry.id)
+      if (custom) { this.customInputs.delete(entry.id); this.customInputs.set(id, custom) }
+      for (const [alias, target] of this.toolCallAliases) if (target === entry.id) this.toolCallAliases.set(alias, id)
+      entry.id = id
+      this.toolCallMap.set(id, entry)
+    }
     if (!entry) {
       entry = {
         id,
@@ -159,13 +180,18 @@ export class OpenAIResponsesStreamParser {
       if (typeof item.name === 'string' && item.name) entry.name = item.name
       if (typeof item.arguments === 'string' && item.arguments) entry.argumentsJson = item.arguments
     }
+    if (item.type === 'custom_tool_call' || this.customInputs.has(id)) {
+      const prior = this.customInputs.get(id)
+      const input = typeof item.input === 'string' && (item.input || complete || !prior) ? item.input : prior?.text || ''
+      this.setCustomInput(entry, input, complete || prior?.complete === true)
+    }
     if (typeof item.id === 'string') this.toolCallAliases.set(item.id, id)
     if (typeof item.call_id === 'string') this.toolCallAliases.set(item.call_id, id)
     if (typeof outputIndex === 'number') this.toolCallAliases.set(`idx-${outputIndex}`, id)
     return entry
   }
 
-  private handleToolCallArguments(event: Record<string, any>, complete: boolean): void {
+  private handleToolCallArguments(event: Record<string, any>, complete: boolean, custom = false): void {
     const alias = typeof event.item_id === 'string'
       ? event.item_id
       : typeof event.call_id === 'string'
@@ -173,13 +199,31 @@ export class OpenAIResponsesStreamParser {
         : `idx-${event.output_index ?? 0}`
     const canonicalId = this.toolCallAliases.get(alias) || alias
     const entry = this.toolCallMap.get(canonicalId)
-      || this.ensureToolCall({ call_id: canonicalId, name: event.name || '' }, event.output_index)
-    if (complete && typeof event.arguments === 'string') {
+      || this.ensureToolCall({ call_id: canonicalId, name: event.name || '', ...(custom ? { type: 'custom_tool_call' } : {}) }, event.output_index)
+    if (custom) {
+      const text = complete && typeof event.input === 'string' ? event.input
+        : (this.customInputs.get(entry.id)?.text || '') + (typeof event.delta === 'string' ? event.delta : '')
+      this.setCustomInput(entry, text, complete)
+    } else if (complete && typeof event.arguments === 'string') {
       entry.argumentsJson = event.arguments
     } else if (typeof event.delta === 'string') {
       entry.argumentsJson = appendBoundedString(entry.argumentsJson, event.delta, MAX_STREAM_TOOL_ARGUMENT_CHARS)
     }
     this.callbacks.onToolCallDelta?.({ ...entry })
+  }
+
+  private setCustomInput(entry: OpenAIResponsesStreamToolCall, text: string, complete: boolean): void {
+    if (text.length > MAX_STREAM_TOOL_ARGUMENT_CHARS) {
+      this.streamFailure = 'Responses custom tool input exceeds the stream character limit'
+      text = text.slice(0, MAX_STREAM_TOOL_ARGUMENT_CHARS)
+    }
+    this.customInputs.set(entry.id, { text, complete })
+    if (!entry.name) return // A delta may arrive before its named output item.
+    if (!Object.prototype.hasOwnProperty.call(this.customToolInputs, entry.name)) {
+      this.streamFailure = `Responses custom tool is not enabled: ${entry.name}`
+      return
+    }
+    entry.argumentsJson = JSON.stringify({ [this.customToolInputs[entry.name]]: text })
   }
 
   private updateUsage(usage: Record<string, any> | undefined): void {
@@ -219,8 +263,8 @@ export class OpenAIResponsesStreamParser {
     }
     for (const item of response.output) {
       if (!item || typeof item !== 'object') continue
-      if (item.type === 'function_call') {
-        this.ensureToolCall(item)
+      if (item.type === 'function_call' || item.type === 'custom_tool_call') {
+        this.ensureToolCall(item, undefined, true)
         continue
       }
       if (item.type !== 'message' || this.textContent) continue

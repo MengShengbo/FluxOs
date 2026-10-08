@@ -1,3 +1,4 @@
+import { writeModelConfiguration } from '@fluxos/platform/modelConfigurationStorage'
 import { createHash, randomUUID } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { chmod, copyFile, lstat, mkdir, open, readFile, readdir, rename, rm, stat, statfs, writeFile } from 'node:fs/promises'
@@ -54,7 +55,6 @@ export interface ProfileArchiveImporterOptions {
   registry: InstallationProfileRegistry
   now?: () => number
   createId?: () => string
-  protectCredentials?: (credentials: unknown) => Promise<Buffer> | Buffer
   faultAfterPhase?: ImportJournalPhase
 }
 
@@ -496,24 +496,19 @@ export class ProfileArchiveImporter {
       await applyWorkspaceBindings(scan, finalLayout, profilePayloadRoot, timestamp)
       if (selected.has('profile.preferences')) await applyProfilePreferences(scan, incomingRoot, finalLayout, profilePayloadRoot, config)
       if (selected.has('model.configurations')) await applyModelConfigurations(scan, incomingRoot, config)
-      if (Object.keys(config).length) await writeProfileFile(finalLayout, profilePayloadRoot, finalLayout.configPath, config)
       if (selected.has('credentials')) {
-        if (!this.options.protectCredentials) throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', '目标设备无法保护导入凭据。', '请取消凭据组件后重试。')
         const document = await selectedDocument(scan, incomingRoot, 'components/credentials/credentials.json')
-        const credentials = document.credentials ?? {}
-        let protectedDocument: Buffer | undefined
-        try {
-          protectedDocument = await this.options.protectCredentials(credentials)
-          const targetPath = stagePath(finalLayout, profilePayloadRoot, finalLayout.credentialsPath)
-          await mkdir(dirname(targetPath), { recursive: true, mode: 0o700 })
-          await writeFile(targetPath, protectedDocument, { mode: 0o600, flag: 'wx' })
-        } finally {
-          protectedDocument?.fill(0)
-          scrubSecretValue(credentials)
-          scan.documents.delete('components/credentials/credentials.json')
-          document.credentials = undefined
+        const credentials = document.credentials as { apiKey?: string; apiConfigs?: Record<string, string> } | undefined
+        if (credentials) {
+          if (typeof credentials.apiKey === 'string') config.apiKey = credentials.apiKey
+          if (Array.isArray(config.apiConfigs)) config.apiConfigs = config.apiConfigs.map(profile => ({
+            ...profile, apiKey: credentials.apiConfigs?.[profile.id] ?? profile.apiKey ?? '',
+          }))
         }
+        scan.documents.delete('components/credentials/credentials.json')
+        document.credentials = undefined
       }
+      if (Object.keys(config).length) writeModelConfiguration(stagePath(finalLayout, profilePayloadRoot, finalLayout.configRoot), config)
       if (selected.has('conversations')) await applyConversations(scan, incomingRoot, finalLayout, profilePayloadRoot)
       if (selected.has('projects')) await applyProjects(scan, incomingRoot, finalLayout, profilePayloadRoot)
       const disabledAutomations = selected.has('automations') ? await applyAutomations(scan, incomingRoot, finalLayout, profilePayloadRoot) : 0
@@ -605,9 +600,30 @@ export class ProfileArchiveImporter {
       if (!entry.isFile() || !entry.name.endsWith('.json')) continue
       const journalPath = join(this.journalRoot, entry.name)
       let journal: ImportJournal
-      try { journal = JSON.parse(await readFile(journalPath, 'utf8')) as ImportJournal } catch { continue }
+      try {
+        journal = JSON.parse(await readFile(journalPath, 'utf8')) as ImportJournal
+        if (!journal || journal.schemaVersion !== 1
+          || typeof journal.transactionId !== 'string' || !/^import-[A-Za-z0-9._-]+$/u.test(journal.transactionId)
+          || entry.name !== `${journal.transactionId}.json`
+          || !['staging', 'validated', 'committing', 'directory_committed', 'registered'].includes(journal.phase)) {
+          throw new Error('Invalid journal identity or phase')
+        }
+        const expectedStaging = join(this.options.registry.profilesRoot, `.staging-${journal.transactionId}`)
+        const expectedFinal = createProfileStorageLayout(this.options.registry.dataRoot, this.options.registry.deviceRoot, journal.profileId).profileRoot
+        if (journal.stagingRoot !== expectedStaging || journal.profilePayloadRoot !== join(expectedStaging, 'profile')
+          || journal.finalProfileRoot !== expectedFinal) throw new Error('Journal paths do not match transaction ownership')
+        for (const path of [expectedStaging, expectedFinal]) {
+          const info = await lstat(path).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
+          if (info && (!info.isDirectory() || info.isSymbolicLink())) throw new Error('Journal directory is not an owned directory')
+        }
+      } catch (error) {
+        throw new Error(`Invalid import recovery journal: ${entry.name}`, { cause: error })
+      }
       if (journal.phase === 'directory_committed' || journal.phase === 'registered'
         || (journal.phase === 'committing' && await stat(journal.finalProfileRoot).then(info => info.isDirectory(), () => false))) {
+        if (!await stat(journal.finalProfileRoot).then(info => info.isDirectory(), () => false)) {
+          throw new Error('Committed import profile is missing; retain the recovery journal and staging data for inspection')
+        }
         if (!this.options.registry.has(journal.profileId) && await stat(journal.finalProfileRoot).then(info => info.isDirectory(), () => false)) {
           this.options.registry.registerExisting(journal.profileId)
         }

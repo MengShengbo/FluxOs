@@ -1,3 +1,5 @@
+import type { ToolAccessContract } from './toolAccess'
+
 export type AgentMode = 'vibe' | 'plan'
 
 export type ApprovalPolicy = 'ask' | 'agent' | 'full'
@@ -46,6 +48,7 @@ export type ToolCategory = 'read' | 'write' | 'execute' | 'communicate' | 'manag
 
 export interface AgentTool {
   name: string
+  access: ToolAccessContract
   description: string
   category: ToolCategory
   parameters: ToolParameter[]
@@ -172,6 +175,21 @@ export interface ModelRequestRecord {
   updatedAt: number
   endedAt?: number
   durationMs?: number
+  /** Client-observed first non-empty semantic chunks, measured with a monotonic clock. */
+  outputTiming?: {
+    firstOutputChunkMs?: number
+    firstAnswerChunkMs?: number
+    firstReasoningChunkMs?: number
+    firstToolCallChunkMs?: number
+  }
+  /** Safe allowlist of the settings actually sent; does not claim provider compliance. */
+  requestSettings?: {
+    maxOutputTokens?: number
+    temperature?: number
+    reasoningEffort?: string
+    reasoningBudgetTokens?: number
+    thinkingType?: 'enabled' | 'disabled' | 'adaptive'
+  }
   providerResponseId?: string
   requestFingerprint?: string
   httpStatus?: number
@@ -244,6 +262,8 @@ export interface ToolCall {
   id: string
   name: string
   arguments: Record<string, unknown>
+  /** Host-bound identity, retained when canonical presentation IDs are normalized. */
+  operationIdentity?: { sessionId: string; turnId: string; callId: string }
 }
 
 export interface ChangeSummary {
@@ -280,10 +300,26 @@ export interface ToolResult {
   isError: boolean
   attachments?: AgentAttachment[]
   errorKind?: 'validation' | 'permission' | 'environment' | 'execution' | 'timeout' | 'abort'
+  recovery?: import('./toolResultData').ToolRecovery
+  operation?: import('./toolResultData').ToolOperationReceipt
+  operationIdentity?: ToolCall['operationIdentity']
   interruption?: AgentRunInterruption
   changeSummary?: ChangeSummary
   retrieval?: import('./retrievalTypes').RetrievalResult
   data?: import('./toolResultData').ToolResultData
+  outputSource?: ToolOutputSource
+}
+
+/** Ephemeral immutable output snapshot, never a capability to execute the source tool. */
+export interface ToolOutputSource {
+  id: string
+  toolName: string
+  totalChars: number
+  expiresAt: number
+  unit: 'utf16'
+  offset: number
+  endOffset: number
+  nextOffset?: number
 }
 
 export interface AgentSession {

@@ -124,6 +124,7 @@ function mergeLists(primary?: string[], fallback?: string[]): string[] | undefin
 function mergeCapabilities(primary: ModelCapabilities, fallback: ModelCapabilities): ModelCapabilities {
   return {
     tools: mergeBoolean(primary.tools, fallback.tools),
+    responsesCustomTools: mergeBoolean(primary.responsesCustomTools, fallback.responsesCustomTools),
     vision: mergeBoolean(primary.vision, fallback.vision),
     reasoning: mergeBoolean(primary.reasoning, fallback.reasoning),
     structuredOutput: mergeBoolean(primary.structuredOutput, fallback.structuredOutput),
@@ -227,6 +228,7 @@ function extractModelMetadata(raw: JsonRecord): ParsedModelMetadata {
   )
   const parsedCapabilities: ModelCapabilities = {
     tools,
+    responsesCustomTools: typeof capabilities?.responses_custom_tools === 'boolean' ? capabilities.responses_custom_tools : undefined,
     vision,
     reasoning: reasoningSupported,
     structuredOutput,

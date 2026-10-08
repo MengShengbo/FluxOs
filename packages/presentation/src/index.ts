@@ -1,6 +1,6 @@
 export * from '@fluxos/contracts/agentTypes'
 export * from '@fluxos/contracts/retrievalTypes'
-export type { ToolResultData } from '@fluxos/contracts/toolResultData'
+export { toolResultCallStatus, toolResultExecutionStatus, type ToolResultData, type CommandProcessOutcome, type PatchReceipt, type PatchFileEffect } from '@fluxos/contracts/toolResultData'
 export * from '@fluxos/contracts/browserTypes'
 export * from '@fluxos/contracts/computerTypes'
 export * from '@fluxos/contracts/runtimeTaskTypes'

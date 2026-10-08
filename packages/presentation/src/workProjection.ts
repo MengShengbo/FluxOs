@@ -1,3 +1,4 @@
+import { toolInvocationKey, toolResultCallStatus } from '@fluxos/contracts/toolResultData'
 import type { ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import type { AnyConversationEvent, ConversationRunOutcome, ConversationStepOutcome } from '@fluxos/contracts/conversationEvent'
 
@@ -15,8 +16,11 @@ export interface WorkNode {
   turnId?: string
   responseId?: string
   callId?: string
+  invocationId?: string
   parentCallId?: string
   toolName?: string
+  toolCall?: ToolCall
+  toolResult?: ToolResult
   content: string
   detail?: string
   startedAt: number
@@ -192,7 +196,7 @@ export class WorkProjectionEngine {
           changed = this.updateNode(`${responseId}:${kind}`, event, { status, turnId: turn.id, settled: true }) || changed
         }
         for (const [index, toolCall] of (turn.toolCalls || []).entries()) {
-          this.toolPlacements.set(toolCall.id, {
+          this.toolPlacements.set(toolInvocationKey(toolCall.id, toolCall.operationIdentity), {
             responseId,
             runId,
             turnId: turn.id,
@@ -369,27 +373,39 @@ export class WorkProjectionEngine {
 
   private applyToolCall(envelope: AnyConversationEvent, toolCall: ToolCall): boolean {
     this.streamingToolSteps.delete(toolCall.id)
-    const placement = this.toolPlacements.get(toolCall.id)
+    const invocation = toolInvocationKey(toolCall.id, toolCall.operationIdentity)
+    const key = `tool:${invocation}`
+    const placement = this.toolPlacements.get(invocation)
+    const streamingKey = `tool:${toolCall.id}`
+    const streaming = this.nodes[streamingKey]
+    if (key !== streamingKey && streaming && !streaming.settled) {
+      // Retire the provisional streaming entry once the host binds the turn.
+      delete this.nodes[streamingKey]
+      this.openNodeKeys.delete(streamingKey)
+      this.order = this.order.filter(value => value !== streamingKey)
+    }
     const changed = this.upsert(envelope, {
-      key: `tool:${toolCall.id}`,
+      key,
       kind: 'tool',
       status: 'running',
       runId: placement?.runId || this.activeRunId,
-      turnId: placement?.turnId,
+      turnId: placement?.turnId || envelope.turnId,
       responseId: placement?.responseId,
       callId: toolCall.id,
+      invocationId: invocation,
       toolName: toolCall.name,
+      toolCall,
       content: toolCall.name,
       detail: JSON.stringify(toolCall.arguments),
       settled: false,
-    }, placement?.ordinal)
-    this.toolPlacements.delete(toolCall.id)
+    }, placement?.ordinal ?? streaming?.ordinal)
+    this.toolPlacements.delete(invocation)
     return changed
   }
 
   private applyToolResult(envelope: AnyConversationEvent, result: ToolResult): boolean {
-    const key = `tool:${result.toolCallId}`
-    const status: WorkNodeStatus = result.interruption?.kind === 'pause' ? 'interrupted' : result.errorKind === 'abort' ? 'cancelled' : result.isError ? 'failed' : 'completed'
+    const key = `tool:${toolInvocationKey(result.toolCallId, result.operationIdentity)}`
+    const status: WorkNodeStatus = result.interruption?.kind === 'pause' ? 'interrupted' : toolResultCallStatus(result)
     if (!this.nodes[key]) {
       return this.upsert(envelope, {
         key,
@@ -397,13 +413,15 @@ export class WorkProjectionEngine {
         status,
         runId: this.activeRunId,
         callId: result.toolCallId,
+        invocationId: toolInvocationKey(result.toolCallId, result.operationIdentity),
         toolName: result.name,
+        toolResult: result,
         content: result.name,
         detail: result.output,
         settled: true,
       })
     }
-    return this.updateNode(key, envelope, { status, detail: result.output, settled: true })
+    return this.updateNode(key, envelope, { status, detail: result.output, toolResult: result, settled: true })
   }
 
   private ensureResponse(runId?: string, stepId?: string, turnId?: string): string {

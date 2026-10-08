@@ -52,6 +52,26 @@ describe.sequential('conversation journal store', () => {
     rmSync(directory, { recursive: true, force: true })
   })
 
+  it('does not borrow a prior invocation result when repairing a repeated provider ID', () => {
+    const id = 'operation-repair'
+    appendConversationJournal(id, { version: 1, type: 'meta', timestamp: 100, meta: meta(id) })
+    for (const [index, turnId] of ['first', 'second'].entries()) {
+      const operationIdentity = { sessionId: id, turnId, callId: 'provider-repeat' }
+      appendConversationJournal(id, { version: 1, type: 'turn', timestamp: 101 + index * 2,
+        turn: { id: turnId, role: 'assistant', timestamp: 101 + index * 2, content: '', toolCalls: [
+          { id: 'provider-repeat', name: 'write_file', arguments: { path: turnId, content: turnId }, operationIdentity },
+        ] } })
+      if (index === 0) appendConversationJournal(id, { version: 1, type: 'turn', timestamp: 102,
+        turn: { id: 'first-result', role: 'tool_result', timestamp: 102, content: '', toolResults: [
+          { toolCallId: 'provider-repeat', name: 'write_file', output: 'first committed', isError: false, operationIdentity },
+        ] } })
+    }
+    const results = loadConversation(id)!.turns.flatMap(turn => turn.toolResults ?? [])
+    expect(results).toHaveLength(2)
+    expect(results[0]).toMatchObject({ output: 'first committed', isError: false, operationIdentity: { turnId: 'first' } })
+    expect(results[1]).toMatchObject({ isError: true, operationIdentity: { turnId: 'second' }, recovery: { effects: 'unknown', retry: 'after_inspection' } })
+  })
+
   it('matches equivalent paths and rejects different workspaces', () => {
     expect(sameWorkspacePath('.', process.cwd())).toBe(true)
     expect(sameWorkspacePath(process.cwd(), `${process.cwd()}-other`)).toBe(false)

@@ -1,3 +1,4 @@
+import { readModelConfiguration } from '@fluxos/platform/modelConfigurationStorage'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { lstat, readFile, readdir, stat } from 'node:fs/promises'
@@ -155,7 +156,7 @@ async function walkFiles(root: string, limits: { files: number; bytes: number })
 
 async function snapshotProfilePreferences(context: ExportComponentContext, definition: ArchiveComponentDefinition): Promise<ComponentSnapshot> {
   const persona = redactExportValue(await readJson(context.layout.personaPath, {}), context.redaction)
-  const config = await readJson(context.layout.configPath, {}) as Record<string, unknown>
+  const config = readModelConfiguration(context.layout.configRoot) as Record<string, unknown>
   const preferences = redactExportValue({
     profile: { displayName: context.profile.displayName, avatar: context.profile.avatar, createdAt: context.profile.createdAt },
     persona,
@@ -233,7 +234,7 @@ async function snapshotConversations(context: ExportComponentContext, definition
 }
 
 async function snapshotModelConfigurations(context: ExportComponentContext, definition: ArchiveComponentDefinition): Promise<ComponentSnapshot> {
-  const config = await readJson(context.layout.configPath, {}) as Record<string, unknown>
+  const config = readModelConfiguration(context.layout.configRoot) as Record<string, unknown>
   const redacted = redactExportValue({ ...config, apiKey: '', apiConfigs: Array.isArray(config.apiConfigs)
     ? config.apiConfigs.map(item => ({ ...(item as Record<string, unknown>), apiKey: '' }))
     : [] }, { ...context.redaction, allowSecrets: false })

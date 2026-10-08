@@ -435,6 +435,30 @@ export interface AutomationRun {
   }
 }
 
+export interface AutomationWorkspaceScanLimits {
+  maxEntries: number
+  maxBytes: number
+  maxFileBytes: number
+  maxDurationMs: number
+}
+
+export interface AutomationWorkspaceScanIssue {
+  code: 'budget_exceeded' | 'unreadable' | 'changed_during_scan' | 'external_symlink' | 'unresolved_symlink'
+    | 'excluded_symlink' | 'nested_repository' | 'unsupported_entry' | 'git_unavailable' | 'git_scope_mismatch'
+  path?: string
+}
+
+export interface AutomationWorkspaceCoverage {
+  algorithm: 'sha256-workspace-content-v1'
+  scope: 'workspace-files-including-ignored'
+  /** Git HEAD/status are included separately; object storage, config and hooks are not content-scanned. */
+  excludedPaths: string[]
+  limits: AutomationWorkspaceScanLimits
+  scannedEntries: number
+  hashedBytes: number
+  issues: AutomationWorkspaceScanIssue[]
+}
+
 export interface AutomationRunCheckpoint {
   id: string
   runId: string
@@ -449,6 +473,7 @@ export interface AutomationRunCheckpoint {
   pendingApprovalId?: string
   artifactIds: string[]
   workspaceFingerprint: string
+  workspaceCoverage: AutomationWorkspaceCoverage
   gitHead?: string
   permissionDigest: string
   contextSnapshotId: string

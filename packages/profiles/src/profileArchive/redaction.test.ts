@@ -8,6 +8,16 @@ const policy = {
 }
 
 describe('profile archive redaction', () => {
+  it('removes JSON credentials and HTTP authentication headers inside tool output text', () => {
+    const text = 'result {"apiKey":"short","refresh_token":"refresh-value","safe":"keep"}\nAuthorization: Basic dXNlcjpwYXNz\nCookie: session=private-cookie\nSet-Cookie: auth=private-response'
+    expect(containsForbiddenExportData(text)).toBe(true)
+    const result = redactExportText(text, policy)
+    for (const secret of ['short', 'refresh-value', 'dXNlcjpwYXNz', 'private-cookie', 'private-response']) expect(result).not.toContain(secret)
+    expect(result).toContain('"safe":"keep"')
+    expect(containsForbiddenExportData(result)).toBe(false)
+    expect(redactExportText(text, { ...policy, allowSecrets: true })).toBe(text)
+  })
+
   it('virtualizes known workspace paths and removes unrelated absolute paths', () => {
     expect(virtualizeExportPath('/Users/example/Projects/Demo/src/app.ts', policy.workspaces)).toBe('workspace://workspace-12345678/src/app.ts')
     expect(virtualizeExportPath('/private/tmp/outside.txt', policy.workspaces)).toBe('<local-path-removed>')

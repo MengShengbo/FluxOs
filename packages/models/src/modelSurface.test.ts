@@ -7,6 +7,25 @@ function turn(id: string, role: AgentTurn['role'], content: string, timestamp: n
 }
 
 describe('ModelSurface', () => {
+  it('keeps caller-owned turns and returned projections isolated while applying internal replacements', () => {
+    const turns: AgentTurn[] = [
+      turn('user-1', 'user', 'inspect', 1),
+      { id: 'result-1', role: 'tool_result', content: '', timestamp: 2, toolResults: [{ toolCallId: 'call', name: 'read_file', output: 'x'.repeat(200), isError: false }] },
+      turn('assistant-1', 'assistant', 'done', 3),
+      turn('user-2', 'user', 'next', 4),
+    ]
+    const original = structuredClone(turns)
+    const surface = new ModelSurface(undefined, turns)
+    const prior = surface.projectTurns()
+    expect(surface.enforceImageBudget()).toBe(false)
+    expect(surface.pruneStaleToolResults()).toBe(true)
+    expect(turns).toEqual(original)
+    expect(prior).toEqual(original)
+    const projected = surface.projectTurns()
+    projected[1]!.toolResults![0]!.output = 'caller mutation'
+    expect(surface.projectTurns()[1]!.toolResults![0]!.output).toContain('result omitted')
+    expect(new ModelSurface(surface.getState()).projectTurns()).toEqual(surface.projectTurns())
+  })
   it('keeps unchanged history append-only and snapshots only changed state', () => {
     const surface = new ModelSurface()
     const turns = [turn('user-1', 'user', 'build it', 1)]

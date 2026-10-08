@@ -6,6 +6,8 @@ import type { AgentAttachment } from '@fluxos/contracts/agentTypes'
 import { PaginatedMcpSdkClient } from './paginatedClient'
 import type { McpLocalServerDefinition, McpLocalToolResult, McpServerConfig, McpToolCallOptions, McpToolInfo } from './types'
 import { McpOAuthProvider } from './oauth'
+import { searchMcpTools } from './toolSearch'
+import { validateSchemaValue } from '@fluxos/platform/schemaValidation'
 
 const INHERITED_ENV_ALLOWLIST = new Set([
   'PATH',
@@ -80,6 +82,7 @@ export class McpClient {
         serverName: name,
         instructions: definition.instructions,
         annotations: tool.annotations,
+        hostPolicy: tool.hostPolicy ? structuredClone(tool.hostPolicy) : undefined,
       })),
       status: 'connected',
       instructions: definition.instructions,
@@ -219,10 +222,16 @@ export class McpClient {
   }
 
   async callTool(serverName: string, toolName: string, args: Record<string, unknown>, options?: McpToolCallOptions): Promise<{ content: string; isError: boolean; attachments?: AgentAttachment[] }> {
+    if (options?.signal?.aborted) return { content: 'MCP call cancelled before dispatch', isError: true }
     const conn = this.connections.get(serverName)
     if (!conn || conn.status !== 'connected') {
       return { content: `MCP server "${serverName}" is not connected`, isError: true }
     }
+
+    const tool = conn.tools.find(candidate => candidate.name === `${serverName}__${toolName}`)
+    if (!tool) return { content: 'MCP tool is not in the current enabled catalog', isError: true }
+    const validation = validateSchemaValue(tool.inputSchema, args, '')
+    if (!validation.valid) return { content: `MCP tool arguments invalid: ${validation.error}`, isError: true }
 
     if (conn.localHandler) {
       if (conn.requiresSelection && !conn.enabledForRun) {
@@ -292,31 +301,9 @@ export class McpClient {
     return tools
   }
 
-  searchTools(query: string, limit = 8): McpToolInfo[] {
-    const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' })
-    const tokenize = (text: string) => [...segmenter.segment(text.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').normalize('NFKC').toLowerCase())]
-      .filter(segment => segment.isWordLike).map(segment => segment.segment)
-    const terms = [...new Set(tokenize(query))]
-    if (terms.length === 0) return []
-    const cap = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.floor(limit))) : 8
-    const documents = this.getAllTools().map(tool => ({
-      tool,
-      name: new Set(tokenize(`${tool.serverName} ${tool.name}`)),
-      body: new Set(tokenize(`${tool.description} ${tool.instructions || ''} ${JSON.stringify(tool.inputSchema || {})}`)),
-    }))
-    const weights = new Map(terms.map(term => {
-      const frequency = documents.filter(document => document.name.has(term) || document.body.has(term)).length
-      return [term, Math.log(1 + (documents.length + 0.5) / (frequency + 0.5))]
-    }))
-    return documents
-      .map((tool, index) => {
-        const score = terms.reduce((total, term) => total + (tool.name.has(term) ? 3 : tool.body.has(term) ? 1 : 0) * weights.get(term)!, 0)
-        return { tool: tool.tool, score, index }
-      })
-      .filter(entry => entry.score > 0)
-      .sort((left, right) => right.score - left.score || left.index - right.index)
-      .slice(0, cap)
-      .map(entry => entry.tool)
+  searchTools(query: string, limit = 8, options: { allowedNames?: ReadonlySet<string> } = {}): McpToolInfo[] {
+    const tools = this.getAllTools().filter(tool => !options.allowedNames || options.allowedNames.has(tool.name))
+    return searchMcpTools(tools, query, limit)
   }
 }
 

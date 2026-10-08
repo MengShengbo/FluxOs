@@ -1,3 +1,4 @@
+import { writeModelConfiguration } from '@fluxos/platform/modelConfigurationStorage'
 import { ConversationRuntimeRepositoryV2, persistedConversationFromProjectionV2 } from '@fluxos/conversations/conversations/conversationRuntimeRepositoryV2'
 import { ConversationRepositoryV2 } from '@fluxos/conversations/conversations/conversationRepositoryV2'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -30,7 +31,7 @@ async function sourceArchive(root: string, encrypted = false, includeExecutable 
   const workspacePath = join(root, 'source-workspace')
   mkdirSync(workspacePath, { recursive: true })
   const binding = new WorkspaceBindingService(layout, () => 10, () => 'workspace-12345678').ensureBound(workspacePath, 'Source Workspace')
-  writeFileSync(layout.configPath, JSON.stringify({ provider: 'custom', model: 'model-a', baseUrl: 'https://example.test/v1', approvalPolicy: 'ask', capabilityProfile: 'workspace-write', gitEnabled: true, apiConfigs: [] }))
+  writeModelConfiguration(layout.configRoot, { provider: 'custom', model: 'model-a', baseUrl: 'https://example.test/v1', approvalPolicy: 'ask', capabilityProfile: 'workspace-write', gitEnabled: true, apiConfigs: [] })
   writeFileSync(layout.projectsPath, JSON.stringify({ schemaVersion: 1, projects: [{ id: 'project-1', name: 'Source', path: workspacePath, pinned: true, tags: ['demo'], createdAt: 1, updatedAt: 2, lastOpenedAt: 2, available: true }] }))
   writeFileSync(layout.automationsPath, JSON.stringify({ schemaVersion: 2, automations: [{ id: 'automation-1', name: 'Never auto-run', enabled: true, status: 'active', workspacePath, activeRunId: 'run-1', pendingRunAt: 28, nextRunAt: 30, activeRuns: ['run-1'], history: [] }], approvals: [{ id: 'approval-1' }] }))
   if (includeExecutable) {
@@ -99,6 +100,54 @@ afterEach(() => {
 })
 
 describe('profile archive transactional importer', () => {
+  it.each(['staging', 'final', 'filename'] as const)('rejects a recovery journal with mismatched %s ownership without deleting data', async mismatch => {
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-recovery-owner-'))
+    directories.push(root)
+    const registry = targetRegistry(root)
+    const importer = new ProfileArchiveImporter({ registry })
+    const transactionId = 'import-owner-check'
+    const stagingRoot = join(registry.profilesRoot, `.staging-${transactionId}`)
+    const unrelatedRoot = join(root, 'unrelated')
+    mkdirSync(stagingRoot, { recursive: true })
+    mkdirSync(unrelatedRoot)
+    writeFileSync(join(unrelatedRoot, 'keep.txt'), 'user data')
+    mkdirSync(importer.journalRoot, { recursive: true })
+    const journalPath = join(importer.journalRoot, `${mismatch === 'filename' ? 'import-other' : transactionId}.json`)
+    writeFileSync(journalPath, JSON.stringify({
+      schemaVersion: 1, transactionId, phase: 'staging', profileId: 'profile-owner-check',
+      stagingRoot: mismatch === 'staging' ? unrelatedRoot : stagingRoot,
+      profilePayloadRoot: join(stagingRoot, 'profile'),
+      finalProfileRoot: mismatch === 'final' ? unrelatedRoot : join(registry.profilesRoot, 'profile-owner-check'),
+      archiveId: 'archive-owner-check', selectedComponents: [], createdAt: 1, updatedAt: 1,
+    }))
+    await expect(importer.recoverTransactions()).rejects.toThrow(/journal/i)
+    expect(readFileSync(join(unrelatedRoot, 'keep.txt'), 'utf8')).toBe('user data')
+    expect(existsSync(stagingRoot)).toBe(true)
+    expect(existsSync(journalPath)).toBe(true)
+  })
+
+  it('does not report a missing committed profile as success or discard its staging data', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-missing-commit-'))
+    directories.push(root)
+    const registry = targetRegistry(root)
+    const importer = new ProfileArchiveImporter({ registry })
+    const transactionId = 'import-missing-commit'
+    const stagingRoot = join(registry.profilesRoot, `.staging-${transactionId}`)
+    mkdirSync(stagingRoot, { recursive: true })
+    writeFileSync(join(stagingRoot, 'keep.txt'), 'recoverable data')
+    mkdirSync(importer.journalRoot, { recursive: true })
+    const journalPath = join(importer.journalRoot, `${transactionId}.json`)
+    writeFileSync(journalPath, JSON.stringify({
+      schemaVersion: 1, transactionId, phase: 'directory_committed', profileId: 'profile-missing-commit',
+      stagingRoot, profilePayloadRoot: join(stagingRoot, 'profile'),
+      finalProfileRoot: join(registry.profilesRoot, 'profile-missing-commit'),
+      archiveId: 'archive-missing-commit', selectedComponents: [], createdAt: 1, updatedAt: 1,
+    }))
+    await expect(importer.recoverTransactions()).rejects.toThrow(/profile/i)
+    expect(readFileSync(join(stagingRoot, 'keep.txt'), 'utf8')).toBe('recoverable data')
+    expect(existsSync(journalPath)).toBe(true)
+  })
+
   it('round trips Conversation V2 events while rebasing profile identity and requiring workspace binding', async () => {
     const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-conversation-v2-'))
     directories.push(root)
@@ -352,27 +401,20 @@ describe('profile archive transactional importer', () => {
     expect(readdirSync(importer.journalRoot)).toEqual([])
   })
 
-  it('reprotects credentials for the target device without preserving source ciphertext', async () => {
+  it('restores selected credentials into the ordinary model config', async () => {
     const root = mkdtempSync(join(tmpdir(), 'fluxagent-import-secret-'))
     directories.push(root)
     const archive = await sourceArchive(root, true)
     const registry = targetRegistry(root)
-    let plaintext: unknown
     const importer = new ProfileArchiveImporter({
       registry,
       createId: ids('transaction-secret', 'imported-secret'),
-      protectCredentials: credentials => {
-        plaintext = structuredClone(credentials)
-        return Buffer.from(JSON.stringify({ schemaVersion: 2, protected: true, payload: 'target-device-ciphertext' }))
-      },
     })
     const preview = await importer.inspect(archive.path, archive.password)
     const plan = importer.plan(archive.path, preview, { archiveId: preview.archiveId, displayName: 'Secrets', selectedComponents: ['credentials'] })
     const result = await importer.execute({ plan, password: archive.password })
-    expect(plaintext).toEqual({ apiKey: 'source-secret' })
-    const document = readFileSync(registry.context(result.profile.id).storage.credentialsPath, 'utf8')
-    expect(document).toContain('target-device-ciphertext')
-    expect(document).not.toContain('source-secret')
+    const document = readFileSync(registry.context(result.profile.id).storage.configPath, 'utf8')
+    expect(JSON.parse(document).apiKey).toBe('source-secret')
   })
 
   it('never materializes plaintext credential JSON in a recoverable staging transaction', async () => {
@@ -383,7 +425,6 @@ describe('profile archive transactional importer', () => {
     const importer = new ProfileArchiveImporter({
       registry,
       createId: ids('plan-secret-staging', 'transaction-secret-staging', 'imported-secret-staging'),
-      protectCredentials: credentials => Buffer.from(JSON.stringify(credentials)),
       faultAfterPhase: 'staging',
     })
     const preview = await importer.inspect(archive.path, archive.password)

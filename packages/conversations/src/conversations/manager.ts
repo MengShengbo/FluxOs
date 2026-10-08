@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { isDeepStrictEqual } from 'node:util'
 import type { AgentEngine, AgentEventType } from '@fluxos/agent-runtime/agentEngine'
 import type { FluxAgentConfig } from '@fluxos/models/config'
 import { mergeModelRequest, summarizeModelRequests, type ModelUsageSummary } from '@fluxos/contracts/modelUsage'
@@ -30,7 +31,8 @@ import { SessionRegistry } from '@fluxos/agent-runtime/runtime/sessionRegistry'
 import { writeConversationRecoveryBundle } from './recoveryExport'
 import { redactComputerAgentEvent, redactComputerConversation } from '../privacy/computerPrivacy'
 import { ConversationInteractionStoreV2 } from './conversationInteractionStoreV2'
-import { ConversationRuntimeRepositoryV2 } from './conversationRuntimeRepositoryV2'
+import { ConversationRuntimeRepositoryV2, type CanonicalConversationContext } from './conversationRuntimeRepositoryV2'
+import { redactComputerContextSegments } from '@fluxos/contracts/computerPrivacy'
 import { generatedConversationTitle, normalizeConversationTitleText } from '@fluxos/presentation/conversationTitle'
 
 export type ConversationPersistenceStatusHandler = (error: Error | null) => void
@@ -85,6 +87,7 @@ export class ConversationManager {
   private readonly canonicalEventIds = new Set<string>()
   private canonicalLastSeq = 0
   private canonicalPersistenceActive = false
+  private pendingCanonicalEvent: AnyConversationEvent | null = null
   private readonly customTitles = new Map<string, string>()
   private readonly generatedTitles = new Map<string, string>()
   private readonly conversationCatalog: ConversationCatalog
@@ -137,6 +140,7 @@ export class ConversationManager {
       this.canonicalEventIds.clear()
       this.canonicalLastSeq = 0
       this.canonicalPersistenceActive = false
+      this.pendingCanonicalEvent = null
     })
   }
 
@@ -186,24 +190,47 @@ export class ConversationManager {
     }
     if (!Number.isInteger(event.seq) || event.seq < 1) throw new Error(`Invalid canonical conversation event sequence: ${event.seq}`)
     if (this.canonicalEventIds.has(event.eventId)) return false
+    if (this.pendingCanonicalEvent && !isDeepStrictEqual(event, this.pendingCanonicalEvent)) {
+      throw new Error(`Canonical conversation event ${this.pendingCanonicalEvent.eventId} is pending persistence; retry it before accepting another event`)
+    }
     if (this.canonicalLastSeq > 0 && event.seq !== this.canonicalLastSeq + 1) {
       throw new Error(`Canonical conversation event expected seq ${this.canonicalLastSeq + 1}, received ${event.seq}`)
     }
     const persistEvent = this.hasPersistableConversationState() || event.type === 'run.started'
-    this.canonicalEventIds.add(event.eventId)
-    this.canonicalEvents.push(structuredClone(event))
-    this.recordModelRequest(event)
-    this.canonicalLastSeq = event.seq
-    this.markSnapshotDirty()
-    if (!persistEvent) return true
-    this.canonicalPersistenceActive = Boolean(this.runtimeRepositoryV2)
-    if (this.runtimeRepositoryV2) {
-      this.runtimeRepositoryV2.appendCanonical(event, this.buildConversation())
-      return true
+    // Prepare the owned copy before I/O. A failed durable append must not advance
+    // the dedupe/sequence boundary or expose uncommitted usage to consumers.
+    const committedEvent = structuredClone(event)
+    const modelRequest = committedEvent.type === 'model.request_updated'
+      ? mergeModelRequest(this.modelRequests.get(committedEvent.payload.request.id), committedEvent.payload.request)
+      : undefined
+    if (persistEvent && this.runtimeRepositoryV2) {
+      try {
+        this.runtimeRepositoryV2.appendCanonical(committedEvent,
+          () => this.buildCanonicalContext(event.type === 'context.compaction', committedEvent))
+      } catch (error) {
+        this.pendingCanonicalEvent = committedEvent
+        this.reportPersistenceFailure(error)
+        throw (error instanceof Error ? error : new Error(String(error)))
+      }
+      this.canonicalPersistenceActive = true
+      this.pendingCanonicalEvent = null
+    } else if (persistEvent) {
+      this.ensureJournal()
+      const streaming = event.type === 'stream.delta' || event.type === 'tool.delta'
+      // Standalone journals own their buffering/retry policy. Do not consume the
+      // ID if the journal rejects admission; its health still reports queued I/O.
+      if (!this.append({ version: 3, type: 'canonical_event', timestamp: event.at, event: committedEvent }, streaming ? 'streaming' : 'terminal')) return false
     }
-    this.ensureJournal()
-    const streaming = event.type === 'stream.delta' || event.type === 'tool.delta'
-    return this.append({ version: 3, type: 'canonical_event', timestamp: event.at, event }, streaming ? 'streaming' : 'terminal')
+    this.canonicalEventIds.add(committedEvent.eventId)
+    this.canonicalEvents.push(committedEvent)
+    if (modelRequest) {
+      this.modelRequests.set(modelRequest.id, modelRequest)
+      this.modelUsageSummary = undefined
+    }
+    this.canonicalLastSeq = committedEvent.seq
+    this.markSnapshotDirty()
+    if (persistEvent && this.runtimeRepositoryV2) this.reportPersistenceSuccess()
+    return true
   }
 
   replaceCanonicalEvents(events: readonly AnyConversationEvent[]): void {
@@ -409,13 +436,13 @@ export class ConversationManager {
       clearTimeout(this.saveTimer)
       this.saveTimer = null
     }
-    if (!this.hasPersistableConversationState()) return
+    // Saving a projection or metadata is not a retry of the failed canonical fact.
+    if (this.pendingCanonicalEvent || !this.hasPersistableConversationState()) return
     if (!compact && this.snapshotRevision === this.persistedSnapshotRevision) return
-    const conv = this.buildConversation()
     if (this.runtimeRepositoryV2) {
       try {
-        if (this.canonicalPersistenceActive) this.runtimeRepositoryV2.synchronizeMetadata(conv)
-        else this.runtimeRepositoryV2.persist(conv)
+        if (this.canonicalPersistenceActive) this.runtimeRepositoryV2.synchronizeMetadata(this.buildCanonicalContext())
+        else this.runtimeRepositoryV2.persist(this.buildConversation())
         this.persistedSnapshotRevision = this.snapshotRevision
         this.lastPersistedSnapshotHash = snapshotRevisionHash(this.snapshotRevision)
         this.reportPersistenceSuccess()
@@ -424,6 +451,7 @@ export class ConversationManager {
       }
       return
     }
+    const conv = this.buildConversation()
     try {
       this.ensureJournal()
       this.journalWriter.flush(true)
@@ -460,6 +488,7 @@ export class ConversationManager {
         throw (error instanceof Error ? error : new Error(String(error)))
       }
     }
+    const conv = this.buildConversation()
     try {
       this.ensureJournal()
       this.journalWriter.flush(true)
@@ -652,7 +681,7 @@ export class ConversationManager {
       status: error ? 'degraded' : 'healthy',
       error,
       degradedAt: this.persistenceDegradedAt ?? writerHealth.failedAt,
-      pendingRecoveryEntries: writerHealth.pendingRecoveryEntries,
+      pendingRecoveryEntries: writerHealth.pendingRecoveryEntries + (this.pendingCanonicalEvent ? 1 : 0),
       pendingStreamingEntries: writerHealth.pendingStreamingEntries,
     }
   }
@@ -664,9 +693,9 @@ export class ConversationManager {
   retryPersistence(): ConversationPersistenceHealth {
     if (this.runtimeRepositoryV2) {
       try {
-        const conversation = this.buildConversation()
-        if (this.canonicalPersistenceActive) this.runtimeRepositoryV2.synchronizeMetadata(conversation)
-        else this.runtimeRepositoryV2.persist(conversation)
+        if (this.pendingCanonicalEvent) this.recordCanonicalEvent(this.pendingCanonicalEvent)
+        if (this.canonicalPersistenceActive) this.runtimeRepositoryV2.synchronizeMetadata(this.buildCanonicalContext())
+        else this.runtimeRepositoryV2.persist(this.buildConversation())
         this.reportPersistenceSuccess()
       } catch (error) {
         this.reportPersistenceFailure(error)
@@ -698,6 +727,7 @@ export class ConversationManager {
       exportedAt: this.now(),
       readOnlyRecovery: true,
       conversation: this.buildConversation(),
+      pendingCanonicalEvents: this.pendingCanonicalEvent ? [structuredClone(this.pendingCanonicalEvent)] : [],
       persistence: {
         status: health.status,
         error: health.error,
@@ -808,6 +838,24 @@ export class ConversationManager {
     }
   }
 
+  private buildCanonicalContext(includeContext = false, pendingEvent?: AnyConversationEvent): CanonicalConversationContext {
+    const session = this.engine.getSession()
+    return {
+      id: this.currentId,
+      title: this.customTitles.get(this.currentId) || this.generatedTitles.get(this.currentId)
+        || this.buildTitle(this.engine.getFullConversationTurns(), pendingEvent),
+      titleSource: this.customTitles.has(this.currentId) ? 'custom' : 'generated',
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt ?? this.now(),
+      mode: session.mode,
+      model: this.config.model,
+      provider: this.config.provider,
+      ...(includeContext ? {
+        contextSegments: redactComputerContextSegments(this.engine.getContextSegments(), this.engine.getFullConversationTurns()),
+      } : {}),
+    }
+  }
+
   private buildConversation(): PersistedConversation {
     const session = this.engine.getSession()
     const fullTurns = this.engine.getFullConversationTurns()
@@ -897,8 +945,9 @@ export class ConversationManager {
     return session.updatedAt ?? session.createdAt ?? this.now()
   }
 
-  private buildTitle(turns: AgentTurn[]): string {
+  private buildTitle(turns: AgentTurn[], pendingEvent?: AnyConversationEvent): string {
     const canonicalObjective = this.canonicalEvents.find(event => event.type === 'run.started')?.payload.objective
+      ?? (pendingEvent?.type === 'run.started' ? pendingEvent.payload.objective : undefined)
     const source = turns.find(turn => turn.role === 'user')?.content
       || canonicalObjective
       || this.interactionState.queuedInputs[0]?.prompt
@@ -968,11 +1017,14 @@ export class ConversationManager {
 
   private append(entry: ConversationJournalEntry, durability: JournalDurability): boolean {
     if (this.runtimeRepositoryV2) {
+      if (this.pendingCanonicalEvent) {
+        if (durability === 'critical') throw (this.persistenceError ?? new Error('Canonical persistence is pending'))
+        return false
+      }
       if (durability === 'streaming') return true
       try {
-        const conversation = this.buildConversation()
-        if (this.canonicalPersistenceActive) this.runtimeRepositoryV2.synchronizeMetadata(conversation)
-        else this.runtimeRepositoryV2.persist(conversation)
+        if (this.canonicalPersistenceActive) this.runtimeRepositoryV2.synchronizeMetadata(this.buildCanonicalContext())
+        else this.runtimeRepositoryV2.persist(this.buildConversation())
         this.reportPersistenceSuccess()
         return true
       } catch (error) {
@@ -1005,6 +1057,7 @@ export class ConversationManager {
   }
 
   private reportPersistenceSuccess(): void {
+    if (this.pendingCanonicalEvent) return
     if (!this.persistenceError) return
     this.persistenceError = null
     this.persistenceDegradedAt = null

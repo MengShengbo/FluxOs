@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import type { ToolCall } from '@fluxos/contracts/agentTypes'
+import { toolInvocationKey } from '@fluxos/contracts/toolResultData'
 
 export const CONVERSATION_V2_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
 export const CONVERSATION_V2_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
@@ -28,6 +30,10 @@ export function stableConversationV2Id(kind: string, ...parts: Array<string | nu
 
 export function normalizeConversationV2Id(kind: string, value: string): string {
   return isConversationV2Uuid(value) ? value.toLowerCase() : stableConversationV2Id(kind, value)
+}
+
+export function conversationToolCallId(callId: string, identity?: ToolCall['operationIdentity']): string {
+  return identity ? stableConversationV2Id('tool-operation', toolInvocationKey(callId, identity)) : normalizeConversationV2Id('tool', callId)
 }
 
 export function scopedConversationV2Id(kind: string, value: string): string {

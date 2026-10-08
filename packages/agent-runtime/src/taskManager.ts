@@ -24,6 +24,14 @@ export interface ActiveTaskContext {
   startedAt: number
 }
 
+/** An observer failed after the manager had already applied the mutation. */
+export class TaskNotificationError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause })
+    this.name = 'TaskNotificationError'
+  }
+}
+
 export class TaskManager {
   private tasks: Map<string, TaskNode> = new Map()
   private rootIds: string[] = []
@@ -858,7 +866,11 @@ export class TaskManager {
 
   private emit(event: TaskEvent): void {
     for (const listener of this.listeners) {
-      listener(event)
+      try {
+        listener(event)
+      } catch (error) {
+        throw new TaskNotificationError(error)
+      }
     }
   }
 }

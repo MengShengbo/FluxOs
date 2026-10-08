@@ -78,15 +78,16 @@ export function applyConversationViewEvent(current: ConversationViewState, event
   }
   const next: ConversationViewState = { ...current, flow: applyTaskFlowEvent(flow, event) }
   if (event.type === 'execution.updated') {
-    next.execution = {
-      ...event.payload.snapshot,
-      currentRunId: flow.activeRunId || null,
-      runs: event.payload.snapshot.runs.flatMap(run => {
-        const previous = current.execution.runs.find(candidate => candidate.id === run.id)
-        if (run.id !== flow.activeRunId && ['pending', 'running', 'waiting', 'paused'].includes(run.status)) return previous ? [previous] : []
-        return [run]
-      }),
+    const update = event.payload.update
+    const runs = new Map(current.execution.runs.filter(run => update.retainedRunIds.includes(run.id)).map(run => [run.id, run]))
+    for (const run of update.runs) {
+      const previous = runs.get(run.id)
+      if (run.id !== flow.activeRunId && ['pending', 'running', 'waiting', 'paused'].includes(run.status)) continue
+      const activities = {...previous?.activities, ...run.activities}
+      for (const id of update.removedActivityIds[run.id] ?? []) delete activities[id]
+      runs.set(run.id, {...run, activities})
     }
+    next.execution = {schemaVersion: 1, currentRunId: flow.activeRunId || null, runs: [...runs.values()]}
   }
   if (event.type === 'run.state_changed') {
     next.runState = event.payload.state

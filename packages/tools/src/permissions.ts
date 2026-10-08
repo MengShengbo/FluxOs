@@ -1,5 +1,6 @@
 import type { ApprovalPolicy } from '@fluxos/contracts/agentTypes'
-import { browserPermissionGrantGroup } from '@fluxos/contracts/browserToolPresentation'
+import { browserPermissionGrantGroup, browserToolNeedsApproval } from '@fluxos/contracts/browserToolPresentation'
+import type { ToolPermissionContext } from '@fluxos/contracts/toolAccess'
 import { computerPermissionGrantGroup, computerToolApprovalLevel } from '@fluxos/contracts/computerToolPresentation'
 import type { PermissionRule, PermissionCheckResult, PermissionVerdict } from '@fluxos/contracts/toolTypes'
 import { createHash } from 'node:crypto'
@@ -69,17 +70,24 @@ export class PermissionPipeline {
     return this.approvalPolicy
   }
 
-  check(toolName: string, args: Record<string, unknown>): PermissionCheckResult {
+  getExplicitDeny(toolName: string, args: Record<string, unknown>): PermissionCheckResult | undefined {
+    const rule = this.rules.find(candidate => candidate.verdict === 'deny' && this.matchesRule(candidate, toolName, args))
+    return rule ? { verdict: 'deny', rule, reason: rule.reason } : undefined
+  }
+
+  check(toolName: string, args: Record<string, unknown>, context: ToolPermissionContext = {}): PermissionCheckResult {
     const decide = (result: PermissionCheckResult): PermissionCheckResult => ({
       ...result,
       decisionId: `policy_${Date.now().toString(36)}_${(++this.decisionSequence).toString(36)}`,
     })
+    const explicitDeny = this.getExplicitDeny(toolName, args)
+    if (explicitDeny) return decide(explicitDeny)
     if (toolName === 'run_command' || toolName === 'write_terminal') {
       const denyResult = this.checkDenyCommandPatterns(args)
       if (denyResult) return decide(denyResult)
     }
 
-    const computerApprovalLevel = computerToolApprovalLevel(toolName, args)
+    const computerApprovalLevel = context.trustedHostTool ? computerToolApprovalLevel(toolName, args) : null
     if (computerApprovalLevel === 'deny') {
       return decide({ verdict: 'deny', reason: 'Computer action is blocked by the built-in safety policy' })
     }
@@ -93,11 +101,13 @@ export class PermissionPipeline {
       return decide({ verdict: 'ask', reason: 'Computer actions require a fresh one-time approval before changing an application' })
     }
 
-    if (this.hasSessionGrant(toolName, args)) {
+    if (context.trustedHostTool && browserToolNeedsApproval(toolName) === false) return decide({ verdict: 'allow' })
+
+    if (this.hasSessionGrant(toolName, args, context)) {
       return decide({ verdict: 'allow', reason: 'Previously approved this session' })
     }
 
-    if (this.hasRunGrant(toolName, args)) {
+    if (this.hasRunGrant(toolName, args, context)) {
       return decide({ verdict: 'allow', reason: 'Previously approved for this run' })
     }
 
@@ -136,26 +146,26 @@ export class PermissionPipeline {
     return decide({ verdict: 'allow' })
   }
 
-  grantSession(toolName: string, args: Record<string, unknown>): void {
-    const computerApprovalLevel = computerToolApprovalLevel(toolName, args)
-    const group = permissionGrantGroup(toolName, args)
+  grantSession(toolName: string, args: Record<string, unknown>, context: ToolPermissionContext = {}): void {
+    const computerApprovalLevel = context.trustedHostTool ? computerToolApprovalLevel(toolName, args) : null
+    const group = permissionGrantGroup(toolName, args, context)
     if (computerApprovalLevel !== null && (computerApprovalLevel !== 'policy' || !group)) return
     if (group) {
       this.sessionGrants.set(`group:${group}`, Date.now())
       return
     }
-    this.sessionGrants.set(`${toolName}:${this.computeFingerprint(toolName, args)}`, Date.now())
+    this.sessionGrants.set(this.grantKey(toolName, args, context), Date.now())
   }
 
-  grantRun(toolName: string, args: Record<string, unknown>): void {
-    const computerApprovalLevel = computerToolApprovalLevel(toolName, args)
-    const group = permissionGrantGroup(toolName, args)
+  grantRun(toolName: string, args: Record<string, unknown>, context: ToolPermissionContext = {}): void {
+    const computerApprovalLevel = context.trustedHostTool ? computerToolApprovalLevel(toolName, args) : null
+    const group = permissionGrantGroup(toolName, args, context)
     if (computerApprovalLevel !== null && (computerApprovalLevel !== 'policy' || !group)) return
     if (group) {
       this.runGrants.set(`group:${group}`, Date.now())
       return
     }
-    this.runGrants.set(`${toolName}:${this.computeFingerprint(toolName, args)}`, Date.now())
+    this.runGrants.set(this.grantKey(toolName, args, context), Date.now())
   }
 
   grantCommandPattern(pattern: string): void {
@@ -232,26 +242,29 @@ export class PermissionPipeline {
     ].includes(toolName)
   }
 
-  private hasSessionGrant(toolName: string, args: Record<string, unknown>): boolean {
-    const computerApprovalLevel = computerToolApprovalLevel(toolName, args)
-    const group = permissionGrantGroup(toolName, args)
+  private hasSessionGrant(toolName: string, args: Record<string, unknown>, context: ToolPermissionContext): boolean {
+    const computerApprovalLevel = context.trustedHostTool ? computerToolApprovalLevel(toolName, args) : null
+    const group = permissionGrantGroup(toolName, args, context)
     if (computerApprovalLevel !== null) {
       return computerApprovalLevel === 'policy' && Boolean(group && this.sessionGrants.has(`group:${group}`))
     }
     if (group && this.sessionGrants.has(`group:${group}`)) return true
-    const fingerprint = this.computeFingerprint(toolName, args)
-    return this.sessionGrants.has(`${toolName}:${fingerprint}`)
+    return this.sessionGrants.has(this.grantKey(toolName, args, context))
   }
 
-  private hasRunGrant(toolName: string, args: Record<string, unknown>): boolean {
-    const computerApprovalLevel = computerToolApprovalLevel(toolName, args)
-    const group = permissionGrantGroup(toolName, args)
+  private hasRunGrant(toolName: string, args: Record<string, unknown>, context: ToolPermissionContext): boolean {
+    const computerApprovalLevel = context.trustedHostTool ? computerToolApprovalLevel(toolName, args) : null
+    const group = permissionGrantGroup(toolName, args, context)
     if (computerApprovalLevel !== null) {
       return computerApprovalLevel === 'policy' && Boolean(group && this.runGrants.has(`group:${group}`))
     }
     if (group && this.runGrants.has(`group:${group}`)) return true
-    const fingerprint = this.computeFingerprint(toolName, args)
-    return this.runGrants.has(`${toolName}:${fingerprint}`)
+    return this.runGrants.has(this.grantKey(toolName, args, context))
+  }
+
+  private grantKey(toolName: string, args: Record<string, unknown>, context: ToolPermissionContext): string {
+    const source = toolName.includes('__') ? context.trustedHostTool ? 'host:' : 'external:' : ''
+    return `${source}${toolName}:${this.computeFingerprint(toolName, args)}`
   }
 
   private computeFingerprint(toolName: string, args: Record<string, unknown>): string {
@@ -275,7 +288,7 @@ export class PermissionPipeline {
 
   private matchesRule(rule: PermissionRule, toolName: string, args: Record<string, unknown>): boolean {
     if (rule.toolPattern.includes('*')) {
-      const regex = new RegExp('^' + rule.toolPattern.replace(/\*/g, '.*') + '$')
+      const regex = new RegExp('^' + rule.toolPattern.split('*').map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$')
       if (!regex.test(toolName)) return false
     } else if (rule.toolPattern !== toolName) {
       return false
@@ -295,9 +308,8 @@ export class PermissionPipeline {
   }
 }
 
-function permissionGrantGroup(toolName: string, args: Record<string, unknown>): string | undefined {
-  return computerPermissionGrantGroup(toolName, args)
-    || browserPermissionGrantGroup(toolName)
+function permissionGrantGroup(toolName: string, args: Record<string, unknown>, context: ToolPermissionContext): string | undefined {
+  return (context.trustedHostTool ? computerPermissionGrantGroup(toolName, args) || browserPermissionGrantGroup(toolName) : undefined)
     || SESSION_GRANT_GROUPS.get(toolName)
 }
 

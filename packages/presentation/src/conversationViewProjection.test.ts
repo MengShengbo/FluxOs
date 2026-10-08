@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentRunState } from '@fluxos/contracts/agentTypes'
+import type { CommandProcessOutcome } from '@fluxos/contracts/toolResultData'
 import type { WorkRun } from '@fluxos/contracts/workExecutionTypes'
 import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import { createTaskFlowProjection } from './taskFlowProjection'
+import { WorkProjectionEngine } from './workProjection'
 import { applyConversationViewEvent, applyConversationViewSnapshot, type ConversationViewState } from './conversationViewProjection'
 
 const run: WorkRun = {
@@ -21,9 +23,48 @@ const event = (seq: number, type: AnyConversationEvent['type'], payload: unknown
 } as AnyConversationEvent)
 
 describe('canonical conversation view', () => {
+  it.each([
+    [{ state: 'exited', exitCode: 7 }, [0], 'failed'],
+    [{ state: 'exited', exitCode: 1 }, [0, 1], 'completed'],
+    [{ state: 'signaled', signal: 'SIGTERM' }, [0], 'failed'],
+    [{ state: 'timed_out', exitCode: null }, [0], 'failed'],
+    [{ state: 'aborted', exitCode: null }, [0], 'cancelled'],
+    [{ state: 'running' }, [0], 'completed'],
+  ] satisfies Array<[CommandProcessOutcome, number[], string]>)('projects and replays typed command %j in both views', (process, expectedExitCodes, status) => {
+    const events = [
+      event(1, 'run.started', {}),
+      { ...event(2, 'tool.proposed', { toolCall: { id: 'command', name: 'run_command', arguments: {} } }), itemId: 'command' },
+      { ...event(3, 'tool.completed', { toolResult: { toolCallId: 'command', name: 'run_command', output: 'captured', isError: false,
+        data: { kind: 'command', stdout: '', process, expectedExitCodes } } }), itemId: 'command' },
+    ]
+    const live = events.reduce(applyConversationViewEvent, initial())
+    const replayed = (JSON.parse(JSON.stringify(events)) as typeof events).reduce(applyConversationViewEvent, initial())
+    expect(replayed).toEqual(live)
+    expect(Object.values(live.flow.nodes).filter(node => node.kind === 'tool')).toEqual([
+      expect.objectContaining({ status, settled: true }),
+    ])
+    const work = new WorkProjectionEngine('conversation')
+    events.forEach(value => work.apply(value))
+    expect(Object.values(work.getSnapshot().nodes).filter(node => node.kind === 'tool')).toEqual([
+      expect.objectContaining({ status, settled: true }),
+    ])
+  })
+  it('merges changed activities without dropping earlier results and applies removals', () => {
+    let view = applyConversationViewEvent(initial(), event(1, 'run.started', {}))
+    const activity = {id: 'old', runId: run.id, kind: 'tool' as const, title: 'read_file', status: 'completed' as const, attempt: 1, startedAt: 1, updatedAt: 2, result: 'retained result'}
+    const first = {...run, activities: {old: activity}}
+    view = applyConversationViewEvent(view, event(2, 'execution.updated', {update: {currentRunId: run.id, retainedRunIds: [run.id], runs: [first], removedActivityIds: {}}}))
+    const next = {...run, activities: {fresh: {...activity, id: 'fresh', result: 'new result'}}}
+    view = applyConversationViewEvent(view, event(3, 'execution.updated', {update: {currentRunId: run.id, retainedRunIds: [run.id], runs: [next], removedActivityIds: {}}}))
+    expect(view.execution.runs[0].activities.old).toBe(activity)
+    expect(view.execution.runs[0].activities.fresh.result).toBe('new result')
+    view = applyConversationViewEvent(view, event(4, 'execution.updated', {update: {currentRunId: run.id, retainedRunIds: [run.id], runs: [{...run, activities: {}}], removedActivityIds: {[run.id]: ['old']}}}))
+    expect(Object.keys(view.execution.runs[0].activities)).toEqual(['fresh'])
+  })
+
   it.each(['completed', 'partial', 'failed', 'cancelled'] as const)('settles %s timing, transcript, and composer in one event', status => {
     let view = applyConversationViewEvent(initial(), event(1, 'run.started', {}))
-    view = applyConversationViewEvent(view, event(2, 'execution.updated', { snapshot: { schemaVersion: 1, currentRunId: run.id, runs: [run] } }))
+    view = applyConversationViewEvent(view, event(2, 'execution.updated', { update: { currentRunId: run.id, retainedRunIds: [run.id], runs: [run], removedActivityIds: {} } }))
     const completed: WorkRun = { ...run, status, phase: status, updatedAt: 248_000, completedAt: 248_000, executionSegments: [run.executionSegments![0], { startedAt: 200_000, endedAt: 248_000, outcome: status === 'cancelled' ? 'stopped' : status === 'partial' ? 'interrupted' : status }] }
     const state: AgentRunState = { phase: status === 'failed' ? 'recoverable_error' : 'completed', startedAt: 1_000, updatedAt: 248_000 }
     const next = applyConversationViewEvent(view, event(3, 'run.completed', { outcome: status, run: completed, state }))
@@ -59,7 +100,7 @@ describe('canonical conversation view', () => {
     const completed = { ...run, status: 'completed', completedAt: 248_000 }
     view = applyConversationViewEvent(view, event(2, 'run.completed', { outcome: 'completed', run: completed }))
     view = applyConversationViewEvent(view, event(3, 'run.state_changed', { state: { phase: 'thinking', updatedAt: 300_000 } }))
-    view = applyConversationViewEvent(view, event(4, 'execution.updated', { snapshot: { schemaVersion: 1, currentRunId: run.id, runs: [run] } }))
+    view = applyConversationViewEvent(view, event(4, 'execution.updated', { update: { currentRunId: run.id, retainedRunIds: [run.id], runs: [run], removedActivityIds: {} } }))
     expect(view.status).toBe('ready')
     expect(view.execution.runs[0]).toEqual(completed)
     expect(view.flow.activeRunId).toBeUndefined()

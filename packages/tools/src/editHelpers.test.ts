@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { applyEdit, stripLineNumberPrefix } from './editHelpers'
 
 describe('stripLineNumberPrefix', () => {
-  it('returns empty string for undefined', () => {
-    expect(stripLineNumberPrefix(undefined)).toBe('')
+  it.each([undefined, null, 0, false, {}])('rejects non-string input %j rather than converting it to a deletion', value => {
+    expect(() => stripLineNumberPrefix(value as unknown as string)).toThrow(TypeError)
   })
 
   it('returns empty string unchanged', () => {
@@ -46,6 +46,9 @@ describe('stripLineNumberPrefix', () => {
 })
 
 describe('applyEdit', () => {
+  it.each([undefined, null, 0, false, {}])('rejects invalid new content %j', value => {
+    expect(applyEdit('hello', 'hello', value as unknown as string, false, 'a.ts')).toEqual({ error: expect.stringContaining('new_string must be a string') })
+  })
   it('replaces a unique occurrence and reports 1 replacement', () => {
     const result = applyEdit('hello world', 'world', 'there', false, 'a.ts')
     expect(result).toEqual({ content: 'hello there', replacements: 1 })

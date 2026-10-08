@@ -11,7 +11,7 @@ import type {
 } from './agentTypes'
 import type { ContextCompactionState } from './stateTypes'
 import type { WorkflowSurfaceSpec } from './workflowSurfaceTypes'
-import type { WorkExecutionSnapshot, WorkRun } from './workExecutionTypes'
+import type { WorkExecutionUpdate, WorkRun } from './workExecutionTypes'
 
 export const CONVERSATION_EVENT_SCHEMA_VERSION = 1 as const
 
@@ -26,7 +26,7 @@ export interface ConversationEventPayloadMap {
   'run.started': { objective?: string }
   'run.state_changed': { state: AgentRunState }
   'run.completed': { outcome: ConversationRunOutcome; error?: string; run?: WorkRun; state?: AgentRunState }
-  'execution.updated': { snapshot: WorkExecutionSnapshot }
+  'execution.updated': { update: WorkExecutionUpdate }
   'turn.started': { turn: AgentTurn }
   'turn.completed': { turn: AgentTurn }
   'step.started': { index: number; model?: string; protocol?: string }

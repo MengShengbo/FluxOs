@@ -86,7 +86,7 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Never reread the same region merely to obtain raw text for an edit')
     expect(prompt).toContain('Do not rerun a successful check unless a later edit can affect it')
     expect(prompt).toContain('chain them in one run_command')
-    expect(prompt).toContain('Every call must include display_kind and a short display_title')
+    expect(prompt).toContain('display_kind and display_title are optional')
   })
 
   it('enforces Codex-style low response density by default', () => {

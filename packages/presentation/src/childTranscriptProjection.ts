@@ -1,3 +1,4 @@
+import { toolInvocationKey, toolResultExecutionStatus } from '@fluxos/contracts/toolResultData'
 import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import type { ChildTranscriptItem } from '@fluxos/contracts/childAgentTypes'
 
@@ -33,7 +34,8 @@ export function projectChildTranscript(records: readonly ChildTranscriptItem[]):
     const name = record.kind === 'tool_call' ? record.toolCall.name : record.toolResult.name
     if (name === 'set_response_mode') continue
     const callId = record.kind === 'tool_call' ? record.toolCall.id : record.toolResult.toolCallId
-    const key = record.executionId + ':' + callId
+    const identity = record.kind === 'tool_call' ? record.toolCall.operationIdentity : record.toolResult.operationIdentity
+    const key = record.executionId + ':' + toolInvocationKey(callId, identity)
     let activity = tools.get(key)
     if (!activity) {
       activity = { call: record.kind === 'tool_call' ? record.toolCall : { id: callId, name, arguments: {} } }
@@ -64,6 +66,6 @@ export function childToolGroupLabel(tools: readonly ChildToolActivity[]): string
   }
   const settled = tools.every(tool => tool.result)
   const text = [...counts].map(([verb, count]) => verb + (count > 1 ? ` ${count} 次` : '')).join('、')
-  const failures = tools.filter(tool => tool.result?.isError).length
+  const failures = tools.filter(tool => tool.result && toolResultExecutionStatus(tool.result) === 'failed').length
   return (settled ? '已' : '正在') + text + (failures ? ` · ${failures} 项未完成` : '')
 }

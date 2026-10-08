@@ -1,10 +1,19 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { WebSourceStore, formatWebSources } from './webSourceStore'
 
 describe('model-visible source coverage', () => {
+  it.each(['url', 'text', 'id'] as const)('rejects a persisted source with corrupted %s instead of presenting it as fetched evidence', field => {
+    const folder = mkdtempSync(join(tmpdir(), 'tf-web-sources-'))
+    try {
+      const source = new WebSourceStore(folder).save({ url: 'https://official.test/page', title: 'Official', retrievedAt: '2026-10-07', text: 'Fetched evidence', truncated: false })
+      writeFileSync(join(folder, source.id + '.json'), JSON.stringify({ ...source, [field]: 'forged' }))
+      expect(() => new WebSourceStore(folder).read(source.id)).toThrow('Invalid stored web source')
+    } finally { rmSync(folder, { recursive: true, force: true }) }
+  })
+
   it('preserves each source and locates omitted middle evidence in the same durable version', () => {
     const folder = mkdtempSync(join(tmpdir(), 'tf-web-sources-'))
     try {

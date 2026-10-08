@@ -1,3 +1,4 @@
+import { toolInvocationKey, toolResultExecutionStatus } from '@fluxos/contracts/toolResultData'
 import type { AgentRunPhase, AgentTurn, TaskNode, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import { isBuiltInBrowserTool } from '@fluxos/contracts/browserToolPresentation'
 import { isBuiltInComputerTool } from '@fluxos/contracts/computerToolPresentation'
@@ -20,7 +21,7 @@ const ACTIVE_PHASES = new Set<AgentRunPhase>(['thinking', 'compacting', 'tool_ru
 const RECOVERED_ACTIVE_STATUSES = new Set<WorkRunStatus>(['pending', 'running', 'waiting', 'paused'])
 
 function cloneActivity(activity: WorkActivity): WorkActivity {
-  return { ...activity, metadata: activity.metadata ? { ...activity.metadata } : undefined }
+  return { ...activity, ...(activity.process ? { process: { ...activity.process } } : {}), metadata: activity.metadata ? { ...activity.metadata } : undefined }
 }
 
 function cloneStep(step: WorkStep): WorkStep {
@@ -214,7 +215,7 @@ export class WorkExecutionTracker {
       && activity.metadata?.signature === signature)
     const now = Date.now()
     const activity: WorkActivity = {
-      id: `activity-${toolCall.id}`,
+      id: `activity-${toolInvocationKey(toolCall.id, toolCall.operationIdentity)}`,
       runId: run.id,
       stepId,
       kind: activityKind(toolCall.name),
@@ -227,30 +228,50 @@ export class WorkExecutionTracker {
       metadata: { arguments: toolCall.arguments, signature },
     }
     run.activities[activity.id] = activity
-    this.toolActivityIds.set(toolCall.id, activity.id)
+    this.toolActivityIds.set(toolInvocationKey(toolCall.id, toolCall.operationIdentity), activity.id)
     run.updatedAt = now
     return activity
   }
 
   finishTool(result: ToolResult): WorkActivity | null {
     const run = this.currentRun()
-    const activityId = this.toolActivityIds.get(result.toolCallId)
+    const activityId = this.toolActivityIds.get(toolInvocationKey(result.toolCallId, result.operationIdentity))
     if (!run || !activityId) return null
     const activity = run.activities[activityId]
     if (!activity) return null
     const now = Date.now()
-    const failed = result.isError === true
-    const recoveredAttempt = !failed && Object.values(run.activities).some(candidate =>
+    const status = toolResultExecutionStatus(result)
+    const failed = status === 'failed'
+    const recoveredAttempt = status === 'completed' && Object.values(run.activities).some(candidate =>
       candidate.id !== activity.id
       && candidate.stepId === activity.stepId
       && candidate.title === activity.title
       && candidate.path === activity.path
       && candidate.status === 'failed')
-    activity.status = failed ? 'failed' : recoveredAttempt ? 'recovered' : 'completed'
+    activity.status = recoveredAttempt ? 'recovered' : status
     activity.updatedAt = now
-    activity.completedAt = now
-    if (failed) activity.error = result.output
-    else activity.result = result.output
+    if (status === 'running') delete activity.completedAt
+    else activity.completedAt = now
+    if (result.data?.kind === 'command') {
+      activity.process = structuredClone(result.data.process)
+      activity.commandSessionId = result.data.sessionId
+      if (result.data.sessionId) {
+        // A terminal observation settles the originating launch, including after history replay.
+        for (const observedRun of this.runs) for (const candidate of Object.values(observedRun.activities)) {
+          if (candidate.id === activity.id || candidate.commandSessionId !== result.data.sessionId) continue
+          candidate.process = structuredClone(result.data.process)
+          candidate.status = status
+          candidate.updatedAt = now
+          observedRun.updatedAt = now
+          if (status !== 'running') candidate.completedAt = now
+          else delete candidate.completedAt
+          if (failed) { candidate.error = result.output; delete candidate.result }
+          else { candidate.result = result.output; delete candidate.error }
+        }
+      }
+    }
+    if (failed) { activity.error = result.output; delete activity.result }
+    else { activity.result = result.output; delete activity.error }
     run.updatedAt = now
     return activity
   }
@@ -292,16 +313,24 @@ export class WorkExecutionTracker {
         && turn.role === 'assistant'
         && (!turn.metadata?.workRunId || turn.metadata.workRunId === target.id)
       ))
-      const unfinishedTasks = manager.getTasksForWorkRun(target.id).some(task => (
+      const tasks = manager.getTasksForWorkRun(target.id)
+      const cancelledTasks = tasks.filter(task => task.metadata?.workControlOutcome === 'cancel')
+      const failedTasks = tasks.filter(task => task.status === 'failed' && task.metadata?.workControlOutcome !== 'cancel')
+      const hasSuccess = tasks.some(task => task.status === 'completed')
+      const unfinishedTasks = tasks.some(task => (
         task.status === 'pending' || task.status === 'in_progress'
       ))
       const unfinishedActivities = Object.values(target.activities).some(activity => activity.status === 'running')
       const incomplete = lastAssistant?.metadata?.interrupted === true || unfinishedTasks || unfinishedActivities
-      target.status = incomplete ? 'partial' : 'completed'
-      target.phase = incomplete ? 'partial' : 'completed'
+      target.status = cancelledTasks.length > 0 ? hasSuccess ? 'partial' : 'cancelled'
+        : failedTasks.length > 0 ? hasSuccess ? 'partial' : 'failed'
+        : incomplete ? 'partial' : 'completed'
+      target.phase = target.status
+      if (failedTasks[0]?.error) target.error = failedTasks[0].error
       target.completedAt = completedAt
       target.updatedAt = completedAt
-      this.finishSegment(target, incomplete ? 'interrupted' : 'completed', completedAt)
+      this.finishSegment(target, target.status === 'cancelled' ? 'stopped'
+        : target.status === 'partial' ? 'interrupted' : target.status, completedAt)
     }
     for (const turn of turns) {
       if (turn.role === 'user' && turn.metadata?.internal !== true) {

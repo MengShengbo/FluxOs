@@ -2,6 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { SubAgentBudget } from './subAgentBudget'
 
 describe('SubAgentBudget', () => {
+  it('admits the registered last request, rejects the next, and excludes other owners and runs', () => {
+    const budget = new SubAgentBudget({ maxRequestsPerRun: 1, maxTokensPerRun: 0 })
+    const task = { ownerSessionId: 'current', workRunId: 'run', status: 'running' as const, startedAt: Date.now(), requests: 1 }
+    const input = { ownerSessionId: 'current', workRunId: 'run', tasks: [task,
+      { ...task, ownerSessionId: 'other', requests: 1000 }, { ...task, workRunId: 'other', requests: 1000 }] }
+    expect(budget.checkModelRequest(input)).toEqual({ allowed: true })
+    task.requests++
+    expect(budget.checkModelRequest(input)).toMatchObject({ allowed: false, code: 'subagent_request_budget' })
+    budget.configure({ maxRequestsPerRun: 0 })
+    expect(budget.checkModelRequest(input)).toEqual({ allowed: true })
+  })
+
   it('rejects spawns that exceed concurrency, run, time, queue, token, or request budgets', () => {
     const budget = new SubAgentBudget({
       maxParallelPerSession: 1,

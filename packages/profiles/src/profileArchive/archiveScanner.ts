@@ -287,7 +287,6 @@ function componentWarnings(componentId: ArchiveComponentId): ArchiveWarning[] {
   if (componentId === 'automations') return [{ code: 'IMPORTED_DISABLED', severity: 'warning', message: '自动化导入后保持禁用，且不会恢复活动任务。' }]
   if (componentId === 'plugins.packages' || componentId === 'skills.user') return [{ code: 'IMPORTED_CODE_REVIEW', severity: 'danger', message: '可执行内容导入后等待人工检查。' }]
   if (componentId === 'mcp.configurations') return [{ code: 'IMPORTED_DISCONNECTED', severity: 'danger', message: 'MCP 导入后保持断开，并需要重新授权。' }]
-  if (componentId === 'credentials') return [{ code: 'SECRET_REPROTECTION', severity: 'warning', message: '凭据仅在导入期间短暂解密，并由目标设备重新保护。' }]
   return []
 }
 

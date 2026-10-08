@@ -253,6 +253,8 @@ export async function writeFileAtomic(filePath: string, content: string, options
   beforeCommit?: () => void
   lockPath?: string
   expectNotExists?: boolean
+  /** Observes namespace publication independently of later sync/lock failures. */
+  onPublicationState?: (state: 'publishing' | 'published') => void
 }): Promise<void> {
   const directory = dirname(filePath)
   const tempPath = join(directory, `.${basename(filePath)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`)
@@ -270,13 +272,19 @@ export async function writeFileAtomic(filePath: string, content: string, options
     if (options?.lockPath) {
       withFileLockSync(options.lockPath, () => {
         options.beforeCommit?.()
+        options.onPublicationState?.('publishing')
         if (options.expectNotExists) linkSync(tempPath, filePath)
         else renameSync(tempPath, filePath)
+        options.onPublicationState?.('published')
       })
     } else if (options?.expectNotExists) {
+      options.onPublicationState?.('publishing')
       await fsPromises.link(tempPath, filePath)
+      options.onPublicationState?.('published')
     } else {
+      options?.onPublicationState?.('publishing')
       await fsPromises.rename(tempPath, filePath)
+      options?.onPublicationState?.('published')
     }
     if (process.platform !== 'win32') {
       const directoryHandle = await fsPromises.open(directory, 'r')

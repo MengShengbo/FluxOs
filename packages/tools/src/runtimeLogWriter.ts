@@ -1,5 +1,7 @@
-import { appendFile, mkdir, rename, rm, stat } from 'node:fs/promises'
+import { appendFile, mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
+import { runtimeLogSegments, type RuntimeLogSegment } from './runtimeLogSegments'
 
 export interface RuntimeLogWriterOptions {
   maxFileBytes?: number
@@ -29,8 +31,13 @@ export class RuntimeLogWriter {
   private readonly maxFiles: number
   private readonly batchBytes: number
   private readonly highWaterBytes: number
+  private activePath: string
+  private activeStart = 0
+  private segments: RuntimeLogSegment[] = []
+  private readonly decoders = { stdout: new StringDecoder('utf8'), stderr: new StringDecoder('utf8') }
 
   constructor(private readonly path: string, private readonly options: RuntimeLogWriterOptions = {}) {
+    this.activePath = path
     this.maxFileBytes = Math.max(1024, options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES)
     this.maxFiles = Math.max(1, options.maxFiles ?? DEFAULT_MAX_FILES)
     this.batchBytes = Math.max(1024, options.batchBytes ?? DEFAULT_BATCH_BYTES)
@@ -40,16 +47,21 @@ export class RuntimeLogWriter {
   append(channel: 'stdout' | 'stderr', data: Buffer | string, sequence?: number): boolean {
     if (this.failed) return true
     if (this.closing || this.closed) return false
+    const text = typeof data === 'string' ? this.decoders[channel].end() + data : this.decoders[channel].write(data)
+    if (text) this.enqueue(channel, text, sequence)
+    return this.queuedBytes < this.highWaterBytes
+  }
+
+  private enqueue(channel: 'stdout' | 'stderr', text: string, sequence?: number): void {
     const record = `${JSON.stringify({
       timestamp: Date.now(),
       channel,
-      data: data.toString(),
+      data: text,
       ...(typeof sequence === 'number' ? { seq: sequence } : {}),
     })}\n`
     this.queue.push(record)
     this.queuedBytes += Buffer.byteLength(record)
     void this.drain()
-    return this.queuedBytes < this.highWaterBytes
   }
 
   async flush(): Promise<void> {
@@ -59,6 +71,12 @@ export class RuntimeLogWriter {
 
   async close(): Promise<void> {
     if (this.closed) return
+    if (!this.closing && !this.failed) {
+      for (const channel of ['stdout', 'stderr'] as const) {
+        const tail = this.decoders[channel].end()
+        if (tail) this.enqueue(channel, tail)
+      }
+    }
     this.closing = true
     await this.flush()
     this.closed = true
@@ -68,11 +86,11 @@ export class RuntimeLogWriter {
     if (this.initialized) return
     this.initialized = true
     await mkdir(dirname(this.path), { recursive: true })
-    try {
-      this.fileBytes = (await stat(this.path)).size
-    } catch {
-      this.fileBytes = 0
-    }
+    this.segments = runtimeLogSegments(this.path)
+    const last = this.segments.at(-1)
+    this.activePath = last?.path ?? this.path
+    this.activeStart = last?.start ?? 0
+    this.fileBytes = last?.size ?? 0
   }
 
   private async drain(): Promise<void> {
@@ -93,8 +111,12 @@ export class RuntimeLogWriter {
         if (this.fileBytes > 0 && this.fileBytes + batchSize > this.maxFileBytes) {
           await this.rotate()
         }
-        await appendFile(this.path, batch.join(''), { encoding: 'utf8', mode: 0o600 })
+        await appendFile(this.activePath, batch.join(''), { encoding: 'utf8', mode: 0o600 })
         this.fileBytes += batchSize
+        if (this.segments.at(-1)?.path !== this.activePath) this.segments.push({ path: this.activePath, start: this.activeStart, size: 0 })
+        this.segments.at(-1)!.size = this.fileBytes
+        // Publish the new segment before evicting retained data. Never rename/reuse a cursor's file.
+        while (this.segments.length > this.maxFiles) await rm(this.segments.shift()!.path, { force: true })
         if (this.queuedBytes < this.highWaterBytes) this.options.onDrain?.()
       }
     } catch (error) {
@@ -115,15 +137,8 @@ export class RuntimeLogWriter {
   }
 
   private async rotate(): Promise<void> {
-    await rm(`${this.path}.${this.maxFiles}`, { force: true })
-    for (let index = this.maxFiles - 1; index >= 1; index -= 1) {
-      try {
-        await rename(`${this.path}.${index}`, `${this.path}.${index + 1}`)
-      } catch {}
-    }
-    try {
-      await rename(this.path, `${this.path}.1`)
-    } catch {}
+    this.activeStart += this.fileBytes
+    this.activePath = `${this.path}.offset-${this.activeStart}`
     this.fileBytes = 0
   }
 }

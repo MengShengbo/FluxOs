@@ -13,6 +13,7 @@ import {
 import { AutomationRepository } from './automationRepository'
 import { AutomationService, type AutomationClaim, type AutomationRecord, type AutomationRunRecord } from './automationService'
 import { captureAutomationWorkspaceIdentity, createAutomationCheckpoint } from './automationCheckpoint'
+import type { AutomationWorkspaceScanLimits } from './automationTypes'
 
 const directories: string[] = []
 
@@ -804,12 +805,15 @@ describe('AutomationCoordinator recovery decisions', () => {
 
   async function createReviewRun(options: {
     secretAvailable?: () => boolean
-    classification?: 'idempotent_write' | 'non_idempotent_write'
+    classification?: 'idempotent_write' | 'non_idempotent_write' | 'unknown_external_effect'
     status?: 'interrupted' | 'needs_review'
+    initiallyDirty?: boolean
+    checkpointLimits?: Partial<AutomationWorkspaceScanLimits>
   } = {}) {
     const now = Date.parse('2026-09-01T06:00:00.000Z')
     const harness = createHarness(now, options.secretAvailable ? { hasSecretRef: () => options.secretAvailable!() } : {})
     const workspacePath = createGitWorkspace(harness.root)
+    if (options.initiallyDirty) writeFileSync(join(workspacePath, 'README.md'), 'already dirty at checkpoint\n')
     const automation = harness.service.create({
       name: 'Review recovery',
       prompt: 'Continue only after explicit review',
@@ -842,7 +846,7 @@ describe('AutomationCoordinator recovery decisions', () => {
         artifactIds: ['artifact-draft'],
       },
       reason: 'approval',
-      workspaceIdentity: captureAutomationWorkspaceIdentity(workspacePath),
+      workspaceIdentity: captureAutomationWorkspaceIdentity(workspacePath, options.checkpointLimits),
       now,
     }))
     harness.service.recordApproval({
@@ -928,10 +932,11 @@ describe('AutomationCoordinator recovery decisions', () => {
     expect(pool.claims).toHaveLength(1)
   })
 
-  it('revalidates a queued automatic recovery and fails closed after workspace drift', async () => {
+  it.each([false, true])('revalidates queued recovery after content drift (initially dirty: %s)', async initiallyDirty => {
     const { repository, service, pool, run, automation } = await createReviewRun({
       classification: 'idempotent_write',
       status: 'interrupted',
+      initiallyDirty,
     })
     service.cancelApproval('approval-review', Date.now())
     service.markRunStatus(automation.id, run.id, 'interrupted', {
@@ -953,6 +958,37 @@ describe('AutomationCoordinator recovery decisions', () => {
       error: { code: 'automation_recovery_validation_failed', retryable: false },
     })
     expect(service.getRun(automation.id, run.id)).toMatchObject({ status: 'needs_review' })
+    expect(pool.claims).toHaveLength(1)
+  })
+
+  it.each(['non_idempotent_write', 'unknown_external_effect'] as const)(
+    'requires review for %s even when workspace coverage is complete', async classification => {
+      const { repository, service, pool, run, automation } = await createReviewRun({ classification, status: 'interrupted' })
+      expect(repository.getLatestCheckpoint(run.id)?.workspaceCoverage.issues).toEqual([])
+      service.cancelApproval('approval-review', Date.now())
+      const restarted = new AutomationCoordinator(service, repository, pool, { ownerId: 'effect-review' })
+      restarted.initialize()
+      expect(repository.getRun(run.id)).toMatchObject({ status: 'needs_review', error: { retryable: false } })
+      await restarted.tick(Date.now())
+      expect(service.getRun(automation.id, run.id)?.status).toBe('needs_review')
+      expect(pool.claims).toHaveLength(1)
+    },
+  )
+
+  it('persists incomplete coverage and blocks automatic retry even when a later scan can finish', async () => {
+    const { repository, service, pool, run } = await createReviewRun({
+      classification: 'idempotent_write', status: 'interrupted', checkpointLimits: { maxEntries: 0 },
+    })
+    expect(repository.getLatestCheckpoint(run.id)).toMatchObject({
+      resumable: false,
+      nonResumableReason: expect.stringContaining('budget_exceeded'),
+      workspaceCoverage: { issues: [{ code: 'budget_exceeded', path: '.' }] },
+    })
+    service.cancelApproval('approval-review', Date.now())
+    const restarted = new AutomationCoordinator(service, repository, pool, { ownerId: 'incomplete-review' })
+    restarted.initialize()
+    expect(repository.getRun(run.id)).toMatchObject({ status: 'needs_review', error: { retryable: false } })
+    await restarted.tick(Date.now())
     expect(pool.claims).toHaveLength(1)
   })
 })

@@ -20,6 +20,11 @@ export class WebSourceStore {
     if (!/^web-[a-f0-9]{32}$/.test(id)) throw new Error('Invalid web source ID')
     const record = this.memory.get(id) || (this.directory ? JSON.parse(readFileSync(join(this.directory, id + '.json'), 'utf8')) as StoredSource : undefined)
     if (!record) throw new Error('Web source unavailable; fetch the page again')
+    if (record.id !== id || typeof record.url !== 'string' || typeof record.text !== 'string'
+      || typeof record.title !== 'string' || typeof record.retrievedAt !== 'string' || typeof record.truncated !== 'boolean'
+      || 'web-' + createHash('sha256').update(record.url + '\0' + record.text).digest('hex').slice(0, 32) !== id) {
+      throw new Error('Invalid stored web source; fetch the page again')
+    }
     const count = Math.max(200, Math.min(12000, Math.floor(limit) || 6000))
     const match = query?.trim() ? record.text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase(), Math.max(0, offset)) : -1
     const start = Math.max(0, Math.min(record.text.length, match >= 0 ? match - 500 : Math.floor(offset) || 0))

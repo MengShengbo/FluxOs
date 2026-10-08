@@ -5,16 +5,19 @@ import { validateSchemaValue } from '@fluxos/platform/schemaValidation'
 
 export function mcpToolToAgentTool(tool: McpToolInfo): AgentTool {
   const params = extractParameters(tool.inputSchema)
-  const isReadOnly = tool.annotations?.readOnlyHint === true
-  const isDestructive = isReadOnly ? false : tool.annotations?.destructiveHint !== false
+  // Remote annotations cannot establish read-only execution or concurrency safety.
+  const isReadOnly = tool.hostPolicy?.isReadOnly === true
+  const isDestructive = tool.hostPolicy?.isDestructive !== false
   return {
     name: tool.name,
+    access: { source: tool.hostPolicy ? 'host' : 'external', exposure: 'deferred', output: 'ToolResult',
+      resources: tool.hostPolicy?.resources ?? [{ kind: 'external', access: 'unknown', scope: 'external' }] },
     description: `[MCP:${tool.serverName}] ${tool.description}${tool.instructions ? `\nServer guidance: ${tool.instructions.slice(0, 512)}` : ''}`,
     category: isReadOnly ? 'read' : 'execute',
     parameters: params,
     isReadOnly,
     isDestructive,
-    isConcurrencySafe: isReadOnly && tool.annotations?.openWorldHint !== true,
+    isConcurrencySafe: isReadOnly && tool.hostPolicy?.isConcurrencySafe === true,
     inputSchema: tool.inputSchema,
   }
 }
@@ -58,7 +61,7 @@ export function getMcpAgentTools(mcpClient: McpClient): AgentTool[] {
   return mcpClient
     .getAllTools()
     .map(mcpToolToAgentTool)
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
 }
 
 export function isMcpTool(toolName: string): boolean {

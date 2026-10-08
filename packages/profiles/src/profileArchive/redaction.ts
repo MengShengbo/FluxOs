@@ -14,6 +14,8 @@ export interface ExportRedactionPolicy {
 const SECRET_KEY_PATTERN = /(?:api[-_]?key|access[-_]?token|refresh[-_]?token|authorization|password|passwd|secret|cookie|private[-_]?key|client[-_]?secret|webhook[-_]?secret)/iu
 const DEVICE_KEY_PATTERN = /^(?:installationId|remoteIdentity|pairedDevices|grants|controlLeases|browserSession|terminalPid|windowBounds|debugPort)$/u
 const SECRET_VALUE_PATTERNS = [
+  /"(?:api[-_]?key|access[-_]?token|refresh[-_]?token|authorization|password|passwd|secret|cookie|private[-_]?key|client[-_]?secret|webhook[-_]?secret)"\s*:\s*"(?:\\.|[^"\\])+"/giu,
+  /\b(?:Authorization|Proxy-Authorization|Cookie|Set-Cookie)\s*:[^\r\n]+/giu,
   /\bBearer\s+[A-Za-z0-9._~+/-]{12,}={0,2}\b/giu,
   /\bsk-[A-Za-z0-9_-]{12,}\b/gu,
   /\b(?:api[_-]?key|token|secret|password)\s*[:=]\s*["']?[^\s,"']{8,}/giu,

@@ -201,7 +201,7 @@ describe('subagent orchestration reliability', () => {
     reconcileSubAgentSteps(tasks, runtime.subAgentTaskManager.listTasks())
     expect(tasks.getTask(step.id)?.status).toBe('in_progress')
     const blocked = await engine.dispatchTool('update_task', { task_id: step.id, status: 'completed' }, 'update')
-    expect(blocked).toContain('Required child results')
+    expect(blocked).toMatchObject({ isError: true, errorKind: 'validation', output: expect.stringContaining('Required child results') })
     expect(tasks.getTask(step.id)?.status).toBe('in_progress')
     release(success('SIBLING_DONE'))
     await sibling.promise

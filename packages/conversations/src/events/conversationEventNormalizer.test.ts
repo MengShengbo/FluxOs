@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentEventType } from '@fluxos/agent-runtime/agentEngine'
 import type { AgentSession, AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
+import type { WorkRun } from '@fluxos/contracts/workExecutionTypes'
 import { ConversationEventLog } from './conversationEventLog'
 import { ConversationEventNormalizer } from './conversationEventNormalizer'
 
@@ -38,6 +39,33 @@ function append(log: ConversationEventLog, events: ReturnType<ConversationEventN
 }
 
 describe('ConversationEventNormalizer', () => {
+  it('does not duplicate the full task tree and tool history in canonical runtime events', () => {
+    const normalizer = new ConversationEventNormalizer('conversation-1')
+    normalizer.startRun({runId: 'run-1'})
+    expect(normalizer.normalizeAgent({type: 'active:task', context: null})).toEqual([])
+    expect(normalizer.normalizeAgent({type: 'task:update', taskId: 'task', status: 'completed', progress: 100})).toEqual([])
+    expect(normalizer.normalizeAgent({type: 'task:system', context: null, tree: []})).toEqual([])
+  })
+
+  it('sends each large tool result once and resets activity baselines on activation', () => {
+    const normalizer = new ConversationEventNormalizer('conversation-1')
+    normalizer.startRun({runId: 'run-1'})
+    const run: WorkRun = {id: 'run-1', conversationId: 'conversation-1', objective: 'Read', presentation: 'work', status: 'running', phase: 'tool_running', rootStepIds: [], steps: {}, activities: {}, startedAt: 1, updatedAt: 2}
+    const old = {id: 'old', runId: run.id, kind: 'tool' as const, title: 'read_file', status: 'completed' as const, attempt: 1, startedAt: 1, updatedAt: 2, result: 'x'.repeat(100_000)}
+    const update = (current: WorkRun) => normalizer.normalizeAgent({type: 'work:execution', snapshot: {schemaVersion: 1, currentRunId: run.id, runs: [current]}}).find(event => event.type === 'execution.updated')!
+    const first = update({...run, activities: {old}})
+    expect(first.payload.update.runs[0].activities.old.result).toHaveLength(100_000)
+    const second = update({...run, updatedAt: 3, activities: {old: {...old}, fresh: {...old, id: 'fresh', result: 'small'}}})
+    expect(Object.keys(second.payload.update.runs[0].activities)).toEqual(['fresh'])
+    expect(JSON.stringify(second)).not.toContain('x'.repeat(100))
+    const third = update({...run, activities: {fresh: {...old, id: 'fresh', result: 'corrected'}}})
+    expect(third.payload.update.removedActivityIds[run.id]).toEqual(['old'])
+    expect(third.payload.update.runs[0].activities.fresh.result).toBe('corrected')
+    normalizer.activate('conversation-1')
+    normalizer.startRun({runId: 'run-1'})
+    expect(update({...run, activities: {old}}).payload.update.runs[0].activities.old.result).toHaveLength(100_000)
+  })
+
   it('normalizes an ordinary send into one ordered run, turn, step, stream, and terminal lifecycle', () => {
     const normalizer = new ConversationEventNormalizer('conversation-1')
     const log = new ConversationEventLog('conversation-1')

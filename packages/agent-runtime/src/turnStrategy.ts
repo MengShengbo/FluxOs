@@ -1,3 +1,4 @@
+import { toolResultExecutionStatus } from '@fluxos/contracts/toolResultData'
 import type { AgentMode, AgentSession, AgentTurn, ToolResult } from '@fluxos/contracts/agentTypes'
 
 export type TurnIntent = 'model_decides'
@@ -28,7 +29,7 @@ function recentToolErrors(turns: AgentTurn[]): ToolResult[] {
   for (const turn of turns.slice(-8)) {
     if (!turn.toolResults) continue
     for (const result of turn.toolResults) {
-      if (result.isError) errors.push(result)
+      if (toolResultExecutionStatus(result) === 'failed') errors.push(result)
     }
   }
   return errors

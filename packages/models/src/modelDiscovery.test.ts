@@ -25,6 +25,20 @@ describe('model discovery', () => {
     rmSync(configDir, { recursive: true, force: true })
   })
 
+  it('preserves explicit custom Responses capability without inferring it from ordinary tools', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ data: [
+      { id: 'enabled', capabilities: { tools: true, responses_custom_tools: true } },
+      { id: 'disabled', capabilities: { tools: true, responses_custom_tools: false } },
+      { id: 'unknown', capabilities: { tools: true } },
+    ] })))
+    const { discoverModelPresets } = await import('./modelDiscovery')
+    const { createEmptyConfig } = await import('./config')
+    const result = await discoverModelPresets({ ...createEmptyConfig(), provider: 'custom', apiKey: 'fixture', baseUrl: 'https://gateway.example/v1', model: 'enabled' })
+    expect(result.models.find(model => model.model === 'enabled')?.capabilities?.responsesCustomTools).toBe(true)
+    expect(result.models.find(model => model.model === 'disabled')?.capabilities?.responsesCustomTools).toBe(false)
+    expect(result.models.find(model => model.model === 'unknown')?.capabilities?.responsesCustomTools).toBeUndefined()
+  })
+
   it('uses rich gateway metadata and caches it per API profile', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
       data: [{

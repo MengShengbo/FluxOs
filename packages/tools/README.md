@@ -1,5 +1,115 @@
 # @fluxos/tools
 
+`ToolOperationStore` persists exclusive invocation intents and immutable settlement summaries without raw arguments or outputs. It rejects unresolved or previously settled identities; it does not deduplicate independent requests or promise global exactly-once effects. See [operation receipt architecture](../../docs/architecture/tool-operation-receipts.md).
+
+See [tool access and execution admission](../../docs/architecture/tool-access.md) for exhaustive resource declarations, input/output contracts, approval precedence and the limits of metadata versus executor enforcement.
+
 Tool execution, search, memory, permissions and runtime processes.
 
 Use the declared package exports. Source belongs to this package; do not import sibling source or build directories. See [package architecture](../../docs/architecture/packages.md) for ownership and dependency rules.
+
+## Bounded file and result continuation
+
+`read_file` keeps its numbered line view and offers an exact UTF-8 byte mode: start with `{path, byte_offset: 0}`, then use the returned `nextOffset` and `source_version`. Offsets are zero-based and end offsets are exclusive. Byte mode preserves BOM, CRLF and Unicode without cutting code points; it rejects invalid UTF-8 and offsets inside a character. Do not combine byte parameters with line `offset`/`limit`. Byte pages default to 16 KiB and cap at 32 KiB; nonzero offsets require the initial version.
+
+The Node adapter rechecks canonical capability paths on every byte page and validates the opened file and current path before returning data. A version binds canonical path, device, inode, size, mtime and ctime; replacement or observed changes reject continuation, including same-size rewrites whose mtime was restored. This is filesystem revision detection, not a cryptographic full-content snapshot or protection against a privileged writer manipulating filesystem metadata. Line previews now accumulate from 16 KiB stream chunks with a bounded buffer, including when a physical line is enormous. Line mode normalizes line endings; byte mode is the exact-text route.
+
+`read_tool_result` reads a saved text snapshot of an oversized result without rerunning the original tool. Its `outputSource` metadata supplies source ID, UTF-16 offsets and expiry; follow `nextOffset`, which never splits a surrogate pair. The Engine checks current source-tool policy for each page. Pages cap at 16,000 code units; cache limits are 32 entries, 1,000,000 code units per entry including source arguments, and 4,000,000 in total. Oldest entries are evicted and sources expire after 10 minutes or session restore/reset/destruction. Missing references fail explicitly. Over-budget sources are not partially saved, and their previews state that no full snapshot exists.
+
+Output limits cover successful and failed calls, including thrown exceptions. Original execution status and receipts remain separate from successful reading of the evidence. Computer evidence cannot enter this generic store because doing so would bypass its special persistence redaction. Sources are process-local inspection aids, not durable artifacts. These byte/text limits do not measure model tokens or complete serialized request size.
+
+## Stable workspace search pages
+
+`search_files` and `search_content` perform one ripgrep capture per fresh query. Pass the returned `nextCursor` as `cursor` with the same query, canonical scope, mode and filters; omit `offset`. The page size may change. Cursor pages deserialize only selected saved records and do not start another process. `offset` skips entries in a **new** scan and must not be used for stable continuation.
+
+Each `NodeToolExecutor` owns its cache. `snapshot` contains an opaque ID, the capture start time (`capturedAt`), expiry, and `consistency: captured_results`. Every page warns that later filesystem changes are absent: this is a capture of ordered ripgrep results, **not an atomic filesystem snapshot or live view**. Omit `cursor` to refresh. Signed cursors bind every search option other than page size, offset and signal; tampering, mismatched searches, cross-executor reuse, expiration and eviction fail explicitly. Canonical capability resolution and current Engine policy still run before a saved page is returned. Reopened conversation history retains capture metadata; a new executor does not restore its cache.
+
+Capture limits remain 8 MiB per process output stream and 15 seconds, with cancellation waiting for process close. Cache limits are 8 captures, 5 minutes, an 8 MiB accounted entry budget and a 32 MiB aggregate budget. Accounting covers UTF-16 serialized records, keys and conservative bookkeeping; it is not a promise about total process RSS or transient parsing allocations. Oldest captures are evicted. Records that do not fit are not retained; `result_budget` makes the inaccessible remainder explicit. Pages default to 50 records, cap at 500 and use a 24,000-character rendered-evidence budget (one indivisible record may exceed it).
+
+`truncated` can mean more saved pages or incomplete capture; `nextCursor` identifies accessible pages, while `incompleteReasons` distinguishes `capture_budget`, `timeout`, `path_error`, `decode_error` and `result_budget`. `totalIsExact: false` is not evidence of absence. Content previews retain their independent `textTruncated` flag. Path, files-only, matching-line count and content modes preserve ripgrep ignore policy and deterministic traversal; internal version-control directories and environment secrets remain excluded.
+
+## Shell scheduling
+
+`run_command` is always serial within one tool-call scheduling sequence. Shell prefixes such as `echo`, `cat`, `git diff` or `Get-Content` do not establish read-only behavior: flags, redirects, substitutions, functions and chained commands can have side effects. The registry does not parse a dangerous-command blacklist or upgrade a shell string to concurrency-safe. Use structured tools such as `read_file`, `list_directory` and `search_content` for declared safe parallel reads; the orchestrator keeps write barriers between batches.
+
+This scheduling rule is not a sandbox or a workspace-wide lock. An explicitly backgrounded command can continue after its tool call returns, and separate sessions/agents may still share external resources. Their process lifecycle and resource ownership require their own controls.
+
+## Command outcomes
+
+`run_command.expected_exit_codes` defaults to `[0]`. An invocation may explicitly allow a query's no-match exit, for example `[0, 1]` for `grep`; the runtime never guesses success from the executable's name. The list accepts 1–16 integer codes in 0–255 (duplicates are harmless). Foreground and background runtime-task views apply the same invocation policy.
+
+`Result<CommandOutput>.success` describes whether execution/capture returned a result; a captured nonzero exit or signal is retained with its actual code or signal. Spawn/capture failures, timeout and cancellation remain explicit. A missing exit code is `null`, never a fabricated `0` or `1`. Timeout/abort can finish after a bounded cleanup attempt without a confirmed child close; `exitCode: null` records this uncertainty rather than proving termination.
+
+Agent command results contain `process` (`running`, `exited`, `signaled`, `timed_out`, `aborted`, `execution_failed` or `unknown`) and `expectedExitCodes`. `ToolResult.isError` is the invocation/capture error flag; `toolResultExecutionStatus()` also evaluates process facts. `toolResultCallStatus()` settles a returned background launch/poll independently of its still-running process. A later terminal observation updates the originating WorkActivity, including canonical replay, without rewriting the launch's historical ToolResult. No current process observation means no inferred successful exit.
+
+These are execution facts, not task acceptance. They do not prove the objective, tests or artifact quality. Semantic WorkStep/WorkRun updates and the existing model-conclusion policy remain separate. The policy is not a guarantee of independently verified task completion.
+
+## Command input schema
+
+The model-facing `env` parameter uses `[{"name":"KEY","value":"text"}]` entries in ordinary OpenAI, strict OpenAI and Anthropic schemas. This represents nonempty overrides with closed objects; arbitrary-key dictionaries are not part of the current tool interface. The executor API still receives a native string record after validation. Empty values and Unicode are preserved; exact duplicate names use the last value. Empty names, names containing `=`/NUL, values containing NUL and undeclared entry fields are rejected. Platform environment-name rules still apply.
+
+Only `command` is semantically required for a command invocation. `display_kind`, `display_title` and `display_detail` are optional. Strict-format optional fields are nullable, since that protocol still requires every schema key to be present. The host uses the supplied category/title when present, a service category for a valid localhost preview URL, or generic work labels otherwise; it does not infer safety or claim the objective from shell text. Both foreground and background runtime tasks receive the resolved presentation.
+
+Schema required fields are checked by own-property presence. An explicit null is accepted only when its property schema permits it; built-in runtime admission also accepts null for optional parameters as strict-protocol omission. Inherited JavaScript properties never satisfy required fields or closed-object membership.
+
+## Presence, empty content and field constraints
+
+Missing own keys or `undefined` are absent. A required string set to `null` is a type error, not a missing value. Every supplied non-null value, including `""`, passes through its field schema; optional fields cannot bypass type, enum or length constraints with an empty string.
+
+`write_file.content` and `replace_file.content` allow `""` to write exactly zero bytes. `edit_file.new_content` and `multi_edit.edits[].new_string` allow `""` to delete the exact matched text. Old text must be nonempty; every edit requires both old and new string fields. Prefix stripping rejects non-strings instead of turning missing replacements into deletions. Multi-edit still preflights all steps and writes once with the existing concurrent-change hash check.
+
+Paths, commands, patch text, search patterns, identifiers, titles and required instructions have explicit nonempty constraints. A path is not trimmed, so legal names containing spaces keep their bytes. `list_directory` requires a path (`"."` means root). Optional search paths may be omitted/null for the workspace root; an explicit empty path is invalid. `file_pattern` is the declared search filter; no `glob` alias is accepted.
+
+Required work lists (`multi_edit.edits`, `create_tasks.tasks`, `web_fetch.urls`) must contain an item. Git path lists and expected exit codes retain their existing nonempty constraints. Empty optional collections such as `env`, task dependencies and search-domain filters mean no extra entries. Single and batch task descriptions may be empty when the title fully states the work; titles remain nonempty. These constraints are emitted in ordinary OpenAI, strict OpenAI and Anthropic schemas and checked locally; this is not a claim of live-provider conformance.
+
+## Structured patch locations
+
+The patch envelope is `*** Begin Patch` / `*** End Patch`, with `*** Add File: path`, `*** Delete File: path` or `*** Update File: path` and optional `*** Move to: path`. Update lines use space (context), `-` (removal) and `+` (addition). Unmarked blank content, arbitrary `@@...` headers, Markdown fences and whitespace-padded markers are rejected. This is an explicitly supported grammar, not a promise to accept every Codex parser extension or a general unified diff.
+
+- `@@` finds unique exact old context at or after the source cursor. Hunks are resolved against the original file in source order; later hunks cannot target newly generated text or move backward.
+- `@@ <exact source line>` requires a unique literal anchor after the cursor and advances immediately past it. Consecutive anchor-only headers can navigate class/method lines. This is text matching, not AST symbol resolution. Exact context adjacent to a unique anchor selects that occurrence; nonadjacent repeated context still fails instead of guessing.
+- `*** End of File` ends the final hunk for one file and requires its old context to match the original suffix. Pure additions append; the marker cannot be followed by more hunks or body lines for that file.
+- The explicit location extension `@@ -start,oldCount +newStart,newCount @@` uses a 1-based original start (0 means before the first line) and checks declared counts, range, source order and exact old text. `newStart` is informational; this extension does not implement the complete unified-diff positioning convention. Locations outside the file are rejected, never clamped.
+
+All files and hunks are preflighted before the current executor performs target writes. This does not make a multi-file commit atomic; per-effect receipts report partial or unknown outcomes as described below. The pinned upstream Codex fixtures in `src/__fixtures__/applyPatchCodex` cover multiple chunks, pure append and EOF; their provenance and Apache-2.0 license are included. Stricter ambiguity rejection is intentional.
+
+## Patch text and filesystem identity
+
+Updates preserve each unchanged line's original LF, CRLF or CR terminator, including mixed files, literal BOMs and an unterminated final line. Replacement lines retain the corresponding replaced line terminators; extra inserted lines use a neighboring convention. An append inserts the necessary separator after an unterminated line while preserving the new final line's unterminated convention. Deleting an unterminated suffix does not remove the preceding unchanged line's terminator. Deleting all content produces zero bytes. Add File creates LF-terminated added lines, keeps explicit blank lines, and creates zero bytes when there are no added lines. Patch syntax does not currently expose an explicit request to change an existing EOF newline convention.
+
+The required `ToolExecutor.resolvePatchPaths` API resolves the whole operation's paths at the executor's write-capability boundary. Paths retain legal spaces and native separators; the parser and Engine never lowercase them. Existing files use canonical paths and device/inode identity so symlink, hardlink and native case aliases conflict. A dangling symlink or unavailable physical identity fails preflight. Returned identities are operation-local comparison keys, not persistent file identifiers.
+
+For multiple missing paths under one existing ancestor, the Node executor creates a private `.fluxagent-patch-*` namespace in that ancestor, checks its case-lookup behavior against the parent, and uses exclusive native creation to detect case/normalization aliases and file/parent collisions. The requested targets are not created by this probe. Cleanup runs on success, failure and cancellation; cleanup failure and its reason block target writes. This requires temporary creation permission in that ancestor. Existing-file-only batches and a single missing path do not need a probe.
+
+Preflight is neither a filesystem snapshot nor a global lock. Per-write content checks still apply; concurrent renames or changes after resolution are outside the path-identity guarantee. Tests measure the host volume's rules and separately exercise a case-sensitive adapter; an adapter fixture is not Windows/Linux or case-sensitive-volume certification. Multi-file atomicity and post-write uncertainty are not implied by preflight.
+
+## Patch mutation receipts
+
+`ToolExecutor.writeFile` and `deleteFile` return a required `FileMutationResult`. Success requires `mutation: 'committed'`; failure includes `mutation: 'not_committed'`, `'unknown'` or `'committed'` and an error. A committed mutation is acknowledged target-file publication/deletion, not guaranteed durability: a directory sync or later lock error can fail after publication. Precondition rejection is not committed. Missing acknowledgement or a thrown call is unknown; matching bytes in a later read cannot establish which writer produced them.
+
+Patch results carry `data.kind: 'patch'` with complete `committed`, `pending` and `unknown` effect lists. Each effect has the operation index, action, canonical path and a relative display path. A path-resolution failure retains requested paths instead. `pending` includes unattempted effects and confirmed pre-mutation rejections. The failure records its stage, applicable operation/path and reason. Overall status is `completed`, `partial` (some acknowledged effects plus failure), `unknown` (no acknowledged effects but an uncertain attempt) or `failed` (no target effect committed or uncertain).
+
+All patch moves, including unchanged content, use checked target publication followed by checked source deletion. Each half has its own receipt; source-cleanup failure never erases the known target write. Moves preserve this content-level contract rather than inode/hardlink relationships or all source metadata. The executor's separate `moveFile` method is not used by patch execution. No automatic rollback runs after failure or cancellation, since it could overwrite later edits by another writer.
+
+Model output starts with the full status and effect counts, followed by failure and path details. If the model text budget truncates a long listing, its notice identifies the incomplete listing; the complete typed receipt remains in the tool result, canonical journal, replay and UI. Inspect current contents and resolve unknown paths before preparing remaining changes. A failed patch attempt is not semantic task completion; WorkRun/WorkStep acceptance remains separate. These receipts are not a crash-recovery transaction log, and they do not enumerate incidental parent-directory or log creation.
+
+
+## Semantic code navigation
+
+`code_navigation` supports definition, references and per-file diagnostics for TypeScript/TSX/MTS/CTS and JavaScript/JSX/MJS/CJS, using the shipped TypeScript 5.9.3 compiler. It locates the nearest tsconfig/jsconfig or accepts an explicit workspace `project_path`. Without a config, it reports an inferred strict TS / checked JS project. Definition/reference queries require one-based `line` and UTF-16 `column`; ends are exclusive. Diagnostics omit positions. Paths and spans come from compiler results, not text matching.
+
+Each call captures sources anew in a disposable worker; no analyzed code or language-service plugin is executed. A query reports source/project SHA-256 versions, configuration scope and any limits. Pass `source_version` to reject stale positions. To continue a result page, retain `project_version` with `offset`; a project change rejects the page instead of mixing results. Unlike workspace search cursors, navigation pages re-analyze and verify the project, so paging has compiler cost. Results default to 100 locations, cap at 500 and have a 24,000-character location budget. File changes after return still require refresh; this is not an atomic filesystem snapshot.
+
+The worker only reads canonical workspace paths and its installed compiler declaration libraries. Explicit sibling includes inside the workspace, config extends, path aliases and imported dependencies are supported. External roots and symlinks escaping the workspace are rejected; symlink root inventories and unbuilt project references are reported as limitations. Missing dependencies, disabled JS checking and compiler option problems prevent an unqualified completeness claim. Compiler diagnostics are source evidence, not proof of runtime correctness or a substitute for project tests.
+
+The host allows at most two compiler workers per executor, imposes a 10-second watchdog and a 256 MiB V8 old-generation limit, and terminates workers after success, abort or timeout. This is resource isolation, not an OS security sandbox or a promise about total RSS. Source capture permits 2 MiB per file, 16 MiB in total and 2000 files including compiler/config inputs; inventory caps at 50000 entries. Over-budget requests fail explicitly and should be scoped to a smaller project.
+
+Unsupported languages return `status: unsupported` with a `search_content` fallback suggestion. No semantic operation or automatic fallback search is claimed; the caller must choose a literal text query, whose matches remain text evidence. Node, compiled worker and temporary Electron ASAR coverage are separate from an installed-product validation. Packaging must include the compiler runtime and unpack the worker plus its runtime dependencies.
+
+## Process ownership and log continuation
+
+Foreground and background commands reject an already-aborted signal before spawning. Cancellation/timeout owns a shared termination attempt: POSIX signals the owned process group and observed descendants (including PTY job-control children), then escalates TERM to KILL; Windows awaits `taskkill /T /F` and checks root disappearance. Ownership captures PID/start identity at spawn, so closing a retained terminal does not deliberately signal a reused PID. `termination.status` is `confirmed` only for the receipt's stated local scope. Escaped descendants, remote work and command side effects are not rolled back or proven absent; recovery remains `effects: unknown`, requiring inspection before retry. This is best-effort ownership, not an OS containment sandbox; POSIX process-list/start-time observations are not atomic. Unconfirmed foreground handles remain owned for shutdown cleanup; native PTY close additionally waits for its exit event and retains failed sessions.
+
+Runtime logs are UTF-8 JSONL with independent stdout/stderr decoders and producer backpressure. Segment filenames use immutable absolute JSONL byte offsets (`task.jsonl`, `task.jsonl.offset-N`), never reused rotation slots. `readTaskOutput` cursors count persisted JSONL bytes, not raw `outputBytes`. It returns `startOffset`, `endOffset` and `omittedBytes`; an evicted prefix is explicit, a missing internal segment errors, and an offset beyond the available stream is rejected. Default retention is eight segments, with a 16 MiB rotation target, 256 KiB batch target and 2 MiB high-water threshold. A batch or record may exceed its target; these are buffering thresholds, not RSS quotas or durability guarantees. Completed pipe-terminal reads include retained rotated segments; the native desktop terminal has its own bounded in-memory history and reports omitted characters.
+
+Real local tests cover output-before-cancel, timeout, child/grandchild cleanup, duplicate stop, high-volume Unicode output and log continuation. Windows branch unit tests are not Windows-device validation. The product's `scripts/terminal-lifecycle-smoke.mjs` exercises actual Electron/native node-pty under an isolated profile on POSIX; it does not validate an installed/signed application.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyPatchAdd, applyPatchHunks, MAX_APPLY_PATCH_CHARS, parseApplyPatch } from './applyPatch'
+import { applyPatchHunks, MAX_APPLY_PATCH_CHARS, parseApplyPatch } from './applyPatch'
 
 describe('apply patch parser', () => {
   it('parses add, update, delete, and move operations', () => {
@@ -46,8 +46,8 @@ describe('apply patch parser', () => {
     expect(result).toBe('a\ninserted\nb\n')
   })
 
-  it('normalizes added content', () => {
-    expect(applyPatchAdd('one\r\ntwo\r\n')).toBe('one\ntwo\n')
+  it('parses CRLF patch syntax while new files use explicit LF lines', () => {
+    expect(parseApplyPatch('*** Begin Patch\r\n*** Add File: a.txt\r\n+one\r\n+two\r\n*** End Patch')[0]).toMatchObject({ content: 'one\ntwo\n' })
   })
 
   it('bounds patch input before parsing', () => {

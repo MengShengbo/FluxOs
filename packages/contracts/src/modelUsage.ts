@@ -1,7 +1,7 @@
 import type { ModelRequestRecord, TokenUsage } from './agentTypes'
 
 const tokenFields = ['input', 'output', 'cached', 'cacheWrite', 'reasoning', 'total'] as const
-const requestFields = new Set(['id', 'requestId', 'runId', 'model', 'provider', 'protocol', 'purpose', 'status', 'startedAt', 'updatedAt', 'endedAt', 'durationMs', 'providerResponseId', 'requestFingerprint', 'httpStatus', 'usage', 'usageFinal', 'cacheDiagnostic'])
+const requestFields = new Set(['id', 'requestId', 'runId', 'model', 'provider', 'protocol', 'purpose', 'status', 'startedAt', 'updatedAt', 'endedAt', 'durationMs', 'outputTiming', 'requestSettings', 'providerResponseId', 'requestFingerprint', 'httpStatus', 'usage', 'usageFinal', 'cacheDiagnostic'])
 
 export function isTokenUsage(value: unknown): value is TokenUsage {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
@@ -30,6 +30,28 @@ export function isModelRequestRecord(value: unknown): value is ModelRequestRecor
   }
   if (item.endedAt !== undefined && !Number.isFinite(item.endedAt)) return false
   if (item.durationMs !== undefined && (!Number.isFinite(item.durationMs) || Number(item.durationMs) < 0)) return false
+  if (item.outputTiming !== undefined) {
+    const timing = item.outputTiming as Record<string, unknown>
+    const fields = ['firstOutputChunkMs', 'firstAnswerChunkMs', 'firstReasoningChunkMs', 'firstToolCallChunkMs']
+    if (!timing || typeof timing !== 'object' || Array.isArray(timing)
+      || Object.keys(timing).some(key => !fields.includes(key))
+      || !Object.values(timing).every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0)) return false
+    const first = timing.firstOutputChunkMs
+    const channels = fields.slice(1).flatMap(key => timing[key] === undefined ? [] : [Number(timing[key])])
+    if (channels.length && (first === undefined || first !== Math.min(...channels))) return false
+    if (item.durationMs !== undefined && Object.values(timing).some(value => Number(value) > Number(item.durationMs))) return false
+  }
+  if (item.requestSettings !== undefined) {
+    const settings = item.requestSettings as Record<string, unknown>
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)
+      || Object.keys(settings).some(key => !['maxOutputTokens', 'temperature', 'reasoningEffort', 'reasoningBudgetTokens', 'thinkingType'].includes(key))) return false
+    for (const key of ['maxOutputTokens', 'reasoningBudgetTokens']) {
+      if (settings[key] !== undefined && (!Number.isSafeInteger(settings[key]) || Number(settings[key]) < (key === 'maxOutputTokens' ? 1 : 0))) return false
+    }
+    if (settings.temperature !== undefined && (typeof settings.temperature !== 'number' || !Number.isFinite(settings.temperature) || settings.temperature < 0)) return false
+    if (settings.reasoningEffort !== undefined && (typeof settings.reasoningEffort !== 'string' || !/^[a-z0-9_-]{1,32}$/i.test(settings.reasoningEffort))) return false
+    if (settings.thinkingType !== undefined && !['enabled', 'disabled', 'adaptive'].includes(String(settings.thinkingType))) return false
+  }
   if (item.httpStatus !== undefined && (!Number.isSafeInteger(item.httpStatus) || Number(item.httpStatus) < 100 || Number(item.httpStatus) > 599)) return false
   if (item.cacheDiagnostic !== undefined) {
     const diagnostic = item.cacheDiagnostic as Record<string, unknown>
@@ -87,3 +109,93 @@ export function summarizeModelRequests(records: readonly ModelRequestRecord[]) {
 }
 
 export type ModelUsageSummary = ReturnType<typeof summarizeModelRequests>
+
+/** A content-free summary of one run. Execution outcome is not a benchmark score. */
+export function summarizeAgentRun(
+  run: import('./workExecutionTypes').WorkRun,
+  records: readonly ModelRequestRecord[],
+) {
+  const latest = new Map<string, ModelRequestRecord>()
+  for (const record of records.filter(record => record.runId === run.id)) {
+    latest.set(record.id, mergeModelRequest(latest.get(record.id), record))
+  }
+  const attempts = [...latest.values()]
+  const measuredUntil = run.completedAt ?? run.updatedAt
+  const terminal = !['pending', 'running', 'waiting', 'paused'].includes(run.status)
+  const wallDurationMs = Math.max(0, measuredUntil - run.startedAt)
+  const segments = run.executionSegments?.map(segment => [
+    Math.max(run.startedAt, segment.startedAt), Math.min(measuredUntil, segment.endedAt ?? measuredUntil),
+  ] as const)
+  const activeDurationMs = segments?.length ? intervalUnionMs(segments) : undefined
+  const firstOutput = (key: keyof NonNullable<ModelRequestRecord['outputTiming']>) => {
+    const arrivals = attempts.filter(record => record.purpose === 'turn' && record.outputTiming?.[key] !== undefined)
+      .map(record => record.startedAt + record.outputTiming![key]! - run.startedAt)
+    return arrivals.length ? Math.max(0, Math.min(...arrivals)) : undefined
+  }
+  const tools = Object.values(run.activities).filter(activity => activity.kind === 'tool'
+    || (['browser', 'computer'].includes(activity.kind) && activity.metadata?.arguments !== undefined))
+  const toolIntervals = tools.filter(activity => activity.completedAt !== undefined)
+    .map(activity => [activity.startedAt, activity.completedAt!] as const)
+  const durations = attempts.flatMap(record => record.durationMs === undefined ? [] : [record.durationMs])
+  const firstChunks = attempts.flatMap(record => record.outputTiming?.firstOutputChunkMs === undefined ? [] : [record.outputTiming.firstOutputChunkMs])
+  return {
+    runId: run.id, status: run.status, terminal, recovered: run.recoveredFromPersistence === true,
+    startedAt: run.startedAt, measuredUntil, wallDurationMs, activeDurationMs,
+    inactiveDurationMs: activeDurationMs === undefined ? undefined : Math.max(0, wallDurationMs - activeDurationMs),
+    pausedDurationMs: segments?.length ? (run.executionSegments ?? []).slice(0, -1).reduce((total, segment, index) => {
+      const next = run.executionSegments![index + 1]
+      return total + (segment.endedAt !== undefined && ['paused', 'stopped'].includes(segment.outcome ?? '')
+        ? Math.max(0, Math.min(measuredUntil, next.startedAt) - Math.max(run.startedAt, segment.endedAt)) : 0)
+    }, 0) : undefined,
+    firstOutputChunkMs: firstOutput('firstOutputChunkMs'),
+    firstAnswerChunkMs: firstOutput('firstAnswerChunkMs'),
+    firstReasoningChunkMs: firstOutput('firstReasoningChunkMs'),
+    firstToolCallChunkMs: firstOutput('firstToolCallChunkMs'),
+    model: {
+      ...summarizeModelRequests(attempts),
+      failedAttempts: attempts.filter(record => record.status === 'failed').length,
+      interruptedAttempts: attempts.filter(record => record.status === 'interrupted').length,
+      additionalAttempts: attempts.length - new Set(attempts.map(record => record.requestId)).size,
+      compactionAttempts: attempts.filter(record => record.purpose === 'compaction').length,
+      measuredRequestDurationMs: durations.reduce((sum, value) => sum + value, 0),
+      unmeasuredDurationAttempts: attempts.length - durations.length,
+      firstOutputLatency: distribution(firstChunks),
+      attemptsWithoutOutputTiming: attempts.length - firstChunks.length,
+    },
+    tools: {
+      count: tools.length,
+      failed: tools.filter(activity => activity.status === 'failed').length,
+      cancelled: tools.filter(activity => activity.status === 'cancelled').length,
+      completed: tools.filter(activity => activity.status === 'completed').length,
+      measuredActivityDurationMs: toolIntervals.reduce((sum, [start, end]) => sum + Math.max(0, end - start), 0),
+      measuredBusyDurationMs: intervalUnionMs(toolIntervals),
+      unmeasuredActivities: tools.length - toolIntervals.length,
+    },
+    // A narrow allowlist avoids prompts, tool arguments/results, local paths and credentials.
+    requests: attempts.map(record => ({
+      id: record.id, requestId: record.requestId, purpose: record.purpose,
+      provider: record.provider, model: record.model, protocol: record.protocol,
+      status: record.status, httpStatus: record.httpStatus,
+      startedAt: record.startedAt, durationMs: record.durationMs,
+      outputTiming: record.outputTiming, requestSettings: record.requestSettings,
+      usage: record.usage, usageFinal: record.usageFinal,
+    })),
+  }
+}
+
+function intervalUnionMs(intervals: readonly (readonly [number, number])[]): number {
+  let total = 0
+  let end = -Infinity
+  for (const [start, stop] of [...intervals].sort((a, b) => a[0] - b[0])) {
+    if (stop <= start) continue
+    total += Math.max(0, stop - Math.max(start, end))
+    end = Math.max(end, stop)
+  }
+  return total
+}
+
+function distribution(values: readonly number[]) {
+  const ordered = [...values].sort((a, b) => a - b)
+  const quantile = (fraction: number) => ordered.length ? ordered[Math.max(0, Math.ceil(ordered.length * fraction) - 1)] : undefined
+  return { samples: ordered.length, p50Ms: quantile(.5), p95Ms: quantile(.95) }
+}

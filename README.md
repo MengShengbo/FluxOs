@@ -19,6 +19,8 @@ npm run pack:core
 
 Consumers import declared `@fluxos/*` entrypoints, such as `@fluxos/agent-runtime`. Inject browser, computer and terminal adapters through the core interfaces.
 
+See [package architecture](docs/architecture/packages.md) for package ownership, the direct dependency graph and lifecycle boundaries. This documentation is part of the public core repository and does not require a private product checkout.
+
 ## Product boundary
 
 | Open-source FluxOs | Private FluxAgent product |
@@ -32,7 +34,7 @@ All ten core packages are MIT licensed, publishable, independently built and tes
 
 Runtime configuration uses `FLUXAGENT_*` and `.fluxagent` only. Before launch, code and development data move directly to the current format, without old aliases, fallback readers or runtime migration layers. The assistant identifies itself as FluxAgent; FluxOs is its execution kernel.
 
-Profile archives exported by the product use `.fluxagent-profile`; the core container reader accepts both `.fluxagent-profile` and historical `.fluxagent-profile` files. The encrypted container format is unchanged.
+Profile archives use the current `.fluxagent-profile` extension and current container/manifest contract. Corruption checks and transactional recovery remain current functionality; development-era aliases and runtime migrations are not maintained.
 
 Runtime response mode begins as chat and promotes to task when actual tools are dispatched. No extra model classification round is required.
 

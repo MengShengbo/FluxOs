@@ -50,6 +50,8 @@ export interface WorkActivity {
   result?: string
   error?: string
   metadata?: Record<string, unknown>
+  process?: import('./toolResultData').CommandProcessOutcome
+  commandSessionId?: string
 }
 
 export interface WorkStep {
@@ -100,3 +102,11 @@ export interface WorkExecutionSnapshot {
 }
 
 export type WorkStepControlAction = 'retry' | 'skip' | 'cancel' | 'resume'
+
+/** Run metadata and steps are replaced; activity maps contain only changed entries. */
+export interface WorkExecutionUpdate {
+  currentRunId: string | null
+  retainedRunIds: string[]
+  runs: WorkRun[]
+  removedActivityIds: Record<string, string[]>
+}

@@ -7,6 +7,7 @@ import { PassThrough } from 'node:stream'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CommandOutput, Result } from '@fluxos/contracts/toolExecutor'
+import { commandProcessOutcome } from '@fluxos/contracts/toolResultData'
 import { NodeToolExecutor } from './nodeToolExecutor'
 import { RuntimeTaskManager } from './runtimeTaskManager'
 import { WebResearchService } from './webResearchService'
@@ -37,6 +38,31 @@ afterEach(() => {
 })
 
 describe('NodeToolExecutor file and process lifecycle', () => {
+  it.each([
+    ['report.pdf', Buffer.from('%PDF-1.7\ntext and table (not decoded content)')],
+    ['scan.pdf', Buffer.from('%PDF-1.7\n/Filter /FlateDecode image stream')],
+    ['report.docx', Buffer.from([0x50, 0x4b, 3, 4, 1, 2, 3])],
+    ['formulas.xlsx', Buffer.from([0x50, 0x4b, 3, 4, 1, 2, 3])],
+    ['utf16.txt', Buffer.from([0xff, 0xfe, 0x41, 0])],
+    ['invalid.txt', Buffer.from([0xc3, 0x28])],
+  ])('does not present %s bytes as successfully extracted UTF-8 text', async (name, bytes) => withWorkspace(async ({ workspace }) => {
+    writeFileSync(join(workspace, name), bytes)
+    const executor = new NodeToolExecutor(workspace)
+    expect(await executor.readFile(name)).toMatchObject({ success: false })
+    expect(await executor.readFileRange(name)).toMatchObject({ success: false })
+    expect(await executor.readFileBytes(name)).toMatchObject({ success: false })
+  }))
+
+  it('keeps Unicode text intact across streamed byte boundaries and keeps a UTF-8 BOM', async () => withWorkspace(async ({ workspace }) => {
+    const content = '\ufeff' + '星河'.repeat(10000) + '\nsecond line'
+    writeFileSync(join(workspace, 'unicode.txt'), content)
+    const executor = new NodeToolExecutor(workspace)
+    expect(await executor.readFile('unicode.txt')).toMatchObject({ success: true, data: content })
+    const ranged = await executor.readFileRange('unicode.txt', 1, 1)
+    expect(ranged.success).toBe(true)
+    expect(ranged.data?.content).toBe('second line')
+  }))
+
   it('reports each physical non-streamed model transport attempt without suppressing retries', async () => withWorkspace(async ({ workspace }) => {
     const onAttempt = vi.fn()
     const network = vi.spyOn(globalThis, 'fetch')
@@ -239,6 +265,33 @@ describe('NodeToolExecutor file and process lifecycle', () => {
     expect(runtimeTask).toMatchObject({ status: 'failed', exitCode: 7, interactive: false })
   }))
 
+  it.skipIf(process.platform === 'win32')('retains a real signal without inventing an exit code', async () => withWorkspace(async ({ workspace }) => {
+    const executor = new NodeToolExecutor(workspace)
+    const result = await executor.runProcess(process.execPath, ['-e', 'process.kill(process.pid, "SIGTERM")'], workspace)
+    expect(result).toMatchObject({ success: true, data: { exitCode: null, exitSignal: 'SIGTERM' } })
+    expect(commandProcessOutcome(result)).toEqual({ state: 'signaled', signal: 'SIGTERM' })
+    expect(executor.getRuntimeTaskManager().listTasks({ kind: 'shell' })[0]).toMatchObject({
+      status: 'failed', exitCode: null, metadata: { exitSignal: 'SIGTERM' },
+    })
+  }))
+
+  it('uses invocation-specific expected exits for the actual foreground runtime task', async () => withWorkspace(async ({ workspace }) => {
+    const executor = new NodeToolExecutor(workspace, { capabilityProfile: 'danger-full-access' })
+    const result = await executor.runCommand('node -e "process.exit(1)"', workspace, {}, shellTimeout, true, undefined, [0, 1])
+    expect(commandProcessOutcome(result)).toEqual({ state: 'exited', exitCode: 1 })
+    expect(executor.getRuntimeTaskManager().listTasks({ kind: 'shell' })[0]).toMatchObject({
+      status: 'completed', exitCode: 1, metadata: { expectedExitCodes: [0, 1] },
+    })
+  }), shellTestTimeout)
+
+  it('preserves a real timeout separately from the killed process exit', async () => withWorkspace(async ({ workspace }) => {
+    const executor = new NodeToolExecutor(workspace)
+    const result = await executor.runProcess(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], workspace, undefined, 25)
+    expect(result.success).toBe(false)
+    expect(commandProcessOutcome(result)).toMatchObject({ state: 'timed_out' })
+    expect(executor.getRuntimeTaskManager().listTasks({ kind: 'shell' })[0]).toMatchObject({ status: 'failed', metadata: { timedOut: true } })
+  }), 15_000)
+
   it('terminates a foreground process when its abort signal fires', async () => withWorkspace(async ({ workspace }) => {
     const executor = new NodeToolExecutor(workspace)
     const controller = new AbortController()
@@ -252,10 +305,13 @@ describe('NodeToolExecutor file and process lifecycle', () => {
     )
     setTimeout(() => controller.abort(), 25)
 
-    await expect(pending).resolves.toMatchObject({
+    const result = await pending
+    expect(result).toMatchObject({
       success: false,
       data: { aborted: true },
     })
+    expect(commandProcessOutcome(result)).toMatchObject({ state: 'aborted' })
+    expect(executor.getRuntimeTaskManager().listTasks({ kind: 'shell' })[0]).toMatchObject({ status: 'stopped', metadata: { aborted: true } })
   }), 15_000)
 
   it('preserves exact shell command exit codes', async () => withWorkspace(async ({ workspace }) => {
@@ -321,9 +377,9 @@ describe('NodeToolExecutor file and process lifecycle', () => {
       }) as unknown as ChildProcessWithoutNullStreams
       const runtime = executor as unknown as {
         collectProcess: (proc: ChildProcessWithoutNullStreams, timeout: number, runtimeTaskId?: string) => Promise<Result<CommandOutput>>
-        terminateProcessTree: (proc: ChildProcessWithoutNullStreams) => void
+        terminateProcessTree: (proc: ChildProcessWithoutNullStreams) => Promise<import('@fluxos/platform/process').ProcessTerminationReceipt>
       }
-      const terminate = vi.spyOn(runtime, 'terminateProcessTree').mockImplementation(() => {})
+      const terminate = vi.spyOn(runtime, 'terminateProcessTree').mockResolvedValue({ status: 'unknown', scope: 'owned_group_and_observed_descendants', escalated: true, error: 'fixture never exits' })
       const runtimeTask = executor.getRuntimeTaskManager().createTask({ kind: 'shell', status: 'running' })
       let settled = false
 
@@ -348,6 +404,9 @@ describe('NodeToolExecutor file and process lifecycle', () => {
         status: 'failed',
         metadata: { timedOut: true },
       })
+      expect(commandProcessOutcome(await pending)).toEqual({ state: 'timed_out', exitCode: null,
+        termination: { status: 'unknown', scope: 'owned_group_and_observed_descendants', escalated: true,
+          error: 'Process streams/exit did not close within the termination deadline' } })
     } finally {
       vi.useRealTimers()
     }
@@ -674,9 +733,11 @@ it('honors Retry-After while exhausting pre-stream 429 retries', async () => wit
     new Response('rate limited', { status: 429, headers: { 'retry-after': '2' } })
   ))
   const executor = new NodeToolExecutor(workspace)
+  const onAttempt = vi.fn()
+  const onRetry = vi.fn()
 
   try {
-    const pending = executor.streamMessage('https://example.test/v1/chat/completions', {}, '{}', () => {}, { timeoutMs: 120_000 })
+    const pending = executor.streamMessage('https://example.test/v1/chat/completions', {}, '{}', () => {}, { timeoutMs: 120_000, onAttempt, onRetry })
     await vi.runAllTimersAsync()
     await expect(pending).resolves.toMatchObject({
       success: false,
@@ -684,6 +745,8 @@ it('honors Retry-After while exhausting pre-stream 429 retries', async () => wit
       retryAfterMs: 2_000,
     })
     expect(fetchMock).toHaveBeenCalledTimes(5)
+    expect(onAttempt.mock.calls.map(([index]) => index)).toEqual([0, 1, 2, 3, 4])
+    expect(onRetry.mock.calls).toEqual([[429], [429], [429], [429]])
   } finally {
     fetchMock.mockRestore()
     vi.useRealTimers()
@@ -880,6 +943,30 @@ it('reports evicted output and keeps explicit stops out of the error state', asy
   expect(stopped).toMatchObject({ status: 'exited', canWrite: false, error: undefined })
   expect(task).toMatchObject({ status: 'stopped', error: undefined })
 }), 15_000)
+
+it('accepts an expected nonzero background exit in both terminal and runtime views', async () => withWorkspace(async ({ workspace }) => {
+  const executor = new NodeToolExecutor(workspace, { capabilityProfile: 'danger-full-access' })
+  const started = await executor.startBackgroundCommand('node -e "process.exit(1)"', workspace, undefined, true, undefined, [0, 1])
+  expect(started.success).toBe(true)
+  const id = started.data!.sessionId
+  try {
+    await vi.waitFor(async () => {
+      expect((await executor.ptyGetBuffer(id)).session).toMatchObject({ status: 'exited', exitCode: 1, expectedExitCodes: [0, 1] })
+    }, { timeout: shellTimeout, interval: 25 })
+    expect(executor.getRuntimeTaskManager().listTasks({ kind: 'terminal' })[0]).toMatchObject({ status: 'completed', exitCode: 1 })
+  } finally { await executor.ptyKillAll() }
+}), shellTestTimeout)
+
+it.each([false, true])('preserves persisted signals and stopped=%s through buffer and list views', async stopped => withWorkspace(async ({ workspace }) => {
+  const manager = new RuntimeTaskManager({ recover: false })
+  const task = manager.createTask({ kind: 'terminal', status: 'running', metadata: { sessionId: 'restored', exitSignal: 'SIGTERM', expectedExitCodes: [0, 1] } })
+  if (stopped) manager.markStopped(task.id, 'stopped', { exitCode: null })
+  else manager.failTask(task.id, 'signal', { exitCode: null })
+  const executor = new NodeToolExecutor(workspace, { runtimeTaskManager: manager })
+  const expected = { exitCode: null, exitSignal: 'SIGTERM', expectedExitCodes: [0, 1], stopped }
+  expect((await executor.ptyGetBuffer('restored')).session).toMatchObject(expected)
+  expect((await executor.ptyList()).sessions![0]).toMatchObject(expected)
+}))
 
 it('preserves persisted sequence cursors when reading a recovered session', async () => withWorkspace(async ({ workspace }) => {
   const logPath = join(workspace, 'recovered.jsonl')

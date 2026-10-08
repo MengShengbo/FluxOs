@@ -90,6 +90,15 @@
     "./webSourceStore": {
       "types": "./dist/webSourceStore.d.ts",
       "import": "./dist/webSourceStore.js"
+    },
+    "./codeNavigationWorker": {
+      "types": "./dist/codeNavigationWorker.d.ts",
+      "import": "./dist/codeNavigationWorker.js",
+      "require": "./dist/codeNavigationWorker.js"
+    },
+    "./toolOperationStore": {
+      "types": "./dist/toolOperationStore.d.ts",
+      "import": "./dist/toolOperationStore.js"
     }
   },
   "scripts": {
@@ -105,6 +114,7 @@
     "@fluxos/platform": "*",
     "@vscode/ripgrep": "^1.18.0",
     "minimatch": "^10.2.6",
-    "undici": "^7.29.0"
+    "undici": "^7.29.0",
+    "typescript": "5.9.3"
   }
 }

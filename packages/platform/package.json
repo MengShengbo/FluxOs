@@ -50,6 +50,10 @@
     "./streamTimingTrace": {
       "types": "./dist/streamTimingTrace.d.ts",
       "import": "./dist/streamTimingTrace.js"
+    },
+    "./modelConfigurationStorage": {
+      "types": "./dist/modelConfigurationStorage.d.ts",
+      "import": "./dist/modelConfigurationStorage.js"
     }
   },
   "scripts": {

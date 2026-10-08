@@ -1,9 +1,64 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentTurn } from '@fluxos/contracts/agentTypes'
+import { toolResultExecutionStatus, type CommandProcessOutcome } from '@fluxos/contracts/toolResultData'
 import { TaskManager } from '../taskManager'
 import { AgentSessionRehydrator } from './agentSessionRehydrator'
 
 describe('AgentSessionRehydrator', () => {
+  it('rejects a settled result without explicit status instead of parsing text or dropping it', () => {
+    const rehydrator = new AgentSessionRehydrator()
+    expect(() => rehydrator.rehydrateMessages([{ role: 'assistant', content: '', metadata: { toolCalls: [
+      { name: 'read_file', arguments: {}, result: 'Error: ambiguous content', status: 'completed' },
+    ] } }], { systemTurns: [], taskManager: new TaskManager() })).toThrow('must declare isError')
+  })
+
+  it('retains canonical results attached to the assistant turn by call id', () => {
+    const rehydrator = new AgentSessionRehydrator()
+    const result = { toolCallId: 'canonical-call', name: 'read_file', output: 'Error: actual file text', isError: false }
+    const messages = rehydrator.messagesFromTurns([{ id: 'canonical-turn', role: 'assistant', content: '', timestamp: 1,
+      toolCalls: [{ id: 'canonical-call', name: 'read_file', arguments: { path: 'file.txt' } }], toolResults: [result] }])
+    const turns = rehydrator.rehydrateMessages(messages, { systemTurns: [], taskManager: new TaskManager() })
+    expect(turns.flatMap(turn => turn.toolResults ?? [])).toEqual([result])
+  })
+
+  it.each([
+    [{ state: 'exited', exitCode: 7 }, [0], 'failed'],
+    [{ state: 'exited', exitCode: 1 }, [0, 1], 'completed'],
+    [{ state: 'signaled', signal: 'SIGTERM' }, [0], 'failed'],
+    [{ state: 'timed_out', exitCode: null, signal: 'SIGKILL' }, [0], 'failed'],
+    [{ state: 'aborted', exitCode: null }, [0], 'cancelled'],
+    [{ state: 'running' }, [0], 'running'],
+  ] satisfies Array<[CommandProcessOutcome, number[], string]>)('round trips command facts %j without changing transport success', (process, expectedExitCodes, status) => {
+    const rehydrator = new AgentSessionRehydrator()
+    const data = { kind: 'command' as const, stdout: 'captured', process, expectedExitCodes, sessionId: 'background-1' }
+    const messages = rehydrator.messagesFromTurns([
+      { id: 'call', role: 'assistant', content: '', timestamp: 1,
+        toolCalls: [{ id: 'command', name: 'run_command', arguments: {} }] },
+      { id: 'result', role: 'tool_result', content: '', timestamp: 2,
+        toolResults: [{ toolCallId: 'command', name: 'run_command', output: 'captured', isError: false, data }] },
+    ])
+    const restored = rehydrator.rehydrateMessages(JSON.parse(JSON.stringify(messages)), {
+      systemTurns: [], taskManager: new TaskManager(),
+    })
+    const result = restored[1]!.toolResults![0]!
+    expect(result.data).toEqual(data)
+    expect(result.isError).toBe(false)
+    expect(toolResultExecutionStatus(result)).toBe(status)
+    expect(restored[1]!.content).toContain(`[${status}]`)
+    expect(messages[0]!.metadata!.toolCalls![0]!.data).not.toBe(data)
+  })
+
+  it('round trips explicit capture errors with their process facts', () => {
+    const rehydrator = new AgentSessionRehydrator()
+    const turns = rehydrator.rehydrateMessages([{
+      role: 'assistant', content: '', metadata: { toolCalls: [{ id: 'timeout', name: 'run_command', arguments: {},
+        result: 'timeout', isError: true, errorKind: 'timeout',
+        data: { kind: 'command', stdout: 'partial', process: { state: 'timed_out', exitCode: null }, expectedExitCodes: [0] },
+      }] },
+    }], { systemTurns: [], taskManager: new TaskManager(),  })
+    expect(turns[1]!.toolResults![0]).toMatchObject({ errorKind: 'timeout', data: { process: { state: 'timed_out' } } })
+  })
+
   it('preserves interrupted assistant metadata across persistence rehydration', () => {
     const rehydrator = new AgentSessionRehydrator()
     const messages = rehydrator.messagesFromTurns([{
@@ -20,7 +75,6 @@ describe('AgentSessionRehydrator', () => {
     const turns = rehydrator.rehydrateMessages(messages, {
       systemTurns: [],
       taskManager: new TaskManager(),
-      isToolOutputFailure: () => false,
     })
 
     expect(turns[0]?.metadata).toMatchObject({
@@ -49,13 +103,12 @@ describe('AgentSessionRehydrator', () => {
           name: 'read_file',
           arguments: { path: 'README.md' },
           result: 'Paused by user',
-          status: 'cancelled',
+          status: 'cancelled', isError: true, errorKind: 'abort', interruption: { kind: 'pause', resumable: true },
         }],
       },
     }], {
       systemTurns: [],
       taskManager: new TaskManager(),
-      isToolOutputFailure: () => false,
     })
 
     expect(turns).toHaveLength(2)
@@ -83,7 +136,6 @@ describe('AgentSessionRehydrator', () => {
     ], {
       systemTurns: [systemTurn],
       taskManager: new TaskManager(),
-      isToolOutputFailure: () => false,
       now: () => 100,
     })
 
@@ -104,14 +156,15 @@ describe('AgentSessionRehydrator', () => {
         toolCalls: [
           {
             name: 'create_task',
-            arguments: { title: 'Keep me', priority: 'high' },
+            arguments: { title: 'Keep me', priority: 'major' },
+            isError: false, data: { kind: 'tasks', status: 'completed', failures: [], tasks: [{ id: 'task-1', title: 'Keep me', description: 'fixture', priority: 'major', status: 'completed', progress: 100, parentId: null, children: [], dependencies: [], order: 0, createdAt: 20, updatedAt: 20 }] },
             result: JSON.stringify({ id: 'task-1', status: 'completed' }),
             status: 'completed',
           },
           {
             name: 'create_task',
             arguments: { title: 'Drop me' },
-            result: 'failed',
+            result: 'failed', isError: true, errorKind: 'validation',
             status: 'error',
           },
         ],
@@ -119,7 +172,6 @@ describe('AgentSessionRehydrator', () => {
     }], {
       systemTurns: [],
       taskManager,
-      isToolOutputFailure: (_name, output) => output === 'failed',
     })
 
     expect(taskManager.getAllTasks()).toEqual([

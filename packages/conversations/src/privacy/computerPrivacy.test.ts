@@ -65,6 +65,14 @@ function expectNoComputerSecrets(value: unknown): void {
 }
 
 describe('computer privacy projection', () => {
+  it('redacts content while retaining safe interruption and conditional recovery facts', () => {
+    const result: ToolResult = { ...computerResult(), isError: true, errorKind: 'abort',
+      interruption: { kind: 'pause', resumable: true }, recovery: { effects: 'unknown', retry: 'after_inspection', guidance: 'PRIVATE_AX_VALUE' } }
+    const event = redactComputerAgentEvent({ type: 'tool:result', toolResult: result })
+    expectNoComputerSecrets(event)
+    expect(event).toMatchObject({ toolResult: { isError: true, errorKind: 'abort', interruption: result.interruption, recovery: { effects: 'unknown', retry: 'after_inspection' } } })
+  })
+
   it('redacts tool payloads without mutating the live runtime values', () => {
     const call = computerCall()
     const result = computerResult()

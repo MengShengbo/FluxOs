@@ -14,6 +14,7 @@ import { SkillRuntime } from '@fluxos/extensions/skills/runtime'
 import { syncAgentSkills } from '../subAgentRegistry'
 import { NodeToolExecutor } from '@fluxos/tools/nodeToolExecutor'
 import { RuntimeTaskManager } from '@fluxos/tools/runtimeTaskManager'
+import { ToolOperationStore } from '@fluxos/tools/toolOperationStore'
 import { SubAgentTaskManager } from './subAgentTaskManager'
 import { ChildAgentController, type ChildLaunch } from './childAgentController'
 import { AGENT_CONTROL_TOOLS } from '../agentOrchestrator'
@@ -117,6 +118,11 @@ function conversationRuntimeStorage(rootPath: string, conversationId: string): {
   }
 }
 
+function intersectLimit(...values: Array<number | undefined>): number | undefined {
+  const limits = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
+  return limits.length ? Math.min(...limits) : undefined
+}
+
 function childRuntimeConfig(launch: ChildLaunch, inherited: AgentRuntimeConfig): AgentRuntimeConfig {
   const outputLimits = [launch.modelConfig.maxTokens, inherited.maxTokens, launch.limits?.maxOutputTokens]
     .filter((limit): limit is number => typeof limit === 'number' && Number.isFinite(limit) && limit > 0)
@@ -170,6 +176,7 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
     toolExecutor,
     stateProvider,
     subAgentTaskManager,
+    { store: new ToolOperationStore(join(runtimeStorageRoot, 'tool-operations')), memoryRoot: options.memoryRoot },
   )
   if (options.subAgentBudget) engine.setSubAgentBudget(options.subAgentBudget)
   const unsubscribeRuntimeTasks = runtimeTaskManager.subscribe(event => {
@@ -220,12 +227,13 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
       child.mcpClient.borrowConnectedServers(mcpClient, options.registerChildSystemPlugins ? ['browser', 'computer'] : [])
       const disposeSystems = options.registerChildSystemPlugins?.(child.mcpClient, { conversationId: launch.agentId, ownerConversationId: launch.ownerSessionId })
       const configure = (next: ChildLaunch) => {
+        child.engine.setModelRequestGuard(next.beforeModelRequest)
         child.applyConfiguration(childRuntimeConfig(next, currentRuntimeConfig), {
           approvalPolicy: next.parentConfig.approvalPolicy, capabilityProfile: next.capabilityProfile,
         })
         child.engine.updateRuntimeConfiguration({
-          maxToolRounds: next.limits?.maxToolRounds,
-          maxParallelToolCalls: next.limits?.maxParallelTools,
+          maxToolRounds: intersectLimit(next.parentConfig.maxToolRounds, next.limits?.maxToolRounds),
+          maxParallelToolCalls: intersectLimit(next.parentConfig.maxParallelToolCalls, next.limits?.maxParallelTools),
         })
         child.engine.setEnabledSkills(next.parentConfig.enabledSkills)
         child.engine.setAllowedTools(next.parentConfig.allowedTools)

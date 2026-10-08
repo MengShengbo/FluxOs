@@ -4,6 +4,7 @@ import { AgentRunControl, createAgentRunInterruption } from './runControl'
 import { ToolCallLifecycle, type ToolCallLifecycleOptions } from './toolCallLifecycle'
 
 const readTool: AgentTool = {
+  access: { source: 'builtin', exposure: 'resident', output: 'ToolResult', resources: [{ kind: 'filesystem', access: 'read', scope: 'workspace' }] },
   name: 'read_file', description: 'read', category: 'read', parameters: [],
   isReadOnly: true, isDestructive: false, isConcurrencySafe: true,
 }
@@ -38,6 +39,30 @@ function harness(overrides: Partial<ToolCallLifecycleOptions> = {}) {
 }
 
 describe('ToolCallLifecycle', () => {
+  it('distinguishes rejection before dispatch, unknown write failure, and acknowledged write cancellation', async () => {
+    const writeTool: AgentTool = { ...readTool, name: 'write_file', isReadOnly: false,
+      access: { ...readTool.access, resources: [{ kind: 'filesystem', access: 'write', scope: 'workspace' }] } }
+    const rejected = harness({ resolveTool: () => writeTool,
+      authorize: async tc => ({ ...result(tc), isError: true, errorKind: 'permission' }) })
+    expect(await rejected.lifecycle.execute(call('rejected', 'write_file'))).toMatchObject({
+      recovery: { effects: 'none', retry: 'after_permission' },
+    })
+    expect(rejected.options.execute).not.toHaveBeenCalled()
+    const failed = harness({ resolveTool: () => writeTool, execute: async () => { throw new Error('unacknowledged publication') } })
+    expect(await failed.lifecycle.execute(call('unknown', 'write_file'))).toMatchObject({
+      recovery: { effects: 'unknown', retry: 'after_inspection' },
+    })
+    const controller = new AbortController()
+    const stopped = harness({ resolveTool: () => writeTool, execute: async tc => {
+      controller.abort(createAgentRunInterruption('stop'))
+      return { ...result(tc), changeSummary: { operation: 'write', path: 'file.txt' } }
+    } })
+    expect(await stopped.lifecycle.execute(call('committed', 'write_file'), controller.signal)).toMatchObject({
+      errorKind: 'abort', recovery: { effects: 'committed', retry: 'after_inspection' },
+      changeSummary: { path: 'file.txt' }, interruption: { kind: 'stop' },
+    })
+  })
+
   it('returns unknown-tool and validation errors without asking permission or dispatching', async () => {
     const { lifecycle, options } = harness({ resolveTool: () => undefined })
     await expect(lifecycle.execute(call('unknown'))).resolves.toMatchObject({ errorKind: 'validation' })
@@ -137,9 +162,22 @@ describe('ToolCallLifecycle', () => {
     await dispatched.promise
     runControl.pause()
     runControl.stop()
-    finished.resolve(result(call('stopping')))
+    const data = { kind: 'command' as const, stdout: 'already executed', process: { state: 'exited' as const, exitCode: 7 }, expectedExitCodes: [0] }
+    finished.resolve({ ...result(call('stopping')), data })
 
-    await expect(pending).resolves.toMatchObject({ errorKind: 'abort', interruption: { kind: 'stop', resumable: false } })
+    await expect(pending).resolves.toMatchObject({ errorKind: 'abort', interruption: { kind: 'stop', resumable: false }, data })
+  })
+
+  it('does not invent process termination when cancellation races a background launch', async () => {
+    const dispatched = deferred<void>()
+    const finished = deferred<ToolResult>()
+    const { lifecycle, runControl } = harness({ execute: () => { dispatched.resolve(); return finished.promise } })
+    const pending = lifecycle.execute(call('background', 'run_command'))
+    await dispatched.promise
+    runControl.stop()
+    const data = { kind: 'command' as const, stdout: '', process: { state: 'running' as const }, expectedExitCodes: [0], sessionId: 'session-1' }
+    finished.resolve({ ...result(call('background', 'run_command'), 'Background command started.'), data })
+    await expect(pending).resolves.toMatchObject({ isError: true, errorKind: 'abort', data })
   })
 
   it('checks each caller before sharing an already running read', async () => {
@@ -159,7 +197,8 @@ describe('ToolCallLifecycle', () => {
 
     await expect(first).resolves.toMatchObject({ toolCallId: 'allowed', isError: false })
     await expect(joined).resolves.toMatchObject({ toolCallId: 'also-allowed', isError: false })
-    expect(options.validate).toHaveBeenCalledTimes(3)
+    // Two admitted calls revalidate after approval; the denied call stops earlier.
+    expect(options.validate).toHaveBeenCalledTimes(5)
     expect(options.execute).toHaveBeenCalledOnce()
   })
 

@@ -1,7 +1,7 @@
 import { isModelRequestRecord } from '@fluxos/contracts/modelUsage'
 import { basename, isAbsolute, relative, resolve } from 'node:path'
 import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
-import { copyToolResultDetails } from '@fluxos/contracts/toolResultData'
+import { copyToolResultDetails, toolResultCallStatus } from '@fluxos/contracts/toolResultData'
 import type { WorkActivity, WorkExecutionSnapshot, WorkRunStatus } from '@fluxos/contracts/workExecutionTypes'
 import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import type { PersistedConversation } from './types'
@@ -16,6 +16,7 @@ import type {
 import {
   conversationV2IdFactory,
   stableConversationV2Id,
+  conversationToolCallId,
 } from './conversationV2Ids'
 
 export interface ConversationRuntimeEventPlan {
@@ -108,9 +109,10 @@ function toolCallItem(conversation: PersistedConversation, workspaceId: string, 
     createdAt: turn.timestamp,
     updatedAt: turn.timestamp,
     payload: {
-      toolCallId: ids.normalize('tool', toolCall.id),
+      toolCallId: conversationToolCallId(toolCall.id, toolCall.operationIdentity),
       toolName: toolCall.name,
       arguments: structuredClone(toolCall.arguments),
+      ...(toolCall.operationIdentity ? { operationIdentity: structuredClone(toolCall.operationIdentity) } : {}),
       pathRefs: portablePathRefsForToolValue(conversation.workspacePath, workspaceId, toolCall.arguments),
       requiresReview: true,
     },
@@ -126,11 +128,11 @@ function toolResultItem(conversation: PersistedConversation, workspaceId: string
     conversationId: conversation.id,
     turnId,
     kind: 'tool_result',
-    status: result.isError ? 'failed' : 'completed',
+    status: toolResultCallStatus(result),
     createdAt: turn.timestamp,
     updatedAt: turn.timestamp,
     payload: {
-      toolCallId: ids.normalize('tool', result.toolCallId),
+      toolCallId: conversationToolCallId(result.toolCallId, result.operationIdentity),
       toolName: result.name,
       output: result.output,
       isError: result.isError,
@@ -342,7 +344,7 @@ export function planConversationRuntimeEvents(
       if (result.changeSummary) {
         const path = pathRef(conversation.workspacePath, workspaceId, result.changeSummary.path)
         if (path) {
-          const change: ConversationItemV2 = { schemaVersion: 1, id: stableId('item', conversation.id, turn.id, 'file-change', result.toolCallId), conversationId: conversation.id, runId, turnId, kind: 'file_change', status: result.isError ? 'failed' : 'completed', createdAt: turn.timestamp, updatedAt: turn.timestamp, payload: { path, change: result.changeSummary.operation === 'write' ? 'created' : result.changeSummary.operation === 'edit' ? 'modified' : 'deleted' } }
+          const change: ConversationItemV2 = { schemaVersion: 1, id: stableId('item', conversation.id, turn.id, 'file-change', result.toolCallId), conversationId: conversation.id, runId, turnId, kind: 'file_change', status: toolResultCallStatus(result), createdAt: turn.timestamp, updatedAt: turn.timestamp, payload: { path, change: result.changeSummary.operation === 'write' ? 'created' : result.changeSummary.operation === 'edit' ? 'modified' : 'deleted' } }
           events.push({ eventId: stableId('projection', conversation.id, change.id, 'created'), profileId, conversationId: conversation.id, workspaceId, runId, turnId, itemId: change.id, source, provenance, type: 'item.created', at: turn.timestamp, payload: { item: change } })
           activityIds.add(change.id)
         }

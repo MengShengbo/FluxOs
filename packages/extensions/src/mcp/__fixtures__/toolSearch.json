@@ -1,0 +1,36 @@
+{
+  "tools": [
+    { "name": "calendar__create_event", "serverName": "calendar", "description": "Create a calendar event and invite attendees", "inputSchema": { "type": "object", "properties": { "title": { "type": "string" } } } },
+    { "name": "mail__search_messages", "serverName": "mail", "description": "Search email inbox messages by sender or subject", "inputSchema": { "type": "object", "properties": { "query": { "type": "string" } } } },
+    { "name": "mail__send_message", "serverName": "mail", "description": "Send an email message", "inputSchema": { "type": "object", "properties": { "recipient": { "type": "string" } } } },
+    { "name": "browser__take_screenshot", "serverName": "browser", "description": "Capture a screenshot of the current webpage", "inputSchema": { "type": "object", "properties": {} } },
+    { "name": "repo__search_code", "serverName": "repo", "description": "Search repository source code by symbol or pattern", "inputSchema": { "type": "object", "properties": { "pattern": { "type": "string" } } } },
+    { "name": "issues__list_tickets", "serverName": "issues", "description": "List issue tracker tickets", "inputSchema": { "type": "object", "properties": {} } },
+    { "name": "docs__fetch_document", "serverName": "docs", "description": "Read document content by URL", "inputSchema": { "type": "object", "properties": { "url": { "type": "string" } } } },
+    { "name": "drive__list_files", "serverName": "drive", "description": "List files in a folder", "inputSchema": { "type": "object", "properties": { "folder": { "type": "string" } } } }
+  ],
+  "queries": [
+    { "query": "search email inbox", "expected": "mail__search_messages", "kind": "english" },
+    { "query": "帮我查找邮件", "expected": "mail__search_messages", "kind": "chinese" },
+    { "query": "find emails by sender", "expected": "mail__search_messages", "kind": "synonym" },
+    { "query": "lookup inbox subject", "expected": "mail__search_messages", "kind": "synonym" },
+    { "query": "create calendar event", "expected": "calendar__create_event", "kind": "english" },
+    { "query": "请查一下我的日程", "expected": null, "kind": "unsupported_intent_with_lexical_overlap" },
+    { "query": "日历活动", "expected": "calendar__create_event", "kind": "chinese" },
+    { "query": "agenda event", "expected": "calendar__create_event", "kind": "synonym" },
+    { "query": "浏览器截图", "expected": "browser__take_screenshot", "kind": "chinese" },
+    { "query": "请截屏", "expected": "browser__take_screenshot", "kind": "synonym" },
+    { "query": "capture webpage", "expected": "browser__take_screenshot", "kind": "english" },
+    { "query": "search codebase", "expected": "repo__search_code", "kind": "synonym" },
+    { "query": "仓库代码检索", "expected": "repo__search_code", "kind": "chinese" },
+    { "query": "repository symbol", "expected": "repo__search_code", "kind": "english" },
+    { "query": "工单", "expected": "issues__list_tickets", "kind": "chinese" },
+    { "query": "ticket tracker", "expected": "issues__list_tickets", "kind": "synonym" },
+    { "query": "read document", "expected": "docs__fetch_document", "kind": "english" },
+    { "query": "list folder files", "expected": "drive__list_files", "kind": "english" },
+    { "query": "帮我冲一杯咖啡", "expected": null, "kind": "out_of_domain" },
+    { "query": "weather forecast", "expected": null, "kind": "out_of_domain" },
+    { "query": "!!!", "expected": null, "kind": "empty_terms" },
+    { "query": "calculate calendar cost", "expected": null, "kind": "unsupported_intent_with_lexical_overlap" }
+  ]
+}

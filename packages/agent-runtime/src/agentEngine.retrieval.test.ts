@@ -15,14 +15,16 @@ function harness() {
   const state = new DefaultAgentStateProvider({
     provider: 'custom', apiKey: 'test', baseUrl: 'http://example.test', model: 'test-model', contextWindow: 100_000, maxTokens: 4096,
   }, workspace)
-  const engine = new AgentEngine({ mode: 'vibe', approvalPolicy: 'full', workspacePath: workspace }, new NodeToolExecutor(workspace), state)
+  const engine = new AgentEngine({ mode: 'vibe', approvalPolicy: 'full', workspacePath: workspace }, new NodeToolExecutor(workspace, {
+    memoryRoot: join(workspace, '.fluxagent', 'memory'), runtimeLogsRoot: join(workspace, '.fluxagent', 'logs'),
+  }), state)
   cleanups.push(() => { engine.destroy(); rmSync(workspace, { recursive: true, force: true }) })
   const execute = (engine as unknown as { executeToolCalls(calls: ToolCall[]): Promise<ToolResult[]> }).executeToolCalls.bind(engine)
   return { workspace, execute }
 }
 
 describe('engine retrieval contract', () => {
-  it('keeps every returned path in both model output and user evidence, including reused calls', async () => {
+  it('keeps every returned path in model and user evidence and refreshes a new query', async () => {
     const { workspace, execute } = harness()
     for (let index = 0; index < 90; index++) writeFileSync(join(workspace, `owner-${String(index).padStart(3, '0')}.ts`), '')
     const call = { id: 'files', name: 'search_files', arguments: { pattern: '*.ts', head_limit: 100 } }
@@ -32,8 +34,13 @@ describe('engine retrieval contract', () => {
     expect(result.retrieval?.resources).toHaveLength(90)
     for (const resource of result.retrieval!.resources) expect(result.output).toContain(resource.path)
     const [reused] = await execute([{ ...call, id: 'files-again' }])
-    expect(reused.retrieval).toEqual(result.retrieval)
+    expect(reused.retrieval!.resources).toEqual(result.retrieval!.resources)
+    expect(reused.retrieval!.snapshot!.id).not.toBe(result.retrieval!.snapshot!.id)
     expect(reused.retrieval).not.toBe(result.retrieval)
+    writeFileSync(join(workspace, 'new.ts'), '')
+    const [fresh] = await execute([{ ...call, id: 'files-after-change' }])
+    expect(fresh.retrieval!.resources).toHaveLength(91)
+    expect(fresh.output).toContain('new.ts')
   })
 
   it('keeps the complete bounded page and its continuation through the model output budget', async () => {
@@ -47,9 +54,12 @@ describe('engine retrieval contract', () => {
     expect(first.retrieval?.total).toBe(160)
     const resources = first.retrieval!.resources
     expect(first.output).toContain(resources.at(-1)!.preview)
-    expect(first.output).toContain(`offset=${resources.length}`)
-    const [second] = await execute([{ id: 'second', name: 'search_content', arguments: { ...query, offset: first.retrieval!.nextOffset } }])
+    expect(first.output).toContain(`cursor=${JSON.stringify(first.retrieval!.nextCursor)}`)
+    const [second] = await execute([{ id: 'second', name: 'search_content', arguments: { ...query, cursor: first.retrieval!.nextCursor } }])
     expect(second.retrieval?.resources[0].line).toBe(resources.at(-1)!.line! + 1)
     expect(second.output).toContain(second.retrieval!.resources.at(-1)!.preview)
+    const [samePage] = await execute([{ id: 'same-page', name: 'search_content', arguments: { ...query, cursor: first.retrieval!.nextCursor } }])
+    expect(samePage.retrieval).toEqual(second.retrieval)
+    expect(samePage.retrieval).not.toBe(second.retrieval)
   })
 })

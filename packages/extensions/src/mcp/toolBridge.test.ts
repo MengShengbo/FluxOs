@@ -24,6 +24,17 @@ const nestedTool: McpToolInfo = {
 }
 
 describe('MCP tool bridge', () => {
+  it('treats read-only annotations as untrusted regardless of other hints', () => {
+    const tool = mcpToolToAgentTool({ ...nestedTool, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false, idempotentHint: true } })
+    expect(tool).toMatchObject({ isReadOnly: false, isDestructive: true, isConcurrencySafe: false, access: { source: 'external', exposure: 'deferred' } })
+  })
+
+  it('uses separately authored host policy while preserving the wire input schema', () => {
+    const tool = mcpToolToAgentTool({ ...nestedTool, hostPolicy: { isReadOnly: true, isDestructive: false, isConcurrencySafe: true,
+      resources: [{ kind: 'filesystem', access: 'read', scope: 'workspace', argument: 'edit.path' }] } })
+    expect(tool).toMatchObject({ isReadOnly: true, isDestructive: false, isConcurrencySafe: true, access: { source: 'host' } })
+    expect(tool.inputSchema).toEqual(nestedTool.inputSchema)
+  })
   it('preserves nested schemas and defaults unannotated tools to unsafe', () => {
     const mapped = mcpToolToAgentTool(nestedTool)
     const unknown = mcpToolToAgentTool({ ...nestedTool, name: 'files__unknown', annotations: undefined })

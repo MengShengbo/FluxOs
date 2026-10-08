@@ -1,3 +1,4 @@
+import { writeModelConfiguration } from '@fluxos/platform/modelConfigurationStorage'
 import { ConversationRuntimeRepositoryV2, persistedConversationFromProjectionV2 } from '@fluxos/conversations/conversations/conversationRuntimeRepositoryV2'
 import { ConversationRepositoryV2 } from '@fluxos/conversations/conversations/conversationRepositoryV2'
 import { linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -39,11 +40,11 @@ function fixture() {
   const layout = createProfileStorageLayout(dataRoot, deviceRoot, profile.id)
   ensureProfileStorageLayout(layout)
   const binding = new WorkspaceBindingService(layout, () => 100, () => 'workspace-12345678').ensureBound(workspacePath, 'Demo')
-  writeFileSync(layout.configPath, JSON.stringify({
+  writeModelConfiguration(layout.configRoot, {
     provider: 'openai', apiKey: 'sk-never-export-this', baseUrl: 'https://api.openai.com/v1', model: 'gpt-test',
     approvalPolicy: 'ask', capabilityProfile: 'workspace-write', gitEnabled: true,
     apiConfigs: [{ id: 'one', name: 'One', apiKey: 'sk-another-secret', provider: 'openai' }],
-  }))
+  })
   writeFileSync(layout.projectsPath, JSON.stringify({ schemaVersion: 1, projects: [{ id: 'project-1', name: 'Demo', path: workspacePath, pinned: true, tags: [], createdAt: 1, updatedAt: 2, lastOpenedAt: 2 }] }))
   writeFileSync(layout.automationsPath, JSON.stringify({ schemaVersion: 2, automations: [{ id: 'automation-1', workspacePath, enabled: true, status: 'active', activeRunId: 'run-1', pendingRunAt: 2, nextRunAt: 3, activeRuns: ['run-1'] }], approvals: [{ id: 'approval-1' }] }))
   const memoryRoot = join(workspaceOverlayRoot(layout, binding.id), 'memory')

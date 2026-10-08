@@ -27,6 +27,22 @@ function created(id: string, title: string, at: number, workspaceId = 'workspace
 }
 
 describe('ConversationRepositoryV2', () => {
+  it('recovers stale but valid catalog and search caches from the durable journal', () => {
+    const directory = root()
+    const repository = new ConversationRepositoryV2(directory)
+    repository.append([created('conversation-cache', 'Before', 10)])
+    const catalogPath = join(directory, 'catalog.json'), searchPath = join(directory, 'search-index.json')
+    const oldCatalog = readFileSync(catalogPath), oldSearch = readFileSync(searchPath)
+    repository.append([{eventId: 'renamed-cache', profileId: 'profile-1', conversationId: 'conversation-cache', workspaceId: 'workspace-1', source: 'user', provenance: 'live', type: 'conversation.renamed', at: 20, payload: {title: 'After checkpoint', titleSource: 'custom'}}])
+    const journal = readFileSync(join(directory, 'events/conversation-cache.jsonl'))
+    // Simulate a power loss preserving a newer watermark and older cache files.
+    writeFileSync(catalogPath, oldCatalog); writeFileSync(searchPath, oldSearch)
+    const reopened = new ConversationRepositoryV2(directory)
+    expect(reopened.list().conversations[0].title).toBe('After checkpoint')
+    expect(reopened.search({query: 'After checkpoint'})[0].title).toBe('After checkpoint')
+    expect(readFileSync(join(directory, 'events/conversation-cache.jsonl'))).toEqual(journal)
+  })
+
   it('maintains a paged catalog without reading event journals for normal list calls', () => {
     const repository = new ConversationRepositoryV2(root(), () => 100)
     repository.append([created('conversation-1', 'First', 10)])
@@ -168,6 +184,7 @@ describe('ConversationRepositoryV2', () => {
       tags: [],
     }))
     writeFileSync(join(directory, 'catalog.json'), JSON.stringify({ schemaVersion: 1, records, updatedAt: 10_000 }))
+    writeFileSync(join(directory, 'projection-watermarks.json'), JSON.stringify({schemaVersion: 2, catalogChecksum: createHash('sha256').update(JSON.stringify(records)).digest('hex'), searchIndexChecksum: '', conversations: {}}))
     const reads: string[] = []
     const repository = new ConversationRepositoryV2(directory, () => 100, { onRead: (kind) => reads.push(kind) })
     const page = repository.list({ limit: 50 })
@@ -231,4 +248,20 @@ describe('ConversationRepositoryV2', () => {
     rmSync(join(directory, 'search-index.json'), { force: true })
     expect(new ConversationRepositoryV2(directory, () => 300).rebuildAllProjections()).toMatchObject({ conversations: 1, events: 4 })
   })
+})
+
+it('persists first-output measurements and sent settings across a fresh repository', () => {
+  const directory = root()
+  const repository = new ConversationRepositoryV2(directory)
+  repository.append([created('conversation-metrics', 'Metrics', 1)])
+  const request = {
+    id: 'attempt', requestId: 'logical', runId: 'run', purpose: 'turn' as const,
+    status: 'completed' as const, startedAt: 10, updatedAt: 110, endedAt: 110, durationMs: 100,
+    outputTiming: { firstOutputChunkMs: 20, firstReasoningChunkMs: 20, firstAnswerChunkMs: 70 },
+    requestSettings: { maxOutputTokens: 1000, reasoningEffort: 'high' },
+    usage: { input: 100, output: 10, source: 'provider' as const }, usageFinal: true,
+  }
+  repository.append([{ eventId: 'metrics-event', profileId: 'profile-1', conversationId: 'conversation-metrics', workspaceId: 'workspace-1',
+    runId: 'run', source: 'agent', provenance: 'live', type: 'model.request_updated', at: 110, payload: { request } }])
+  expect(new ConversationRepositoryV2(directory).projection('conversation-metrics').modelRequests).toEqual([request])
 })

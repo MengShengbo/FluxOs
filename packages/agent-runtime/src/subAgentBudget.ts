@@ -75,6 +75,25 @@ export class SubAgentBudget {
     return this.config.maxAgentDurationMs
   }
 
+  /** The current attempt is already registered by the engine before admission. */
+  checkModelRequest(input: Pick<SubAgentBudgetCheckInput, 'ownerSessionId' | 'workRunId' | 'tasks' | 'now'>): SubAgentBudgetCheck {
+    const tasks = input.tasks.filter(task => (input.ownerSessionId === undefined || task.ownerSessionId === input.ownerSessionId)
+      && (input.workRunId === undefined || task.workRunId === input.workRunId))
+    const tokens = tasks.reduce((total, task) => total + (task.tokens || 0), 0)
+    if (this.config.maxTokensPerRun > 0 && tokens >= this.config.maxTokensPerRun) {
+      return { allowed: false, code: 'subagent_token_budget', reason: 'Run reached its ' + this.config.maxTokensPerRun + '-token subagent budget.' }
+    }
+    const requests = tasks.reduce((total, task) => total + (task.requests || 0), 0)
+    if (this.config.maxRequestsPerRun > 0 && requests > this.config.maxRequestsPerRun) {
+      return { allowed: false, code: 'subagent_request_budget', reason: 'Run reached its ' + this.config.maxRequestsPerRun + '-request subagent budget.' }
+    }
+    const elapsed = tasks.reduce((total, task) => total + taskElapsed(task, input.now ?? Date.now()), 0)
+    if (elapsed >= this.config.maxRunAgentDurationMs) {
+      return { allowed: false, code: 'subagent_run_time_budget', reason: 'Run reached its ' + this.config.maxRunAgentDurationMs + 'ms total subagent time budget.' }
+    }
+    return { allowed: true }
+  }
+
   checkSpawn(input: SubAgentBudgetCheckInput): SubAgentBudgetCheck {
     const now = input.now ?? Date.now()
     const sessionTasks = input.tasks.filter(task => input.ownerSessionId === undefined || task.ownerSessionId === input.ownerSessionId)

@@ -1,3 +1,4 @@
+import { toolInvocationKey, toolResultExecutionStatus } from '@fluxos/contracts/toolResultData'
 import { appendFileSync, chmodSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, unlinkSync } from 'fs'
 import { mkdir as mkdirAsync, readFile as readFileAsync, readdir as readdirAsync, unlink as unlinkAsync } from 'node:fs/promises'
 import { join, resolve } from 'path'
@@ -644,7 +645,7 @@ function createRecoveredToolResultTurn(timestamp: number, results: ToolResult[],
   return {
     id: `recovered-tools-${timestamp}${sourceTurnId ? `-${sourceTurnId}` : ''}`,
     role: 'tool_result',
-    content: results.map(result => `${result.name}: ${result.isError ? '[failed]' : '[ok]'} ${result.output.slice(0, 500)}`).join('\n\n'),
+    content: results.map(result => `${result.name}: [${toolResultExecutionStatus(result)}] ${result.output.slice(0, 500)}`).join('\n\n'),
     timestamp,
     toolResults: results,
     metadata: {
@@ -774,7 +775,7 @@ function replayConversation(id: string, entries: ConversationJournalEntry[], tru
         upsertTurn(conversation.activeTurns, entry.turn)
         if (entry.turn.role === 'assistant') pendingStream = null
         if (entry.turn.toolResults) {
-          for (const result of entry.turn.toolResults) journalToolResults.delete(result.toolCallId)
+          for (const result of entry.turn.toolResults) journalToolResults.delete(toolInvocationKey(result.toolCallId, result.operationIdentity))
         }
         break
       case 'stream_start':
@@ -794,11 +795,11 @@ function replayConversation(id: string, entries: ConversationJournalEntry[], tru
         if (pendingStream) pendingStream.interrupted = entry.interrupted
         break
       case 'tool_call':
-        pendingToolCalls.set(entry.toolCall.id, entry.toolCall)
+        pendingToolCalls.set(toolInvocationKey(entry.toolCall.id, entry.toolCall.operationIdentity), entry.toolCall)
         break
       case 'tool_result':
-        journalToolResults.set(entry.toolResult.toolCallId, entry.toolResult)
-        pendingToolCalls.delete(entry.toolResult.toolCallId)
+        journalToolResults.set(toolInvocationKey(entry.toolResult.toolCallId, entry.toolResult.operationIdentity), entry.toolResult)
+        pendingToolCalls.delete(toolInvocationKey(entry.toolResult.toolCallId, entry.toolResult.operationIdentity))
         break
       case 'state':
         if (!conversation) break
@@ -881,19 +882,21 @@ function replayConversation(id: string, entries: ConversationJournalEntry[], tru
     interrupted = true
   }
 
-  const existingResultIds = new Set(conversation.turns.flatMap(turn => turn.toolResults?.map(result => result.toolCallId) || []))
+  const existingResultIds = new Set(conversation.turns.flatMap(turn => turn.toolResults?.map(result => toolInvocationKey(result.toolCallId, result.operationIdentity)) || []))
   const unresolvedGroups = conversation.turns
     .map((turn, index) => ({
       turn,
       index,
-      calls: (turn.toolCalls || []).filter(call => !existingResultIds.has(call.id)),
+      calls: (turn.toolCalls || []).filter(call => !existingResultIds.has(toolInvocationKey(call.id, call.operationIdentity))),
     }))
     .filter(group => group.calls.length > 0)
-  const missingToolResults = unresolvedGroups.flatMap(group => group.calls).filter(call => !journalToolResults.has(call.id))
+  const missingToolResults = unresolvedGroups.flatMap(group => group.calls).filter(call => !journalToolResults.has(toolInvocationKey(call.id, call.operationIdentity)))
   for (const group of [...unresolvedGroups].reverse()) {
-    const recoveredResults = group.calls.map(call => journalToolResults.get(call.id) || {
+    const recoveredResults = group.calls.map(call => journalToolResults.get(toolInvocationKey(call.id, call.operationIdentity)) || {
       toolCallId: call.id,
       name: call.name,
+      ...(call.operationIdentity ? { operationIdentity: structuredClone(call.operationIdentity) } : {}),
+      recovery: { effects: 'unknown' as const, retry: 'after_inspection' as const },
       output: RECOVERED_TOOL_RESULT_MESSAGE,
       isError: true,
       errorKind: 'abort' as const,

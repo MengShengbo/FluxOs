@@ -33,6 +33,7 @@ import {
   type AutomationRunStatus,
   type AutomationTriggerEvent,
   type AutomationTriggerPayload,
+  type AutomationWorkspaceCoverage,
 } from './automationTypes'
 import { automationToolEffectNeedsReview } from './automationSideEffects'
 
@@ -288,6 +289,24 @@ function isExecutionLockIndex(value: unknown): value is AutomationExecutionLockI
   return candidate.schemaVersion === AUTOMATION_SCHEMA_VERSION && Array.isArray(candidate.locks)
 }
 
+function isWorkspaceCoverage(value: unknown): value is AutomationWorkspaceCoverage {
+  if (!value || typeof value !== 'object') return false
+  const coverage = value as Partial<AutomationWorkspaceCoverage>
+  const issueCodes = new Set(['budget_exceeded', 'unreadable', 'changed_during_scan', 'external_symlink', 'unresolved_symlink',
+    'excluded_symlink', 'nested_repository', 'unsupported_entry', 'git_unavailable', 'git_scope_mismatch'])
+  return coverage.algorithm === 'sha256-workspace-content-v1'
+    && coverage.scope === 'workspace-files-including-ignored'
+    && Array.isArray(coverage.excludedPaths) && coverage.excludedPaths.length === 1 && coverage.excludedPaths[0] === '.git'
+    && Number.isSafeInteger(coverage.scannedEntries) && coverage.scannedEntries! >= 0
+    && Number.isSafeInteger(coverage.hashedBytes) && coverage.hashedBytes! >= 0
+    && Boolean(coverage.limits) && ['maxEntries', 'maxBytes', 'maxFileBytes', 'maxDurationMs'].every(key => {
+      const limit = coverage.limits![key as keyof AutomationWorkspaceCoverage['limits']]
+      return Number.isSafeInteger(limit) && limit >= 0
+    })
+    && Array.isArray(coverage.issues) && coverage.issues.every(issue => Boolean(issue) && issueCodes.has(issue.code)
+      && (issue.path === undefined || typeof issue.path === 'string'))
+}
+
 function isAutomationRunCheckpoint(value: unknown): value is AutomationRunCheckpoint {
   if (!value || typeof value !== 'object') return false
   const checkpoint = value as Partial<AutomationRunCheckpoint>
@@ -301,6 +320,9 @@ function isAutomationRunCheckpoint(value: unknown): value is AutomationRunCheckp
     && Array.isArray(checkpoint.toolEffects)
     && Array.isArray(checkpoint.artifactIds)
     && typeof checkpoint.workspaceFingerprint === 'string'
+    && /^sha256-workspace-content-v1:[a-f0-9]{64}$/.test(checkpoint.workspaceFingerprint)
+    && isWorkspaceCoverage(checkpoint.workspaceCoverage)
+    && (!checkpoint.resumable || checkpoint.workspaceCoverage.issues.length === 0)
     && typeof checkpoint.permissionDigest === 'string'
     && typeof checkpoint.contextSnapshotId === 'string'
     && typeof checkpoint.resumable === 'boolean'
@@ -869,6 +891,7 @@ export class AutomationRepository {
 
   saveCheckpoint(checkpoint: AutomationRunCheckpoint): AutomationRunCheckpoint {
     this.requireInitialized()
+    if (!isAutomationRunCheckpoint(checkpoint)) throw new Error('Invalid automation checkpoint')
     validIdentifier(checkpoint.id, 'automation checkpoint ID')
     validIdentifier(checkpoint.runId, 'automation run ID')
     this.recoverResidualIntents()

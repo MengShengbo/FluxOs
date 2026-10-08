@@ -173,7 +173,12 @@ function checkpoint(
     },
     pendingApprovalId: undefined,
     artifactIds: [],
-    workspaceFingerprint: 'workspace-fingerprint-1',
+    workspaceFingerprint: `sha256-workspace-content-v1:${'0'.repeat(64)}`,
+    workspaceCoverage: {
+      algorithm: 'sha256-workspace-content-v1', scope: 'workspace-files-including-ignored',
+      excludedPaths: ['.git'], scannedEntries: 1, hashedBytes: 0, issues: [],
+      limits: { maxEntries: 10_000, maxBytes: 67_108_864, maxFileBytes: 16_777_216, maxDurationMs: 2_000 },
+    },
     permissionDigest: 'permission-digest-1',
     contextSnapshotId: 'context-snapshot-1',
     resumable: classification === 'read_only' || classification === 'idempotent_write',
@@ -1110,7 +1115,8 @@ describe('AutomationRepository', () => {
     })
   })
 
-  it('treats a checkpoint with corrupted run identity as missing during lease recovery', () => {
+  it.each(['run identity', 'missing coverage', 'partial coverage marked resumable'])(
+    'treats corrupted checkpoint %s as missing during lease recovery', corruption => {
     const root = createRoot()
     let now = 1_788_192_000_000
     const repositoryRoot = join(root, 'automations')
@@ -1123,7 +1129,9 @@ describe('AutomationRepository', () => {
     repository.saveCheckpoint(checkpoint(root, 'idempotent_write'))
     const checkpointPath = join(repositoryRoot, 'checkpoints', 'automation-run-1', 'checkpoint-1.json')
     const corrupted = JSON.parse(readFileSync(checkpointPath, 'utf8')) as AutomationRunCheckpoint
-    corrupted.runId = 'automation-run-other'
+    if (corruption === 'run identity') corrupted.runId = 'automation-run-other'
+    else if (corruption === 'missing coverage') delete (corrupted as Partial<AutomationRunCheckpoint>).workspaceCoverage
+    else corrupted.workspaceCoverage.issues.push({ code: 'budget_exceeded' })
     writeFileSync(checkpointPath, `${JSON.stringify(corrupted, null, 2)}\n`)
     now += 3_001
 
