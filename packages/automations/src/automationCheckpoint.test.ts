@@ -56,7 +56,8 @@ describe('automation workspace content identity', () => {
     expect(second.fingerprint).not.toBe(first.fingerprint)
   })
 
-  it.each(['untracked.txt', 'ignored/config.json', 'name with\nnewline.txt'])('hashes actual contents of %s', name => {
+  // Windows file names cannot contain a newline.
+  it.each(['untracked.txt', 'ignored/config.json', ...(process.platform === 'win32' ? [] : ['name with\nnewline.txt'])])('hashes actual contents of %s', name => {
     const { path, git } = workspace()
     writeFileSync(join(path, '.gitignore'), 'ignored/\n')
     mkdirSync(join(path, 'ignored'))
