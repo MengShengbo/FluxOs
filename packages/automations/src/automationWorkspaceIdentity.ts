@@ -75,10 +75,11 @@ export function captureAutomationWorkspaceIdentity(
 
   try {
     checkDeadline()
-    normalized = realpathSync(workspacePath)
+    // Native resolution expands Windows 8.3 short names, matching the long paths Git reports.
+    normalized = realpathSync.native(workspacePath)
     record(coverage.algorithm, coverage.scope, normalized, ...coverage.excludedPaths)
     try {
-      if (realpathSync(git('rev-parse', '--show-toplevel').trim()) !== normalized) fail('git_scope_mismatch')
+      if (realpathSync.native(git('rev-parse', '--show-toplevel').trim()) !== normalized) fail('git_scope_mismatch')
       gitStatus = status()
       const oid = gitStatus.split('\0').find(line => line.startsWith('# branch.oid '))?.slice('# branch.oid '.length)
       if (!oid) fail('git_unavailable')
@@ -142,7 +143,7 @@ export function captureAutomationWorkspaceIdentity(
         const target = readlinkSync(absolute)
         record('symlink', currentPath, target)
         let resolved: string
-        try { resolved = realpathSync(absolute) } catch { throw new IncompleteScan({ code: 'unresolved_symlink', path: currentPath }) }
+        try { resolved = realpathSync.native(absolute) } catch { throw new IncompleteScan({ code: 'unresolved_symlink', path: currentPath }) }
         const targetPath = relative(normalized, resolved)
         if (isAbsolute(targetPath) || targetPath === '..' || targetPath.startsWith(`..${sep}`)) fail('external_symlink', currentPath)
         if (targetPath === '.git' || targetPath.startsWith(`.git${sep}`)) fail('excluded_symlink', currentPath)
