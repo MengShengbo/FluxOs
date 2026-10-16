@@ -632,7 +632,8 @@ export class NodeToolExecutor implements ToolExecutor {
         signal?.removeEventListener('abort', onAbort)
         append('stdout', decoders.stdout.end()); append('stderr', decoders.stderr.end())
         await logWriter?.close()
-        if (termination?.status === 'unknown') {
+        // A closed Windows root cannot be re-inspected, so retrying at shutdown could never confirm it.
+        if (termination?.status === 'unknown' && !(process.platform === 'win32' && closed)) {
           this.unconfirmedProcesses.set(proc, runtimeTaskId)
           // Keep draining without retaining output until explicit shutdown retries
           // ownership cleanup. Late process errors must not crash the host.
