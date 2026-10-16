@@ -710,7 +710,20 @@ export class NodeToolExecutor implements ToolExecutor {
 
   private async stopProcessAndWait(proc: ChildProcessWithoutNullStreams): Promise<void> {
     const receipt = await this.terminateProcessTree(proc)
-    if (receipt.status !== 'confirmed') throw new Error(receipt.error || 'Process termination unconfirmed')
+    if (receipt.status === 'confirmed') return
+    // Windows can report a root exit before Node emits it; a root that ended by itself was not left running.
+    if (await this.waitForExit(proc, 1000)) return
+    throw new Error(receipt.error || 'Process termination unconfirmed')
+  }
+
+  private waitForExit(proc: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<boolean> {
+    if (proc.exitCode != null || proc.signalCode != null) return Promise.resolve(true)
+    return new Promise(resolve => {
+      const done = (exited: boolean) => { clearTimeout(timer); proc.off('exit', onExit); resolve(exited) }
+      const onExit = () => done(true)
+      const timer = setTimeout(() => done(false), timeoutMs)
+      proc.once('exit', onExit)
+    })
   }
 
   private finishProcessRuntimeTask(taskId: string, result: Result<CommandOutput>, logError?: string): void {
