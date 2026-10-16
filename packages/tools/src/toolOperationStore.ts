@@ -63,9 +63,10 @@ export class ToolOperationStore {
     const fingerprint = digest(signature)
     const firstCreated = mkdirSync(this.root, { recursive: true, mode: 0o700 })
     if (firstCreated) {
+      // Stop at the filesystem root as well: path spellings can differ (e.g. Windows short names).
       for (let directory = this.root;; directory = dirname(directory)) {
         syncDirectory(directory)
-        if (directory === dirname(firstCreated)) break
+        if (directory === dirname(firstCreated) || dirname(directory) === directory) break
       }
     }
     const intent: Intent = { version: 1, id, fingerprint, token: randomUUID(), startedAt: Date.now() }
