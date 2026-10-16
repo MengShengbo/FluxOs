@@ -8,11 +8,11 @@ import { collectContinuationHandoffFacts } from './contextCompaction'
 import { projectChildTranscript } from '@fluxos/presentation/childTranscriptProjection'
 import type { ChildTranscriptItem } from '@fluxos/contracts/childAgentTypes'
 
-function fixture() {
+function fixture(failedIndex = 1) {
   const calls: ToolCall[] = ['one', 'two'].map(turnId => ({ id: 'reused', name: 'read_file', arguments: { path: `${turnId}.ts` },
     operationIdentity: { sessionId: 'session', turnId, callId: 'reused' } }))
   const results: ToolResult[] = calls.map((call, index) => ({ toolCallId: call.id, name: call.name, output: `evidence-${index}`,
-    isError: index === 1, operationIdentity: call.operationIdentity }))
+    isError: index === failedIndex, operationIdentity: call.operationIdentity }))
   const turns: AgentTurn[] = calls.flatMap((call, index) => [
     { id: `assistant-${index}`, role: 'assistant' as const, content: '', timestamp: index * 2, toolCalls: [call] },
     { id: `result-${index}`, role: 'tool_result' as const, content: '', timestamp: index * 2 + 1, toolResults: [results[index]!] },
@@ -21,7 +21,8 @@ function fixture() {
 }
 describe('operation identities at context and activity boundaries', () => {
   it('preserves the correct evidence for each file when provider IDs repeat', () => {
-    const { turns } = fixture()
+    // Failed reads are not preserved as file content, so both reads succeed here.
+    const { turns } = fixture(-1)
     const provider = new DefaultAgentStateProvider({ provider: 'custom', apiKey: 'fixture', baseUrl: 'http://fixture.invalid', model: 'fixture', contextWindow: 100_000, maxTokens: 4096 }, '/fixture')
     expect(new AgentContextCoordinator(provider).collectPreservedFiles(turns)).toEqual([
       { path: 'one.ts', content: 'evidence-0' }, { path: 'two.ts', content: 'evidence-1' },
