@@ -682,7 +682,11 @@ export class NodeToolExecutor implements ToolExecutor {
       proc.on('error', onError); proc.on('close', onClose)
       if (runtimeTaskId) this.runtimeTaskManager.setControl(runtimeTaskId, { stop: async () => {
         await cancel('abort')
-        if (termination?.status === 'unknown') throw new Error(termination.error || 'Process termination unconfirmed')
+        // On Windows a root that exits before taskkill runs leaves no tree to inspect. The task has
+        // stopped; the unconfirmed receipt stays on its result instead of failing the stop request.
+        if (termination?.status === 'unknown' && !(process.platform === 'win32' && closed)) {
+          throw new Error(termination.error || 'Process termination unconfirmed')
+        }
       } })
       if (signal?.aborted) onAbort(); else signal?.addEventListener('abort', onAbort, { once: true })
       timeoutTimer = setTimeout(() => {
