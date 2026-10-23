@@ -546,7 +546,10 @@ describe('AgentEngine MCP dispatch', () => {
     }).dispatchTool.bind(engine)
     await expect(dispatchTool('tool_search', { query: 'replace' }, 'mcp-search-1')).resolves.toMatchObject({
       output: expect.stringContaining('files__replace'),
-      data: { kind: 'items', items: [expect.objectContaining({ title: 'files__replace' })] },
+      data: { kind: 'items', items: expect.arrayContaining([
+        expect.objectContaining({ title: 'files__replace' }),
+        expect.objectContaining({ title: 'replace_file' }),
+      ]) },
     })
     engine.destroy()
   })
@@ -1467,12 +1470,14 @@ describe('AgentEngine tool scheduling and task contracts', () => {
     }).dispatchTool.bind(engine)
 
     try {
-      const root = JSON.parse((await dispatchTool('create_task', {
-        title: 'Root', description: 'Root task', priority: 'major',
-      }, 'create-root') as unknown as ToolResult).output) as { id: string }
-      const child = JSON.parse((await dispatchTool('create_task', {
-        title: 'Child', description: 'Child task', priority: 'medium', parent_id: root.id,
-      }, 'create-child') as unknown as ToolResult).output) as { id: string }
+      const rootResult = JSON.parse((await dispatchTool('create_tasks', {
+        tasks: [{ title: 'Root', description: 'Root task', priority: 'major' }],
+      }, 'create-root') as unknown as ToolResult).output) as { created: Array<{ id: string }> }
+      const root = rootResult.created[0]!
+      const childResult = JSON.parse((await dispatchTool('create_tasks', {
+        tasks: [{ title: 'Child', description: 'Child task', priority: 'medium', parent_id: root.id }],
+      }, 'create-child') as unknown as ToolResult).output) as { created: Array<{ id: string }> }
+      const child = childResult.created[0]!
       await dispatchTool('update_task', { task_id: child.id, status: 'completed' }, 'complete-child')
 
       const filtered = JSON.parse(await dispatchTool('list_tasks', {
@@ -4344,4 +4349,12 @@ describe('context compaction boundaries', () => {
       engine.destroy()
     }
   })
+})
+
+
+it('counts the exact deferred wire invocation once when budgeting compaction', () => {
+  const invocation = { name: 'call_tool', arguments: { name: 'git_status', arguments_json: ' '.repeat(100000) + '{}' } }
+  expect(countTurnContextChars({ id: 'budget', role: 'assistant', content: '', timestamp: 1,
+    toolCalls: [{ id: 'large-wire', name: 'git_status', arguments: {}, modelInvocation: invocation }],
+  })).toBe(invocation.name.length + 2 + JSON.stringify(invocation.arguments).length)
 })

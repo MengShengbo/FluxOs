@@ -55,7 +55,7 @@ export function projectChildTranscript(records: readonly ChildTranscriptItem[]):
 export function childToolGroupLabel(tools: readonly ChildToolActivity[]): string {
   const counts = new Map<string, number>()
   for (const { call } of tools) {
-    const verb = ['read_file', 'read_file_full', 'list_directory', 'read_web_source'].includes(call.name) ? '读取'
+    const verb = ['read_file', 'list_directory', 'read_web_source'].includes(call.name) ? '读取'
       : ['search_files', 'search_content', 'web_search'].includes(call.name) ? '搜索'
       : call.name === 'web_fetch' || call.name.startsWith('browser__') ? '浏览网页'
       : call.name.startsWith('computer__') ? '操作电脑'

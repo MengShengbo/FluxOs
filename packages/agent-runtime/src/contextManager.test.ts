@@ -401,14 +401,14 @@ describe('ContextManager', () => {
         role: 'assistant',
         content: '',
         timestamp: 2,
-        toolCalls: [{ id: 'tc-full', name: 'read_file_full', arguments: { path: 'src/a.ts' } }],
+        toolCalls: [{ id: 'tc-full', name: 'read_file', arguments: { path: 'src/a.ts', limit: 2000 } }],
       },
       {
         id: 'tr1',
         role: 'tool_result',
         content: '',
         timestamp: 3,
-        toolResults: [{ toolCallId: 'tc-full', name: 'read_file_full', output: 'export const oldHint = 1\nlarge stale body', isError: false }],
+        toolResults: [{ toolCallId: 'tc-full', name: 'read_file', output: 'export const oldHint = 1\nlarge stale body', isError: false }],
       },
       {
         id: 'a2',

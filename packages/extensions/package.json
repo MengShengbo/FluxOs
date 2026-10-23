@@ -70,6 +70,10 @@
     "./workPacks/workPackCatalog": {
       "types": "./dist/workPacks/workPackCatalog.d.ts",
       "import": "./dist/workPacks/workPackCatalog.js"
+    },
+    "./mcp/toolSearch": {
+      "types": "./dist/mcp/toolSearch.d.ts",
+      "import": "./dist/mcp/toolSearch.js"
     }
   },
   "scripts": {

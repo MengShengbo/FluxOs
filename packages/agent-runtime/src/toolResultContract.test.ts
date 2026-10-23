@@ -33,8 +33,8 @@ describe('tool result status independent of text', () => {
 
   it.each(['Error: this is a documented example', 'Tool execution error: quoted log line', 'Unknown tool: a literal heading'])('reads literal content without failing: %s', async content => {
     const h = harness({ readFileRange: async () => ({ success: true, data: { content, truncated: false } }) })
-    const result = await h.call('read_file_full', { path: 'example.txt' })
-    expect(result.output).toBe(content)
+    const result = await h.call('read_file', { path: 'example.txt', limit: 2000 })
+    expect(result.output).toBe(`     1→${content}`)
     expect(result.isError).toBe(false)
     expect(toolResultExecutionStatus(result)).toBe('completed')
     expect(h.internal.currentRunSuccessfulReadFiles.has('example.txt')).toBe(true)
@@ -71,7 +71,7 @@ describe('tool result status independent of text', () => {
 
   it('treats a dependency failure as partial creation and keeps the created node', async () => {
     const h = harness()
-    const result = await h.call('create_task', { title: 'Created', description: 'Keep this node', priority: 'major', dependencies: ['missing'] })
+    const result = await h.call('create_tasks', { tasks: [{ title: 'Created', description: 'Keep this node', priority: 'major', dependencies: ['missing'] }] })
     expect(result).toMatchObject({ isError: true, errorKind: 'validation', recovery: { effects: 'partial', retry: 'after_inspection' },
       data: { kind: 'tasks', status: 'partial', tasks: [expect.objectContaining({ title: 'Created', dependencies: [] })],
         failures: [expect.objectContaining({ stage: 'dependency' })] } })

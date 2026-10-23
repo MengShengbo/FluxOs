@@ -4,6 +4,8 @@
 
 Browser-safe Agent, event, state and tool contracts.
 
+`ToolCall.name` and `arguments` identify the operation the host executes. Optional `modelInvocation` retains the original model-facing invocation when a discovery gateway resolves to another operation. Model history and conversation replay preserve this envelope, including literal strings such as `arguments_json`; computer privacy filtering discards both copies of ephemeral input.
+
 Use the declared package exports. Source belongs to this package; do not import sibling source or build directories. See [package architecture](../../docs/architecture/packages.md) for ownership and dependency rules.
 
 The `testing/workExecutionFixture` export provides typed, browser-safe execution conformance data shared by kernel normalization and product persistence/replay tests. It creates independent current `WorkExecutionSnapshot` and `WorkExecutionUpdate` values; it does not adapt or migrate retired task-tree event formats. When execution contracts change, update this fixture and run both repositories' execution tests.

@@ -51,6 +51,10 @@
       "types": "./dist/conversationEvent.d.ts",
       "import": "./dist/conversationEvent.js"
     },
+    "./continuumTypes": {
+      "types": "./dist/continuumTypes.d.ts",
+      "import": "./dist/continuumTypes.js"
+    },
     "./flowEvents": {
       "types": "./dist/flowEvents.d.ts",
       "import": "./dist/flowEvents.js"

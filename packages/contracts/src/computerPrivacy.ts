@@ -11,8 +11,21 @@ function computerResultMessage(result: Pick<ToolResult, 'isError'>): string {
   return result.isError ? COMPUTER_ERROR_REDACTED : COMPUTER_RESULT_REDACTED
 }
 
+function invocationContainsComputerInput(invocation: ToolCall['modelInvocation']): boolean {
+  if (!invocation) return false
+  return isBuiltInComputerTool(invocation.name)
+    || invocation.name === 'call_tool' && isBuiltInComputerTool(invocation.arguments?.name)
+}
+
+function isComputerToolCall(toolCall: ToolCall): boolean {
+  // Privacy classification must work before strict gateway decoding, including rejected envelopes.
+  return invocationContainsComputerInput(toolCall) || invocationContainsComputerInput(toolCall.modelInvocation)
+}
+
 export function redactComputerToolCall(toolCall: ToolCall): ToolCall {
-  if (!isBuiltInComputerTool(toolCall.name)) return toolCall
+  if (!isComputerToolCall(toolCall)) return toolCall
+  // The original model invocation can contain the same ephemeral input inside a gateway envelope.
+  // Omit it together with execution arguments rather than retaining a second copy of that input.
   return {
     id: toolCall.id,
     name: toolCall.name,
@@ -49,7 +62,7 @@ function persistedToolResultContent(results: ToolResult[]): string {
 
 export function turnContainsComputerActivity(turn: AgentTurn): boolean {
   return Boolean(
-    turn.toolCalls?.some(toolCall => isBuiltInComputerTool(toolCall.name))
+    turn.toolCalls?.some(isComputerToolCall)
     || turn.toolResults?.some(toolResult => isBuiltInComputerTool(toolResult.name)),
   )
 }
@@ -106,13 +119,24 @@ function collectSensitiveValue(value: unknown, values: Set<string>, seen: WeakSe
   for (const item of Object.values(value)) collectSensitiveValue(item, values, seen)
 }
 
-function collectComputerSensitiveValues(turns: AgentTurn[]): Set<string> {
+function collectComputerSensitiveValues(turns: AgentTurn[]): { values: Set<string>; hasOpaqueInput: boolean } {
   const values = new Set<string>()
   const seen = new WeakSet<object>()
+  let hasOpaqueInput = false
   for (const turn of turns) {
     for (const toolCall of turn.toolCalls || []) {
-      if (!isBuiltInComputerTool(toolCall.name)) continue
+      if (!isComputerToolCall(toolCall)) continue
       collectSensitiveValue(toolCall.arguments, values, seen)
+      collectSensitiveValue(toolCall.modelInvocation?.arguments, values, seen)
+      for (const invocation of [toolCall, toolCall.modelInvocation]) {
+        if (invocation?.name !== 'call_tool' || typeof invocation.arguments?.arguments_json !== 'string') continue
+        try {
+          collectSensitiveValue(JSON.parse(invocation.arguments.arguments_json), values, seen)
+        } catch {
+          // A summary may quote any fragment of malformed input; whole-string replacement is unsafe.
+          hasOpaqueInput = true
+        }
+      }
     }
     for (const toolResult of turn.toolResults || []) {
       if (!isBuiltInComputerTool(toolResult.name)) continue
@@ -123,7 +147,7 @@ function collectComputerSensitiveValues(turns: AgentTurn[]): Set<string> {
       collectSensitiveValue(toolResult.attachments, values, seen)
     }
   }
-  return values
+  return { values, hasOpaqueInput }
 }
 
 function redactSensitiveText(text: string, values: Set<string>): string {
@@ -185,7 +209,8 @@ function redactComputerHandoff(handoff: ContextHandoff, sensitiveValues: Set<str
 export function redactComputerSegment(segment: ContextSegment, turns: AgentTurn[]): ContextSegment {
   const computerTurns = computerTurnsForSegment(segment, turns)
   if (!segmentHasComputerActivity(segment, computerTurns)) return segment
-  const sensitiveValues = collectComputerSensitiveValues(computerTurns)
+  const { values: sensitiveValues, hasOpaqueInput } = collectComputerSensitiveValues(computerTurns)
+  if (hasOpaqueInput) return { ...segment, summary: COMPUTER_DETAIL_REDACTED, handoff: undefined }
   return {
     ...segment,
     summary: redactSensitiveText(segment.summary, sensitiveValues),

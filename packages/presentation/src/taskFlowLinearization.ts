@@ -18,7 +18,7 @@ const PASSIVE_BROWSER_OPERATIONS = new Set([
   'browser__find',
   'browser__tabs',
 ])
-const RETRIEVAL_OPERATIONS = new Set(['read_file', 'read_file_full', 'search_content', 'search_files', 'list_directory'])
+const RETRIEVAL_OPERATIONS = new Set(['read_file', 'search_content', 'search_files', 'list_directory'])
 
 function orderedPresentationNodes(state: TaskFlowProjectionState): { nodes: TaskFlowNode[]; phase?: TaskFlowNode } {
   const nodes = state.order.map(id => state.nodes[id])

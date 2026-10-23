@@ -5,7 +5,7 @@ import type { WorkRun } from '@fluxos/contracts/workExecutionTypes'
 import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import { createTaskFlowProjection } from './taskFlowProjection'
 import { WorkProjectionEngine } from './workProjection'
-import { applyConversationViewEvent, applyConversationViewSnapshot, type ConversationViewState } from './conversationViewProjection'
+import { applyConversationViewEvent, applyConversationViewEvents, applyConversationViewSnapshot, type ConversationViewState } from './conversationViewProjection'
 
 const run: WorkRun = {
   id: 'run', conversationId: 'conversation', objective: 'Inspect', presentation: 'work', responseMode: 'task',
@@ -23,6 +23,77 @@ const event = (seq: number, type: AnyConversationEvent['type'], payload: unknown
 } as AnyConversationEvent)
 
 describe('canonical conversation view', () => {
+  it('batches arbitrary events with the same lifecycle, tool identity and immutable results as serial admission', () => {
+    const call = { id: 'read', name: 'read_file', arguments: { path: 'a.ts' },
+      operationIdentity: { sessionId: 'conversation', turnId: 'assistant', callId: 'read' } }
+    const events = [
+      event(1, 'run.started', {}),
+      event(2, 'stream.delta', { channel: 'answer', text: 'Inspecting ' }),
+      event(3, 'stream.delta', { channel: 'answer', text: 'files' }),
+      event(4, 'tool.delta', { toolCallId: call.id, toolName: call.name, partialJson: '{' }),
+      event(5, 'tool.proposed', { toolCall: call }),
+      event(6, 'run.state_changed', { state: { phase: 'paused', updatedAt: 6 } }),
+      event(7, 'run.state_changed', { state: { phase: 'tool_running', updatedAt: 7 } }),
+      event(8, 'tool.completed', { toolResult: { toolCallId: call.id, name: call.name,
+        operationIdentity: call.operationIdentity, output: 'done', isError: false } }),
+      event(9, 'execution.updated', { update: { currentRunId: run.id, retainedRunIds: [run.id], runs: [run], removedActivityIds: {} } }),
+      event(10, 'run.completed', { outcome: 'completed' }),
+    ].map(value => ({ ...value, stepId: 'step', itemId: value.type.startsWith('tool.') ? call.id : value.itemId }))
+    const current = initial()
+    Object.freeze(current.flow.nodes); Object.freeze(current.flow.order)
+    const input = structuredClone(current)
+    const expected = events.reduce(applyConversationViewEvent, current)
+    const batched = applyConversationViewEvents(current, events)
+    expect(batched).toEqual(expected)
+    expect(current).toEqual(input)
+    const committed = structuredClone(batched)
+    applyConversationViewEvents(batched, [event(11, 'run.started', {}), event(12, 'tool.delta', {
+      toolCallId: 'next', toolName: call.name, partialJson: '{',
+    })])
+    expect(batched).toEqual(committed)
+  })
+
+  it('retains sequence gaps, generation checks and duplicate filtering in a batch', () => {
+    const events = [
+      event(1, 'run.started', {}),
+      event(3, 'run.completed', { outcome: 'failed' }),
+      { ...event(2, 'run.completed', { outcome: 'failed' }), conversationId: 'other' },
+      { ...event(2, 'run.completed', { outcome: 'failed' }), generation: 1 },
+      event(2, 'tool.delta', { toolCallId: 'one', toolName: 'read_file', partialJson: '{' }),
+      event(3, 'tool.delta', { toolCallId: 'one', toolName: 'read_file', partialJson: '{}' }),
+      event(3, 'run.completed', { outcome: 'failed' }),
+      event(4, 'run.completed', { outcome: 'completed' }),
+    ]
+    const expected = events.reduce(applyConversationViewEvent, initial())
+    const batched = applyConversationViewEvents(initial(), events)
+    expect(batched).toEqual(expected)
+    expect(batched.status).toBe('ready')
+    expect(batched.flow.lastSeq).toBe(4)
+    expect(applyConversationViewEvents(batched, events)).toBe(batched)
+  })
+
+  it('copies the historical flow map a bounded number of times for a burst of deltas', () => {
+    let current = applyConversationViewEvent(initial(), event(1, 'run.started', {}))
+    for (let index = 0; index < 100; index += 1) {
+      current = applyConversationViewEvent(current, event(index + 2, 'tool.proposed', {
+        toolCall: { id: `old-${index}`, name: 'read_file', arguments: {} },
+      }))
+    }
+    let enumerations = 0
+    const original = current.flow.nodes
+    const nodes = new Proxy(original, { ownKeys(target) { enumerations += 1; return Reflect.ownKeys(target) } })
+    current = { ...current, flow: { ...current.flow, nodes } }
+    const events = Array.from({ length: 256 }, (_, index) => ({ ...event(index + 102, 'stream.delta', {
+      channel: 'answer', text: 'x',
+    }), stepId: 'step' }))
+    const result = applyConversationViewEvents(current, events)
+    expect(result.flow.nodes['step:step:answer'].content).toHaveLength(256)
+    expect(result.flow.lastSeq).toBe(357)
+    // One private shallow copy and, for this uncached input, one index build.
+    expect(enumerations).toBeLessThanOrEqual(2)
+    expect(current.flow.nodes['step:step:answer']).toBeUndefined()
+  })
+
   it.each([
     [{ state: 'exited', exitCode: 7 }, [0], 'failed'],
     [{ state: 'exited', exitCode: 1 }, [0, 1], 'completed'],

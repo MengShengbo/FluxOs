@@ -2,6 +2,7 @@ export * from './agentTypes'
 export * from './browserTypes'
 export * from './computerTypes'
 export * from './memoryTypes'
+export * from './continuumTypes'
 export * as PluginContracts from './pluginTypes'
 export type {
   PluginID,

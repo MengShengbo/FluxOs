@@ -3,6 +3,7 @@ import type { AgentEventType } from '@fluxos/agent-runtime/agentEngine'
 import type { AgentTurn, ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import type { ContextSegment } from '@fluxos/contracts/stateTypes'
 import type { PersistedConversation } from '../conversations/types'
+import { turnContainsComputerActivity } from '@fluxos/contracts/computerPrivacy'
 import {
   COMPUTER_ERROR_REDACTED,
   COMPUTER_DETAIL_REDACTED,
@@ -29,6 +30,9 @@ function computerCall(): ToolCall {
   return {
     id: 'computer-call-1',
     name: 'computer__type_text',
+    modelInvocation: { name: 'call_tool', arguments: {
+      name: 'computer__type_text', arguments_json: ' { "text": "PRIVATE_TYPED_TEXT" } ',
+    } },
     arguments: {
       text: 'PRIVATE_TYPED_TEXT',
       keys: 'PRIVATE_KEYS',
@@ -65,6 +69,40 @@ function expectNoComputerSecrets(value: unknown): void {
 }
 
 describe('computer privacy projection', () => {
+  it.each([
+    { label: 'malformed JSON gateway', name: 'call_tool', arguments: {
+      name: 'computer__type_text', arguments_json: '{"text":"PRIVATE_TYPED_TEXT"',
+    } },
+    { label: 'extra gateway fields', name: 'call_tool', arguments: {
+      name: 'computer__type_text', arguments_json: '{"text":"PRIVATE_TYPED_TEXT"}', unexpected: 'PRIVATE_KEYS',
+    } },
+    { label: 'original gateway identity', name: 'read_file', arguments: { text: 'PRIVATE_TYPED_TEXT' },
+      modelInvocation: { name: 'call_tool', arguments: {
+        name: 'computer__type_text', arguments_json: '{"text":"PRIVATE_TYPED_TEXT"',
+      } } },
+    { label: 'original computer identity', name: 'read_file', arguments: { text: 'PRIVATE_TYPED_TEXT' },
+      modelInvocation: { name: 'computer__type_text', arguments: { text: 'PRIVATE_TYPED_TEXT' } } },
+  ])('classifies and redacts $label before successful gateway decoding', invocation => {
+    const { label: _label, ...input } = invocation
+    const call: ToolCall = { id: 'computer-call', ...input }
+    const turn: AgentTurn = { id: 'assistant', role: 'assistant', content: '', timestamp: 1, toolCalls: [call] }
+    expect(turnContainsComputerActivity(turn)).toBe(true)
+    const value: PersistedConversation = {
+      id: 'conversation', title: 'Privacy', workspacePath: '/workspace', createdAt: 1, updatedAt: 2,
+      mode: 'vibe', model: 'fixture', provider: 'custom', turnCount: 1, turns: [turn],
+      contextSegments: [{ startMessageId: turn.id, endMessageId: turn.id, coveredTurnIds: [turn.id],
+        summary: 'Typed PRIVATE_TYPED_TEXT', isModelGenerated: true, originalCharCount: 24, isValid: true }],
+    }
+    const redacted = redactComputerConversation(value)
+    expectNoComputerSecrets(redacted)
+    expectNoComputerSecrets(redactComputerAgentEvent({
+      type: 'stream:tool_call_delta', toolCallId: call.id, toolName: 'call_tool', partialJson: JSON.stringify(input),
+    }))
+    expect(redacted.turns[0]!.toolCalls![0]).toEqual({ id: call.id, name: call.name, arguments: {} })
+    expect(call.arguments).toEqual(input.arguments)
+    expect(JSON.stringify(call)).toContain('PRIVATE_TYPED_TEXT')
+  })
+
   it('redacts content while retaining safe interruption and conditional recovery facts', () => {
     const result: ToolResult = { ...computerResult(), isError: true, errorKind: 'abort',
       interruption: { kind: 'pause', resumable: true }, recovery: { effects: 'unknown', retry: 'after_inspection', guidance: 'PRIVATE_AX_VALUE' } }
@@ -81,6 +119,7 @@ describe('computer privacy projection', () => {
 
     expectNoComputerSecrets([callEvent, resultEvent])
     expect(callEvent).toMatchObject({ toolCall: { arguments: {} } })
+    expect((callEvent as Extract<AgentEventType, { type: 'tool:call' }>).toolCall.modelInvocation).toBeUndefined()
     expect(resultEvent).toMatchObject({
       toolResult: {
         output: COMPUTER_RESULT_REDACTED,
@@ -89,6 +128,7 @@ describe('computer privacy projection', () => {
     })
     expect((resultEvent as Extract<AgentEventType, { type: 'tool:result' }>).toolResult.attachments).toBeUndefined()
     expect(call.arguments.text).toBe('PRIVATE_TYPED_TEXT')
+    expect(call.modelInvocation?.arguments.arguments_json).toBe(' { "text": "PRIVATE_TYPED_TEXT" } ')
     expect(result.attachments?.[0]?.path).toBe('/private/tmp/computer-frame.png')
   })
 

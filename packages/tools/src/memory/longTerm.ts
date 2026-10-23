@@ -7,6 +7,7 @@ import type { Memory, MemoryEvidence, MemoryHistoryHit, MemoryHistorySource, Mem
 
 export const DEFAULT_MEMORY_POLICY: MemoryPolicy = {
   referenceHistory: true, crossProjectHistory: false, backgroundConsolidation: true,
+  continuumEnabled: true, continuumNarrative: false, maxContinuumCallsPerDay: 10,
   maxCallsPerDay: 20, maxInputCharacters: 24000, maxOutputTokens: 2000,
 }
 type DerivedMemory = Memory & { projectId: string; key: string; validUntil?: number }
@@ -41,12 +42,14 @@ export class LongTermMemory {
     catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { ...DEFAULT_MEMORY_POLICY }; throw error }
   }
   private validatePolicy(value: MemoryPolicy): MemoryPolicy {
-    for (const field of ['referenceHistory', 'crossProjectHistory', 'backgroundConsolidation'] as const)
+    for (const field of ['referenceHistory', 'crossProjectHistory', 'backgroundConsolidation', 'continuumEnabled', 'continuumNarrative'] as const)
       if (typeof value[field] !== 'boolean') throw new Error(`Invalid memory setting: ${field}`)
-    for (const [field, min, max] of [['maxCallsPerDay', 0, 100], ['maxInputCharacters', 6000, 64000], ['maxOutputTokens', 500, 8000]] as const)
+    for (const [field, min, max] of [['maxCallsPerDay', 0, 100], ['maxContinuumCallsPerDay', 0, 100], ['maxInputCharacters', 6000, 64000], ['maxOutputTokens', 500, 8000]] as const)
       if (!Number.isSafeInteger(value[field]) || value[field] < min || value[field] > max) throw new Error(`Invalid memory budget: ${field}`)
     return { referenceHistory: value.referenceHistory, crossProjectHistory: value.crossProjectHistory,
-      backgroundConsolidation: value.backgroundConsolidation, maxCallsPerDay: value.maxCallsPerDay,
+      backgroundConsolidation: value.backgroundConsolidation, continuumEnabled: value.continuumEnabled,
+      continuumNarrative: value.continuumNarrative, maxContinuumCallsPerDay: value.maxContinuumCallsPerDay,
+      maxCallsPerDay: value.maxCallsPerDay,
       maxInputCharacters: value.maxInputCharacters, maxOutputTokens: value.maxOutputTokens }
   }
   setPolicy(value: MemoryPolicy): void {
@@ -144,6 +147,11 @@ export class LongTermMemory {
   }
   reportError(error: unknown): void {
     this.mutate(state => { (state.maintenance[this.projectId] ??= {}).lastError = error instanceof Error ? error.message : String(error) })
+  }
+
+  /** Suppressed evidence keys (`conversationId:messageId`) for Continuum propagation. */
+  suppressedKeys(): string[] {
+    return [...this.load().suppressed]
   }
   private day() { return new Date(this.now()).toISOString().slice(0, 10) }
 

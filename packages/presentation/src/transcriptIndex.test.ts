@@ -74,4 +74,24 @@ describe('transcript content revisions', () => {
     expect(index.toolVersion(firstKey!)).toBeGreaterThan(firstRevision)
     expect(index.toolVersion(secondKey!)).toBe(secondRevision)
   })
+  it('keeps revisions stable across IPC clones and object-key order while detecting nested corrections', () => {
+    const index = new TranscriptIndex()
+    const result: ToolResult = { toolCallId: 'large', output: 'output\n'.repeat(100_000), isError: false,
+      data: { kind: 'command', command: 'check', stdout: 'old', expectedExitCodes: [0], process: { state: 'exited', exitCode: 0 } } }
+    index.setResult(result)
+    const initial = index.toolVersion('large')
+    const clone = structuredClone(result)
+    index.setResult({ isError: clone.isError, output: clone.output, data: clone.data, toolCallId: clone.toolCallId })
+    expect(index.toolVersion('large')).toBe(initial)
+    if (clone.data?.kind === 'command') clone.data.process = { state: 'exited', exitCode: 1 }
+    index.setResult(clone)
+    const corrected = index.toolVersion('large')
+    expect(corrected).toBeGreaterThan(initial)
+    index.setResult(structuredClone(clone))
+    expect(index.toolVersion('large')).toBe(corrected)
+    delete clone.data
+    index.setResult(clone)
+    expect(index.toolVersion('large')).toBeGreaterThan(corrected)
+  })
+
 })

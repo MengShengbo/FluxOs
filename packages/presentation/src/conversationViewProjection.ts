@@ -1,7 +1,7 @@
 import type { AgentRunState } from '@fluxos/contracts/agentTypes'
 import type { WorkExecutionSnapshot, WorkRun } from '@fluxos/contracts/workExecutionTypes'
 import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
-import { applyTaskFlowEvent, type TaskFlowProjectionState } from './taskFlowProjection'
+import { applyTaskFlowEvent, withTaskFlowDraft, type TaskFlowProjectionState } from './taskFlowProjection'
 
 export type ConversationRuntimeStatus = 'ready' | 'running' | 'paused' | 'awaiting-action' | 'error'
 
@@ -110,4 +110,19 @@ export function applyConversationViewEvent(current: ConversationViewState, event
     }
   }
   return next
+}
+
+/** Preserves event admission and lifecycle semantics while copying flow nodes once. */
+export function applyConversationViewEvents(current: ConversationViewState, events: readonly AnyConversationEvent[]): ConversationViewState {
+  if (events.length < 2) return events.reduce(applyConversationViewEvent, current)
+  return withTaskFlowDraft(current.flow, flow => {
+    let next = { ...current, flow }
+    let changed = false
+    for (const event of events) {
+      const previous = next
+      next = applyConversationViewEvent(next, event)
+      changed ||= next !== previous
+    }
+    return changed ? next : current
+  })
 }

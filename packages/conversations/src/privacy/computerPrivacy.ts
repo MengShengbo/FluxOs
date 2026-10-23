@@ -85,7 +85,9 @@ export function redactComputerAgentEvent(event: AgentEventType, turns: AgentTurn
     case 'tool:result':
       return { ...event, toolResult: redactComputerToolResult(event.toolResult) }
     case 'stream:tool_call_delta':
-      return isBuiltInComputerTool(event.toolName) ? { ...event, partialJson: '{}' } : event
+      return isBuiltInComputerTool(event.toolName) || event.toolName === 'call_tool'
+        ? { ...event, partialJson: '{}' }
+        : event
     case 'session:complete':
       return { ...event, session: redactComputerSession(event.session) }
     case 'active:task':
@@ -132,7 +134,7 @@ function redactComputerCanonicalEvent(event: AnyConversationEvent): AnyConversat
         payload: { ...event.payload, turn: redactComputerTurn(event.payload.turn) },
       }
     case 'tool.delta':
-      return isBuiltInComputerTool(event.payload.toolName)
+      return isBuiltInComputerTool(event.payload.toolName) || event.payload.toolName === 'call_tool'
         ? { ...event, payload: { ...event.payload, partialJson: '{}' } }
         : event
     case 'tool.proposed':

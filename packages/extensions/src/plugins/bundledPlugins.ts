@@ -177,7 +177,7 @@ export const BUNDLED_PLUGINS: BundledPlugin[] = [{
                 includes: '.fluxagent/design-atlas/',
                 endsWith: '/premise.md',
               },
-              blockBeforeTrigger: ['create_task', 'create_tasks'],
+              blockBeforeTrigger: ['create_tasks'],
             },
           ],
         },

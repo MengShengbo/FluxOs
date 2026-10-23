@@ -27,7 +27,7 @@
 
 ## 任务变更收据与恢复
 
-create_task、create_tasks、update_task 和依赖变更返回 `data.kind=tasks`：实际确认的任务节点、completed/partial/failed、逐输入索引的 create/dependency 失败原因。
+create_tasks、update_task 和依赖变更返回 `data.kind=tasks`：实际确认的任务节点、completed/partial/failed、逐输入索引的 create/dependency 失败原因。
 
 批量创建不是事务。创建成功但依赖失败为 partial；已创建节点必须保留。回放汇集每个节点最后一份实际收据，不重新执行输入，不用数组位置给后续节点补造 ID，不创建失败项，也不补加失败依赖。
 

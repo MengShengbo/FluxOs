@@ -98,7 +98,6 @@ describe('TurnStrategyPlanner', () => {
     const names = openAiToolNames('vibe')
 
     expect(names).toContain('read_file')
-    expect(names).toContain('read_file_full')
     expect(names).toContain('list_directory')
     expect(names).toContain('search_content')
     expect(names).toContain('search_content')

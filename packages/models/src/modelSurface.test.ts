@@ -7,6 +7,21 @@ function turn(id: string, role: AgentTurn['role'], content: string, timestamp: n
 }
 
 describe('ModelSurface', () => {
+  it('preserves literal gateway arguments through persistence and detects envelope changes', () => {
+    const argumentsJson = ' {\n  "path" : "a.ts"\n}\t '
+    const turns: AgentTurn[] = [{ id: 'assistant-1', role: 'assistant', content: '', timestamp: 1,
+      toolCalls: [{ id: 'call', name: 'read_file', arguments: { path: 'a.ts' },
+        modelInvocation: { name: 'call_tool', arguments: { name: 'read_file', arguments_json: argumentsJson } } }] }]
+    const surface = new ModelSurface(undefined, turns)
+    const restored = new ModelSurface(JSON.parse(JSON.stringify(surface.getState())))
+    expect(restored.projectTurns()).toEqual(turns)
+    const changed = structuredClone(turns)
+    changed[0]!.toolCalls![0]!.modelInvocation!.arguments.arguments_json = '{"path":"a.ts"}'
+    expect(restored.syncTurns(changed)).toBe(true)
+    expect(restored.getState().generation).toBe(1)
+    expect(surface.projectTurns()[0]!.toolCalls![0]!.modelInvocation!.arguments.arguments_json).toBe(argumentsJson)
+  })
+
   it('keeps caller-owned turns and returned projections isolated while applying internal replacements', () => {
     const turns: AgentTurn[] = [
       turn('user-1', 'user', 'inspect', 1),

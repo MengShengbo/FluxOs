@@ -29,7 +29,7 @@ function harness() {
 }
 
 describe('AgentEngine tool lifecycle integration', () => {
-  it.each(['edit_file', 'multi_edit'])('%s writes literal dollar markers and reports the exact resulting file', async name => {
+  it.each(['edit_file', 'multi_edit'].flatMap(name => [[name, 'direct'], [name, 'deferred']]))('%s via %s writes literal dollar markers and reports the exact resulting file', async (name, transport) => {
     const workspacePath = mkdtempSync(join(tmpdir(), 'fluxagent-literal-edit-'))
     const source = 'prefix\nTARGET\nsuffix\n'
     const replacement = ['$&', '$$', '$`', "$'", '$1', '$<name>'].join(' ')
@@ -46,7 +46,11 @@ describe('AgentEngine tool lifecycle integration', () => {
       const args = name === 'edit_file'
         ? { path: 'sample.txt', old_content: 'TARGET', new_content: replacement, replace_all: false }
         : { path: 'sample.txt', edits: [{ old_string: 'TARGET', new_string: replacement, replace_all: false }] }
-      const result = await internal.executeToolCalls([{ id: 'literal-edit', name, arguments: args }])
+      const calls: ToolCall[] = [{ id: 'literal-edit', name: transport === 'deferred' ? 'call_tool' : name, arguments: transport === 'deferred' ? { name, arguments_json: JSON.stringify(args) } : args }]
+      const result = await internal.executeToolCalls(calls)
+      expect(calls[0].name).toBe(name)
+      expect(result[0].name).toBe(name)
+      if (transport === 'deferred') expect(calls[0].modelInvocation?.name).toBe('call_tool')
       expect(result[0]).toMatchObject({ isError: false, changeSummary: { before: source, after: expected } })
       expect(readFileSync(join(workspacePath, 'sample.txt'), 'utf8')).toBe(expected)
     } finally {

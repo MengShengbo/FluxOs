@@ -34,7 +34,7 @@ export function dispatchTaskTool(
   args: Record<string, unknown>,
   context: TaskToolDispatchContext,
 ): ToolDispatchOutput | undefined {
-  const mutates = ['create_task', 'create_tasks', 'update_task', 'add_task_dependency', 'remove_task_dependency'].includes(name)
+  const mutates = ['create_tasks', 'update_task', 'add_task_dependency', 'remove_task_dependency'].includes(name)
   // Notifications may throw after a mutation, including updates to a parent.
   // Snapshot values, not live TaskNode references, to retain those effects.
   const before = mutates ? new Map(context.taskManager.getAllTasks().map(task => [task.id, JSON.stringify(task)])) : undefined
@@ -55,72 +55,6 @@ function dispatchTaskToolImpl(
   context: TaskToolDispatchContext,
   progress: { index: number; failures: TaskMutationReceipt['failures'] },
 ): ToolDispatchOutput | undefined {
-  if (name === 'create_task') {
-    const creationStartedAt = Date.now()
-    context.emitTaskSystem({
-      status: 'creating',
-      toolName: 'create_task',
-      expectedCount: 1,
-      createdCount: 0,
-      title: args.title as string | undefined,
-      startedAt: creationStartedAt,
-      updatedAt: creationStartedAt,
-    })
-    const task = context.taskManager.createTask({
-      title: args.title as string,
-      description: args.description as string,
-      priority: args.priority as TaskPriority,
-      parentId: args.parent_id as string | undefined,
-      order: args.order as number | undefined,
-      metadata: args.metadata as TaskNode['metadata'] | undefined,
-    })
-    const dependencies = args.dependencies as string[] | undefined
-    if (dependencies && dependencies.length > 0) {
-      const failed: string[] = []
-      for (const dependencyId of dependencies) {
-        if (!context.taskManager.addDependency(task.id, dependencyId)) failed.push(dependencyId)
-      }
-      if (failed.length > 0) {
-        context.emitTaskSystem({
-          status: 'error',
-          toolName: 'create_task',
-          expectedCount: 1,
-          createdCount: 1,
-          title: task.title,
-          startedAt: creationStartedAt,
-          updatedAt: Date.now(),
-          error: `Some dependencies could not be added: ${failed.join(', ')}`,
-        })
-        context.emitActiveTask()
-        return taskMutationOutput(JSON.stringify({
-          id: task.id,
-          title: task.title,
-          status: task.status,
-          priority: task.priority,
-          dependencies: task.dependencies,
-          warning: `Some dependencies could not be added (tasks not found or would create cycle): ${failed.join(', ')}`,
-        }), [task], failed.map(dependencyId => ({ index: 0, stage: 'dependency', errorKind: 'validation', taskId: task.id, message: `Dependency not added: ${dependencyId}` })))
-      }
-    }
-    context.emitTaskSystem({
-      status: 'completed',
-      toolName: 'create_task',
-      expectedCount: 1,
-      createdCount: 1,
-      title: task.title,
-      startedAt: creationStartedAt,
-      updatedAt: Date.now(),
-    })
-    context.emitActiveTask()
-    return taskMutationOutput(JSON.stringify({
-      id: task.id,
-      title: task.title,
-      status: task.status,
-      priority: task.priority,
-      dependencies: task.dependencies,
-    }), [task])
-  }
-
   if (name === 'create_tasks') {
     const items = args.tasks as Array<Record<string, unknown>> | undefined
     if (!Array.isArray(items) || items.length === 0) return toolFailure("Error: 'tasks' must be a non-empty array", 'validation', 'none')

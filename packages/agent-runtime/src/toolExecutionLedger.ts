@@ -3,7 +3,6 @@ import { copyToolResultDetails } from '@fluxos/contracts/toolResultData'
 
 const REUSABLE_READ_TOOLS = new Set([
   'read_file',
-  'read_file_full',
   'list_directory',
   'search_files',
   'search_content',

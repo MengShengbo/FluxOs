@@ -3,6 +3,7 @@ import type { AgentTurn } from '@fluxos/contracts/agentTypes'
 import type { AnyConversationEvent } from '@fluxos/contracts/conversationEvent'
 import type { WorkNode, WorkProjectionSnapshot } from './workProjection'
 import type { WorkSessionSnapshot } from './workTypes'
+import { ToolProjectionIndex, newToolProjectionKey } from './toolProjectionIdentity'
 
 export type TaskFlowNodeKind = 'thinking' | 'answer' | 'input' | 'tool' | 'runtime' | 'approval' | 'phase'
 export type TaskFlowNodeStatus = 'waiting' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
@@ -17,6 +18,8 @@ export interface TaskFlowNode {
   callId?: string
   invocationId?: string
   toolName?: string
+  /** A complete call is declared; model-stream cancellation must not cancel its execution. */
+  proposed?: boolean
   parentId?: string
   ordinal: number
   kind: TaskFlowNodeKind
@@ -38,6 +41,72 @@ export interface TaskFlowProjectionState {
   nodes: Readonly<Record<string, TaskFlowNode>>
   order: readonly string[]
   sequenceGaps: readonly number[]
+}
+
+// A linear live event chain consumes its index instead of cloning it with every
+// immutable node map. Revisiting an older snapshot rebuilds an independent index.
+// Weak keys keep abandoned conversations and history branches collectible.
+const toolIndexes = new WeakMap<object, ToolProjectionIndex<TaskFlowNode>>()
+const writableNodeMaps = new WeakSet<object>()
+
+function toolIndex(nodes: TaskFlowProjectionState['nodes']): ToolProjectionIndex<TaskFlowNode> {
+  let index = toolIndexes.get(nodes)
+  if (!index) {
+    index = new ToolProjectionIndex<TaskFlowNode>()
+    for (const [id, node] of Object.entries(nodes)) index.upsert(id, node)
+    toolIndexes.set(nodes, index)
+  }
+  return index
+}
+
+function carryToolIndex(previous: TaskFlowProjectionState['nodes'], next: TaskFlowProjectionState['nodes'], changed: readonly TaskFlowNode[]): void {
+  const index = toolIndex(previous)
+  toolIndexes.delete(previous)
+  for (const node of changed) index.upsert(node.id, node)
+  toolIndexes.set(next, index)
+}
+
+/** Runs a synchronous batch against a private copy, then seals that copy. */
+export function withTaskFlowDraft<Result>(state: TaskFlowProjectionState, apply: (draft: TaskFlowProjectionState) => Result): Result {
+  const nodes = { ...state.nodes }
+  const draft = { ...state, nodes, order: [...state.order] }
+  carryToolIndex(state.nodes, nodes, [])
+  writableNodeMaps.add(nodes)
+  try {
+    return apply(draft)
+  } finally {
+    writableNodeMaps.delete(nodes)
+  }
+}
+
+function writeNode(state: TaskFlowProjectionState, id: string, node: TaskFlowNode): TaskFlowProjectionState {
+  const existing = Boolean(state.nodes[id])
+  const writable = writableNodeMaps.has(state.nodes)
+  const nodes = writable ? state.nodes as Record<string, TaskFlowNode> : { ...state.nodes }
+  nodes[id] = node
+  carryToolIndex(state.nodes, nodes, [node])
+  let order = state.order
+  if (!existing) {
+    if (writable) (order as string[]).push(id)
+    else order = [...order, id]
+  }
+  return { ...state, nodes, order }
+}
+
+function updateNodes(
+  state: TaskFlowProjectionState,
+  update: (node: TaskFlowNode) => TaskFlowNode,
+): Record<string, TaskFlowNode> {
+  const changed: TaskFlowNode[] = []
+  const writable = writableNodeMaps.has(state.nodes)
+  const nodes = writable ? state.nodes as Record<string, TaskFlowNode> : { ...state.nodes }
+  for (const [id, node] of Object.entries(state.nodes)) {
+    const next = update(node)
+    if (next !== node) changed.push(next)
+    nodes[id] = next
+  }
+  carryToolIndex(state.nodes, nodes, changed)
+  return nodes
 }
 
 function phaseForKind(kind: TaskFlowNodeKind): TaskFlowNode['phase'] {
@@ -64,6 +133,7 @@ function taskNodeForWorkNode(node: WorkNode, activeRunId?: string): TaskFlowNode
     callId: node.callId,
     invocationId: node.invocationId,
     toolName: node.toolName,
+    proposed: kind === 'tool' ? Boolean(node.toolCall) : undefined,
     parentId: node.responseId || node.runId,
     ordinal: node.ordinal,
     kind,
@@ -118,6 +188,7 @@ function createNode(input: {
 }): TaskFlowNode {
   return {
     id: input.id,
+    anchorSeq: input.lastSeq,
     lastSeq: input.lastSeq,
     runId: input.runId,
     turnId: input.turnId,
@@ -141,11 +212,7 @@ function upsertNode(
 ): TaskFlowProjectionState {
   const existing = state.nodes[id]
   const node = existing ? update(existing) : create()
-  return {
-    ...state,
-    nodes: { ...state.nodes, [id]: node },
-    order: existing ? state.order : [...state.order, id],
-  }
+  return writeNode(state, id, node)
 }
 
 function eventNodeKind(event: AnyConversationEvent): TaskFlowNodeKind | null {
@@ -241,6 +308,47 @@ export function createTaskFlowProjection(conversationId: string): TaskFlowProjec
   return { conversationId, source: 'work', revision: 0, lastSeq: 0, nodes: {}, order: [], sequenceGaps: [] }
 }
 
+function applyToolProjectionEvent(
+  state: TaskFlowProjectionState,
+  event: Extract<AnyConversationEvent, { type: 'tool.delta' | 'tool.proposed' | 'tool.completed' }>,
+): TaskFlowProjectionState {
+  const callId = event.type === 'tool.delta' ? event.payload.toolCallId
+    : event.type === 'tool.proposed' ? event.payload.toolCall.id : event.payload.toolResult.toolCallId
+  const identity = event.type === 'tool.proposed' ? event.payload.toolCall.operationIdentity
+    : event.type === 'tool.completed' ? event.payload.toolResult.operationIdentity : undefined
+  const runId = event.runId || state.activeRunId
+  const responseId = event.stepId ? `step:${event.stepId}` : undefined
+  const index = toolIndex(state.nodes)
+  const matched = index.matching(callId, identity, runId, responseId)
+  if (event.type === 'tool.delta' && (matched?.[1].settled || !matched && index.hasBound(callId, runId, responseId))) return state
+  const nodeId = matched?.[0] || newToolProjectionKey(state.nodes, callId, identity, runId, responseId, event.seq)
+  const previous = matched?.[1]
+  const name = event.type === 'tool.delta' ? event.payload.toolName
+    : event.type === 'tool.proposed' ? event.payload.toolCall.name : event.payload.toolResult.name
+  const status = event.type === 'tool.proposed' && previous?.settled ? previous.status
+    : eventStatus(event, state.nodes[`phase:${runId || state.conversationId}`]?.status === 'paused' ? 'paused' : 'running')
+  const settled = ['completed', 'failed', 'cancelled', 'interrupted'].includes(status)
+  const node: TaskFlowNode = {
+    ...(previous || createNode({ id: nodeId, lastSeq: event.seq, runId, turnId: identity?.turnId || event.turnId,
+      ordinal: event.seq, kind: 'tool', status, content: name, at: event.at, settled })),
+    callId, invocationId: toolInvocationKey(callId, identity), toolName: name,
+    proposed: previous?.proposed || event.type === 'tool.proposed',
+    runId: previous?.runId || runId,
+    responseId: previous?.responseId || responseId,
+    turnId: identity?.turnId || previous?.turnId || event.turnId,
+    lastSeq: event.seq, updatedAt: event.at, content: name, status, settled,
+    detail: event.type === 'tool.delta' ? event.payload.partialJson
+      : event.type === 'tool.completed' ? event.payload.toolResult.output
+        : previous?.settled ? previous.detail : JSON.stringify(event.payload.toolCall.arguments),
+  }
+  return writeNode(state, nodeId, node)
+}
+
+export function applyTaskFlowEvents(state: TaskFlowProjectionState, events: readonly AnyConversationEvent[]): TaskFlowProjectionState {
+  if (events.length < 2) return events.reduce(applyTaskFlowEvent, state)
+  return withTaskFlowDraft(state, draft => events.reduce(applyTaskFlowEvent, draft))
+}
+
 export function applyTaskFlowEvent(
   state: TaskFlowProjectionState,
   event: AnyConversationEvent,
@@ -267,42 +375,47 @@ export function applyTaskFlowEvent(
   }
   if (event.type === 'run.state_changed') {
     const paused = event.payload.state.phase === 'paused'
-    next.nodes = Object.fromEntries(Object.entries(next.nodes).map(([id, node]) => [id,
+    next.nodes = updateNodes(next, node =>
       node.runId === event.runId && !node.settled && (node.status === 'running' || node.status === 'paused')
-        ? { ...node, status: paused ? 'paused' : 'running', updatedAt: event.at }
+        ? { ...node, status: paused ? 'paused' : 'running', lastSeq: event.seq, updatedAt: event.at }
         : node,
-    ]))
+    )
   }
   if (event.type === 'step.completed' && event.stepId && event.payload.outcome !== 'completed') {
-    next.nodes = Object.fromEntries(Object.entries(next.nodes).map(([id, node]) => [id,
-      node.kind === 'tool' && node.runId === event.runId && node.responseId === `step:${event.stepId}` && !node.settled
-        ? { ...node, status: event.payload.outcome, settled: true, updatedAt: event.at }
+    next.nodes = updateNodes(next, node =>
+      node.kind === 'tool' && node.runId === event.runId && node.responseId === `step:${event.stepId}` && !node.settled && !node.proposed
+        ? { ...node, status: event.payload.outcome, settled: true, lastSeq: event.seq, updatedAt: event.at }
         : node,
-    ]))
+    )
   }
   if (event.type === 'turn.completed') {
     const turn = event.payload.turn
     if (turn.role !== 'assistant') return next
     const terminalStatus: TaskFlowNodeStatus = turn.metadata?.interrupted ? 'interrupted' : 'completed'
-    const nodes: Record<string, TaskFlowNode> = Object.fromEntries(
-      Object.entries(next.nodes).map(([id, node]) => [id, (
+    const nodes = updateNodes(next, node => (
         node.runId === event.runId && node.turnId === turn.id && !node.settled
-          ? { ...node, status: terminalStatus, settled: true, updatedAt: event.at }
+          ? { ...node, status: terminalStatus, settled: true, lastSeq: event.seq, updatedAt: event.at }
           : node
-      )]),
-    )
-    return { ...next, nodes }
+    ))
+    for (const call of turn.toolCalls || []) {
+      if (!call.operationIdentity) continue
+      const responseId = event.stepId ? `step:${event.stepId}` : undefined
+      const index = toolIndex(nodes)
+      const match = index.matching(call.id, call.operationIdentity, event.runId || next.activeRunId, responseId)
+      if (match) {
+        nodes[match[0]] = { ...match[1], turnId: turn.id, invocationId: toolInvocationKey(call.id, call.operationIdentity), lastSeq: event.seq, updatedAt: event.at }
+        index.upsert(match[0], nodes[match[0]]!)
+      }
+    }
+    let completed = { ...next, nodes }
+    for (const toolCall of turn.toolCalls || []) {
+      completed = applyToolProjectionEvent(completed, { ...event, turnId: turn.id, type: 'tool.proposed', payload: { toolCall } })
+    }
+    return completed
   }
+  if (event.type === 'tool.delta' || event.type === 'tool.proposed' || event.type === 'tool.completed') return applyToolProjectionEvent(next, event)
   const kind = eventNodeKind(event)
   const nodeId = kind ? eventNodeId(event, kind) : undefined
-  if (event.type === 'tool.proposed' && event.payload.toolCall.operationIdentity) {
-    const provisional = `tool:${event.payload.toolCall.id}`
-    if (nodeId !== provisional && next.nodes[provisional] && !next.nodes[provisional]!.settled) {
-      const nodes = { ...next.nodes }
-      delete nodes[provisional]
-      next = { ...next, nodes, order: next.order.filter(id => id !== provisional) }
-    }
-  }
   if (!kind || !nodeId) {
     if (event.type === 'run.completed') {
       const terminalStatus: TaskFlowNodeStatus = event.payload.outcome === 'failed'
@@ -312,13 +425,11 @@ export function applyTaskFlowEvent(
           : event.payload.outcome === 'interrupted'
             ? 'interrupted'
             : 'completed'
-      const nodes: Record<string, TaskFlowNode> = Object.fromEntries(
-        Object.entries(next.nodes).map(([id, node]) => [id, (
+      const nodes = updateNodes(next, node => (
           node.runId === event.runId && !node.settled
-            ? { ...node, status: terminalStatus, settled: true, updatedAt: event.at }
+            ? { ...node, status: terminalStatus, settled: true, lastSeq: event.seq, updatedAt: event.at }
             : node
-        )]),
-      )
+      ))
       return { ...next, nodes }
     }
     return next
@@ -354,20 +465,6 @@ export function applyTaskFlowEvent(
       settled: node.settled || settled,
     }),
   )
-  if (event.type === 'tool.delta' || event.type === 'tool.proposed' || event.type === 'tool.completed') {
-    const node = next.nodes[nodeId]!
-    const callId = event.type === 'tool.proposed' ? event.payload.toolCall.id
-      : event.type === 'tool.completed' ? event.payload.toolResult.toolCallId : event.payload.toolCallId
-    const identity = event.type === 'tool.proposed' ? event.payload.toolCall.operationIdentity
-      : event.type === 'tool.completed' ? event.payload.toolResult.operationIdentity : undefined
-    next.nodes = { ...next.nodes, [nodeId]: {
-      ...node,
-      callId,
-      invocationId: toolInvocationKey(callId, identity),
-      toolName: event.type === 'tool.completed' ? event.payload.toolResult.name : eventContent(event),
-      responseId: event.type === 'tool.delta' && event.stepId ? `step:${event.stepId}` : node.responseId,
-    } }
-  }
   return next
 }
 
@@ -418,14 +515,9 @@ export function syncTaskFlowLiveText(
   if (!id) return state
   const node = state.nodes[id]
   if (!node || node.content === content) return state
-  return {
-    ...state,
-    revision: state.revision + 1,
-    nodes: {
-      ...state.nodes,
-      [id]: { ...node, content, updatedAt },
-    },
-  }
+  const nodes = { ...state.nodes, [id]: { ...node, content, updatedAt } }
+  carryToolIndex(state.nodes, nodes, [])
+  return { ...state, revision: state.revision + 1, nodes }
 }
 
 export function orderTaskFlowNodeIds(state: TaskFlowProjectionState, ids: readonly string[]): string[] {

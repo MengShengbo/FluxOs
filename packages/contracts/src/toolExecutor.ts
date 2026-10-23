@@ -262,6 +262,9 @@ export interface ToolExecutor {
   memorySearchHistory?(query: { query: string; limit?: number; from?: number; to?: number }): Promise<Result<any>>
   memoryReadHistory?(query: { conversationId: string; messageId: string; offset?: number }): Promise<Result<any>>
   memoryConsolidate?(generate: (prompt: string, maxTokens: number, signal: AbortSignal) => Promise<string>, signal: AbortSignal): Promise<boolean>
+  memoryMaintainContinuum?(generate: (prompt: string, maxTokens: number, signal: AbortSignal) => Promise<string>, signal: AbortSignal): Promise<boolean>
+  memoryContinuumStatus?(): Promise<Result<any>>
+  memoryRecall?(query: { depth: 'recent' | 'topic' | 'deep' | 'exact'; query?: string; entity?: string; date?: string; limit?: number }): Promise<Result<any>>
   memoryQuery(query: Record<string, any>): Promise<Result<any>>
   memoryRemember(data: Record<string, any>): Promise<Result<any>>
   memoryForget(data: Record<string, any>): Promise<Result<void>>

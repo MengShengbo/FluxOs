@@ -147,6 +147,12 @@ export interface MemoryPolicy {
   referenceHistory: boolean
   crossProjectHistory: boolean
   backgroundConsolidation: boolean
+  /** Continuum daily rollups and entity dossiers. */
+  continuumEnabled: boolean
+  /** Allow model-written day narratives in daily rollups (costs budget). */
+  continuumNarrative: boolean
+  /** Model-call budget for entity synthesis and narratives per day. */
+  maxContinuumCallsPerDay: number
   maxCallsPerDay: number
   maxInputCharacters: number
   maxOutputTokens: number

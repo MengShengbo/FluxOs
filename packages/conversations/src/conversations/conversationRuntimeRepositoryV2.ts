@@ -132,6 +132,7 @@ function turnFromProjection(turn: ConversationTurnV2, items: ConversationItemV2[
   const toolCalls = items.filter(item => item.kind === 'tool_call').map(item => {
     const payload = item.payload as Extract<ConversationItemV2, { kind: 'tool_call' }>['payload']
     return { id: payload.toolCallId, name: payload.toolName, arguments: structuredClone(payload.arguments),
+      ...(payload.modelInvocation ? { modelInvocation: structuredClone(payload.modelInvocation) } : {}),
       ...(payload.operationIdentity ? { operationIdentity: structuredClone(payload.operationIdentity) } : {}) } satisfies ToolCall
   })
   const toolResults = items.filter(item => item.kind === 'tool_result').map(item => {
@@ -418,6 +419,7 @@ function canonicalEventsFromProjectionV2(projection: ConversationTranscriptProje
         key: `item:${item.id}:tool-call`,
         type: 'tool.proposed',
         payload: { toolCall: { id: item.payload.toolCallId, name: item.payload.toolName, arguments: structuredClone(item.payload.arguments),
+          ...(item.payload.modelInvocation ? { modelInvocation: structuredClone(item.payload.modelInvocation) } : {}),
           ...(item.payload.operationIdentity ? { operationIdentity: structuredClone(item.payload.operationIdentity) } : {}) } },
       })
     } else if (item.kind === 'tool_result') {
@@ -870,7 +872,7 @@ export class ConversationRuntimeRepositoryV2 {
         const tool = event.payload.toolCall
         const toolCallId = conversationToolCallId(tool.id, tool.operationIdentity)
         const id = scopedId('tool-call', tool.operationIdentity ? toolCallId : tool.id)
-        const item: ConversationItemV2 = { schemaVersion: 1, id, conversationId: conversation.id, runId: common.runId, turnId: common.turnId, kind: 'tool_call', status: 'running', createdAt: event.at, updatedAt: event.at, payload: { toolCallId, toolName: tool.name, arguments: structuredClone(tool.arguments), ...(tool.operationIdentity ? { operationIdentity: structuredClone(tool.operationIdentity) } : {}), pathRefs: portablePathRefsForToolValue(this.workspacePath, this.workspaceId, tool.arguments), requiresReview: true } }
+        const item: ConversationItemV2 = { schemaVersion: 1, id, conversationId: conversation.id, runId: common.runId, turnId: common.turnId, kind: 'tool_call', status: 'running', createdAt: event.at, updatedAt: event.at, payload: { toolCallId, toolName: tool.name, arguments: structuredClone(tool.arguments), ...(tool.modelInvocation ? { modelInvocation: structuredClone(tool.modelInvocation) } : {}), ...(tool.operationIdentity ? { operationIdentity: structuredClone(tool.operationIdentity) } : {}), pathRefs: portablePathRefsForToolValue(this.workspacePath, this.workspaceId, tool.arguments), requiresReview: true } }
         inputs.push({ ...common, eventId: canonicalEventId(event), itemId: id, type: 'item.created', payload: { item } })
         const semantic = semanticToolItem(conversation.id, common.runId, common.turnId, toolCallId, tool.name, tool.arguments, 'running', event.at, scopedId)
         if (semantic) upsertItem(semantic, 'semantic-tool')

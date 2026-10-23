@@ -79,7 +79,7 @@ export function extractStructuredSummary(turns: AgentTurn[]): StructuredSummary 
         }
 
         // Task operations
-        if (tc.name === 'create_task' || tc.name === 'create_tasks' || tc.name === 'update_task') {
+        if (tc.name === 'create_tasks' || tc.name === 'update_task') {
           if (tc.name === 'create_tasks' && Array.isArray(args.tasks)) {
             for (const item of args.tasks as Array<Record<string, unknown>>) {
               summary.taskSnapshots.push({
@@ -119,7 +119,7 @@ export function extractStructuredSummary(turns: AgentTurn[]): StructuredSummary 
         }
 
         // Task results
-        if (tr.name === 'create_task' || tr.name === 'update_task') {
+        if (tr.name === 'update_task') {
           const parsed = tryParseJSON(tr.output)
           if (parsed) {
             summary.taskSnapshots.push({
@@ -182,7 +182,6 @@ export function extractStructuredSummary(turns: AgentTurn[]): StructuredSummary 
 function mapToolToOperation(toolName: string): 'read' | 'write' | 'edit' | 'delete' | null {
   switch (toolName) {
     case 'read_file':
-    case 'read_file_full':
       return 'read'
     case 'list_directory': return 'read'
     case 'search_files': return 'read'

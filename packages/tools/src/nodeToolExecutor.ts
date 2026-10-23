@@ -30,9 +30,11 @@ import type { TreeNode } from '@fluxos/contracts/types'
 import type { Memory, MemoryConfidence, MemoryKind, MemoryScope, MemorySnapshot, MemoryHistorySource, MemoryPolicy } from '@fluxos/contracts/memoryTypes'
 import type { TerminalOutputChunk, TerminalSessionInfo, TerminalStartCommandResult } from '@fluxos/contracts/terminalTypes'
 import type { CapabilityProfile } from '@fluxos/contracts/agentTypes'
+import type { ContinuumRecallResult } from '@fluxos/contracts/continuumTypes'
 import type { RuntimeTaskPresentation } from '@fluxos/contracts/runtimeTaskTypes'
 import { toolRecovery } from '@fluxos/contracts/toolResultData'
 import { MemoryService } from './memory/service'
+import { routeRecall } from './memory/continuumRecall'
 import { hashText, withFileLockSync, writeFileAtomic } from '@fluxos/platform/fileIO'
 import { RuntimeTaskManager } from './runtimeTaskManager'
 import { getChildProcessSpawnOptions, getDefaultShellSpec, createProcessTerminator, type ProcessTerminationReceipt } from '@fluxos/platform/process'
@@ -375,6 +377,34 @@ export class NodeToolExecutor implements ToolExecutor {
   async memoryReadHistory(query: { conversationId: string; messageId: string; offset?: number }) {
     const item = this.memoryService.longTerm?.read(query.conversationId, query.messageId, query.offset)
     return item ? { success: true, data: { item } } : { success: false, error: 'Source unavailable, excluded or outside the permitted project history' }
+  }
+  async memoryMaintainContinuum(generate: (prompt: string, maxTokens: number, signal: AbortSignal) => Promise<string>, signal: AbortSignal) {
+    try { return await this.memoryService.maintainContinuum(generate, signal) ?? false }
+    catch { return false }
+  }
+  async memoryContinuumStatus() {
+    const store = this.memoryService.continuum
+    return { success: true, data: { ...store?.status() ?? { dailyCount: 0, entityCount: 0, dirtyEntities: [], callsToday: 0 }, enabled: Boolean(store), policy: this.memoryService.getPolicy() ?? null } }
+  }
+  async memoryRecall(query: { depth: 'recent' | 'topic' | 'deep' | 'exact'; query?: string; entity?: string; date?: string; limit?: number }): Promise<Result<ContinuumRecallResult>> {
+    try {
+      const store = this.memoryService.continuum
+      const longTerm = this.memoryService.longTerm
+      if (!store) return { success: false, error: 'Continuum memory is unavailable for this workspace' }
+      let memories: Memory[] = []
+      if (query.depth === 'topic' && query.query) {
+        memories = await this.memoryService.query({ workspacePath: this.workspaceRoot, query: query.query, limit: 6 })
+      }
+      const result = routeRecall(query, {
+        store,
+        summaries: () => longTerm?.status().summaries ?? [],
+        searchMessages: (text, limit) => longTerm?.search(text, limit) ?? [],
+        memories: () => memories,
+      })
+      return { success: true, data: result }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) }
+    }
   }
 
   async memoryQuery(query: { query?: string; workspacePath: string; kind?: MemoryKind; scope?: MemoryScope; limit?: number }): Promise<Result<{ items: Array<{ id: string; text: string; content: string; kind: string; confidence: string; source: string; tags: string[]; evidence: Memory['evidence']; score: number }> }>> {

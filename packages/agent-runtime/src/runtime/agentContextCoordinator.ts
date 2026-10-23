@@ -95,7 +95,7 @@ export class AgentContextCoordinator {
     for (const turn of turns) {
       if (turn.role !== 'assistant' || !turn.toolCalls) continue
       for (const call of turn.toolCalls) {
-        if ((call.name === 'read_file' || call.name === 'read_file_full') && typeof call.arguments.path === 'string') {
+        if (call.name === 'read_file' && typeof call.arguments.path === 'string') {
           pathByToolCallId.set(toolInvocationKey(call.id, call.operationIdentity), call.arguments.path)
         }
       }
@@ -108,7 +108,7 @@ export class AgentContextCoordinator {
       const turn = turns[index]
       if (turn.role !== 'tool_result' || !turn.toolResults) continue
       for (const result of turn.toolResults) {
-        if (result.name !== 'read_file' && result.name !== 'read_file_full') continue
+        if (result.name !== 'read_file') continue
         if (toolResultExecutionStatus(result) !== 'completed') continue
         const path = pathByToolCallId.get(toolInvocationKey(result.toolCallId, result.operationIdentity))
         if (!path || seenPaths.has(path)) continue

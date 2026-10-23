@@ -17,12 +17,12 @@ function createContext() {
 }
 
 describe('task tool dispatcher', () => {
-  it.each(['create_task', 'create_tasks'])('retains committed nodes when %s observers throw and stops further mutations', name => {
+  it('retains committed nodes when creation observers throw and stops further mutations', () => {
     const context = createContext()
     context.taskManager.subscribe(event => { if (event.type === 'task:created') throw new Error('fixture observer rejected after commit') })
     const first = { title: 'Committed before notification', description: 'Keep', priority: 'major' }
-    const args = name === 'create_task' ? first : { tasks: [first, { ...first, title: 'Must not execute after observer failure' }] }
-    const result = dispatchTaskTool(name, args, context) as ToolDispatchResult
+    const args = { tasks: [first, { ...first, title: 'Must not execute after observer failure' }] }
+    const result = dispatchTaskTool('create_tasks', args, context) as ToolDispatchResult
     expect(result).toMatchObject({ isError: true, errorKind: 'execution', recovery: { effects: 'partial', retry: 'after_inspection' },
       data: { kind: 'tasks', status: 'partial', tasks: [expect.objectContaining({ title: first.title })], failures: [expect.objectContaining({ stage: 'execution' })] } })
     expect(context.taskManager.getAllTasks()).toHaveLength(1)
@@ -63,13 +63,13 @@ describe('task tool dispatcher', () => {
     const context = createContext()
     const parent = context.taskManager.createTask({ title: 'Parent', description: 'Parent', priority: 'major' })
     context.taskManager.subscribe(() => { throw new Error('fixture parent observer') })
-    const args = { title: 'Child', description: 'Child', priority: 'minor', parent_id: parent.id }
-    const result = dispatchTaskTool('create_task', args, context) as ToolDispatchResult
+    const args = { tasks: [{ title: 'Child', description: 'Child', priority: 'minor', parent_id: parent.id }] }
+    const result = dispatchTaskTool('create_tasks', args, context) as ToolDispatchResult
     expect(result).toMatchObject({ isError: true, data: { kind: 'tasks', tasks: context.taskManager.getAllTasks() } })
     const rehydrator = new AgentSessionRehydrator()
     const messages = rehydrator.messagesFromTurns([
-      { id: 'call', role: 'assistant', content: '', timestamp: 1, toolCalls: [{ id: 'child', name: 'create_task', arguments: args }] },
-      { id: 'result', role: 'tool_result', content: '', timestamp: 2, toolResults: [{ ...result, toolCallId: 'child', name: 'create_task' }] },
+      { id: 'call', role: 'assistant', content: '', timestamp: 1, toolCalls: [{ id: 'child', name: 'create_tasks', arguments: args }] },
+      { id: 'result', role: 'tool_result', content: '', timestamp: 2, toolResults: [{ ...result, toolCallId: 'child', name: 'create_tasks' }] },
     ])
     const restored = new TaskManager()
     rehydrator.rehydrateMessages(JSON.parse(JSON.stringify(messages)), { systemTurns: [], taskManager: restored })
@@ -110,11 +110,10 @@ describe('task tool dispatcher', () => {
 
   it('creates a dependency-aware task tree and reports lifecycle events', () => {
     const context = createContext()
-    const root = JSON.parse((dispatchTaskTool('create_task', {
-      title: 'Root',
-      description: 'Root task',
-      priority: 'major',
-    }, context) as ToolDispatchResult).output) as { id: string }
+    const rootResult = JSON.parse((dispatchTaskTool('create_tasks', {
+      tasks: [{ title: 'Root', description: 'Root task', priority: 'major' }],
+    }, context) as ToolDispatchResult).output) as { created: Array<{ id: string }> }
+    const root = rootResult.created[0]!
 
     const result = JSON.parse((dispatchTaskTool('create_tasks', {
       tasks: [{
@@ -129,6 +128,7 @@ describe('task tool dispatcher', () => {
     expect(result.created[0]?.id).toBeTruthy()
     expect(context.taskManager.getChildTasks(root.id)).toHaveLength(1)
     expect(context.creations.map(event => event?.status)).toEqual([
+      'planning',
       'creating',
       'completed',
       'planning',
@@ -140,17 +140,13 @@ describe('task tool dispatcher', () => {
 
   it('keeps task guards and returns undefined for non-task tools', () => {
     const context = createContext()
-    const root = JSON.parse((dispatchTaskTool('create_task', {
-      title: 'Root',
-      description: 'Root task',
-      priority: 'major',
-    }, context) as ToolDispatchResult).output) as { id: string }
-    const child = JSON.parse((dispatchTaskTool('create_task', {
-      title: 'Child',
-      description: 'Child task',
-      priority: 'medium',
-      parent_id: root.id,
-    }, context) as ToolDispatchResult).output) as { id: string }
+    const result = JSON.parse((dispatchTaskTool('create_tasks', {
+      tasks: [
+        { ref: 'root', title: 'Root', description: 'Root task', priority: 'major' },
+        { title: 'Child', description: 'Child task', priority: 'medium', parent_id: 'root' },
+      ],
+    }, context) as ToolDispatchResult).output) as { created: Array<{ id: string }> }
+    const [root, child] = result.created as [{ id: string }, { id: string }]
 
     expect(dispatchTaskTool('update_task', {
       task_id: root.id,

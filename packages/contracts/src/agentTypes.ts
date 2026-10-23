@@ -261,6 +261,8 @@ export interface ToolCall {
   id: string
   name: string
   arguments: Record<string, unknown>
+  /** Original model-facing invocation for history replay; name/arguments above drive execution. */
+  modelInvocation?: { name: string; arguments: Record<string, unknown> }
   /** Host-bound identity, retained when canonical presentation IDs are normalized. */
   operationIdentity?: { sessionId: string; turnId: string; callId: string }
 }

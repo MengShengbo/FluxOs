@@ -7,7 +7,7 @@
 | Layer | Decision | Cannot establish |
 | --- | --- | --- |
 | Registry / MCP catalog | Input shape, described effects, resources, provenance, discovery exposure | User consent or a filesystem/network sandbox |
-| Model request builder | Mode, capability profile, allowlist, disabled tools, loaded MCP schemas | Permission to invoke a name merely because it was exposed |
+| Model request builder | Mode, capability profile, allowlist, disabled tools, resident definitions and discovery results | Permission to invoke a name merely because it was exposed |
 | Argument validator | Required fields, shape and supported constraints | Whether a syntactically valid operation is authorized |
 | Permission pipeline | Explicit deny, invocation approval, run/session grants, trusted native semantics | That an external server's annotation is true |
 | Execution lifecycle | Current catalog and policy before approval and again after approval/pause | Retroactive cancellation of an already performed effect |
@@ -33,16 +33,18 @@ This closes the observed approval-wait race. It does not promise to revoke an op
 
 ## Surface-size decisions
 
-No resident tool is removed or deferred without evidence that the replacement preserves legitimate tasks. The following overlaps remain intentional pending paired task evaluation:
+Resident definitions cover common operations and discovery. The rest of the permitted catalog remains available through `tool_search` and `call_tool`, with schemas returned in conversation history rather than added to the initial tool definitions. This host-managed discovery path does not rely on provider-native deferred-loading support. See [tool discovery](tool-discovery.md).
+
+The following separate operations retain their own execution contracts even when their schemas are deferred:
 
 | Group | Distinct entry points retained | Reason |
 | --- | --- | --- |
 | File mutation | write, whole-file replace, exact snippet, multi-edit, patch, delete | Different preconditions, atomicity and partial-result contracts |
-| Reading/search | ranged/full preview with byte continuation, path/content search, saved web sources, saved tool output | Different budgets, pagination and stable-source behavior |
+| Reading/search | bounded line/byte reads, path/content search, saved web sources, saved tool output | Different budgets, pagination and stable-source behavior |
 | Processes | launch, read, write, list, kill | Live process identity and lifecycle cannot be replaced by a fresh command |
-| Tasks/children | create/update/list/dependencies; spawn/message/follow-up/read/wait/close/cancel/detach | Work state, child identity, waiting and ownership are different operations |
+| Tasks/children | batch creation (including one task)/update/list/dependencies; spawn/message/follow-up/read/wait/close/cancel/detach | Work state, child identity, waiting and ownership are different operations |
 | Interaction | ask, notification, workflow surface, skill activation | Different blocking and host-UI contracts |
 
-Mode, explicit task allowlist, disabled tools and capability profile select the current catalog; provider adapters preserve that selected set. Provider-specific model/tool capability evolution is separate. The only removed code in this change is an unused semantic label for the no-longer-published `capabilities__request` facade; an external tool of that name receives normal external-tool approval.
+Mode, explicit task allowlist, disabled tools and capability profile select the current catalog; exposure selects which definitions are resident. The expanded target follows the same current host policy as a direct call, while its original model invocation is preserved for provider serialization and replay. Provider-specific model/tool capability evolution is separate. Tool names never substitute for provenance or authorization.
 
 Tests cover forged annotations/host policies, native-name spoofing, independent native policies, grants versus explicit denial, approval-wait revocation, direct client admission, child borrowing and catalog coverage. Fixture request size is not real task performance. Installed desktop, OS enforcement, live models and remote services require their own evidence.

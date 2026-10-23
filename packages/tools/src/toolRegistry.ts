@@ -2,6 +2,9 @@
 import type { EnhancedToolDef } from '@fluxos/contracts/toolTypes'
 import { validateSchemaValue, relaxNullableRequiredFields } from '@fluxos/platform/schemaValidation'
 import { builtInToolAccess } from './toolAccess'
+import { decodeDeferredToolCall } from './toolDiscovery'
+
+export { isResidentToolName } from './toolAccess'
 
 const NON_EMPTY_STRING_SCHEMA = { type: 'string', minLength: 1 }
 
@@ -36,18 +39,6 @@ const definitions: Omit<EnhancedToolDef, 'access'>[] = [
     maxResultSizeChars: 20_000,
   },
   {
-    name: 'read_file_full',
-    description: 'Read a larger bounded preview of a file. Continue omitted lines using read_file offset/limit; for a truncated giant line, restart using read_file byte_offset=0 and retain the returned source_version. No file may consume the context window without a hard limit.',
-    category: 'read',
-    parameters: [
-      { name: 'path', type: 'string', description: 'File path (relative to workspace root)', required: true, schema: NON_EMPTY_STRING_SCHEMA },
-    ],
-    isReadOnly: true,
-    isDestructive: false,
-    isConcurrencySafe: true,
-    maxResultSizeChars: 96_000,
-  },
-  {
     name: 'write_file',
     description: 'Create a new file or overwrite a file when creation is intended. For replacing an existing file after reading it, prefer replace_file.',
     category: 'write',
@@ -62,7 +53,7 @@ const definitions: Omit<EnhancedToolDef, 'access'>[] = [
   },
   {
     name: 'replace_file',
-    description: 'Replace an existing file with complete new contents. Use when targeted edit_file matching is fragile, many sections change, or a whole-file rewrite is simpler. Read the file first, preferably with read_file_full.',
+    description: 'Replace an existing file with complete new contents. Use when targeted edit_file matching is fragile, many sections change, or a whole-file rewrite is simpler. Read the needed file contents with read_file first.',
     category: 'write',
     parameters: [
       { name: 'path', type: 'string', description: 'Existing file path (relative to workspace root)', required: true, schema: NON_EMPTY_STRING_SCHEMA },
@@ -239,16 +230,47 @@ const definitions: Omit<EnhancedToolDef, 'access'>[] = [
   },
   {
     name: 'tool_search',
-    description: 'Discover permitted connected MCP tools and load matching schemas into subsequent model requests. Search names, descriptions and schema fields using lexical terms and a small Chinese/English alias vocabulary. Verify candidate descriptions and required arguments; this is not semantic understanding or execution authorization. Refine weak matches using provider terminology. An empty result means the terms did not match the available catalog.',
+    description: 'Find permitted built-in and connected MCP tools by capability, name, description or schema fields. Returns matching tool schemas in the result; invoke a discovered tool through call_tool using its exact name and JSON arguments. Verify required arguments and refine weak matches. Discovery does not authorize execution.',
     category: 'read',
     parameters: [
       { name: 'query', type: 'string', description: 'Intent or capability to search for, such as "issue tracker comments" or "browser screenshot".', required: true, schema: NON_EMPTY_STRING_SCHEMA },
-      { name: 'limit', type: 'number', description: 'Maximum matching tools to load (default 8, maximum 20).', required: false, default: 8 },
+      { name: 'limit', type: 'number', description: 'Maximum matching tools to describe (default 5, range 1 to 8).', required: false, default: 5, schema: { type: 'integer', minimum: 1, maximum: 8 } },
     ],
     isReadOnly: true,
     isDestructive: false,
     isConcurrencySafe: true,
     requiredMode: ['vibe', 'plan'],
+  },
+  {
+    name: 'call_tool',
+    description: 'Invoke a tool discovered by tool_search. Set name to its exact tool name and arguments_json to a JSON object encoded as a string, following the returned schema. The host validates the target, arguments and current permissions before execution. Do not call call_tool or tool_search through this tool.',
+    category: 'read',
+    parameters: [
+      { name: 'name', type: 'string', description: 'Exact discovered tool name.', required: true, schema: NON_EMPTY_STRING_SCHEMA },
+      { name: 'arguments_json', type: 'string', description: 'JSON-encoded object containing the target tool arguments, for example {"path":"src/main.ts"}.', required: true, schema: NON_EMPTY_STRING_SCHEMA },
+    ],
+    // The engine expands this envelope before scheduling and checks effects,
+    // concurrency and permissions against the actual target. It never executes.
+    isReadOnly: true,
+    isDestructive: false,
+    isConcurrencySafe: false,
+    requiredMode: ['vibe', 'plan'],
+  },
+  {
+    name: 'recall',
+    description: 'Layered long-term recall across Continuum memory: continuity summaries, daily rollups, entity dossiers and message history, chosen by depth. recent resumes where previous conversations stopped; topic matches a person/project/theme across dossiers, rollups and memories; deep searches rollups and full message history for older or vague events; exact finds message chunks by text. Sections carry provenance references; follow them with read_history (conversation_id, message_id, offset) to verify the original message. Results are bounded and may be truncated; absence of a match is not proof the event never happened.',
+    category: 'read',
+    maxResultSizeChars: 32_000,
+    parameters: [
+      { name: 'depth', type: 'string', description: 'Recall tier. recent: latest context, no query needed. topic: one subject across dossiers/rollups/memories. deep: older or vague events, searches rollups and message history. exact: message chunks by text.', required: true, enum: ['recent', 'topic', 'deep', 'exact'] },
+      { name: 'query', type: 'string', description: 'Search text. Required for topic, deep and exact.', required: false, schema: NON_EMPTY_STRING_SCHEMA },
+      { name: 'entity', type: 'string', description: 'Entity name or alias for topic recall.', required: false, schema: NON_EMPTY_STRING_SCHEMA },
+      { name: 'date', type: 'string', description: 'Read one day\'s rollup directly (YYYY-MM-DD), for recent or deep depth.', required: false, schema: NON_EMPTY_STRING_SCHEMA },
+      { name: 'limit', type: 'number', description: 'Maximum message sections for deep/exact. Default 10/12, max 50.', required: false, schema: { type: 'integer', minimum: 1, maximum: 50 } },
+    ],
+    isReadOnly: true,
+    isDestructive: false,
+    isConcurrencySafe: true,
   },
   {
     name: 'search_history',
@@ -553,24 +575,6 @@ const definitions: Omit<EnhancedToolDef, 'access'>[] = [
     requiredMode: ['vibe', 'plan'],
   },
   {
-    name: 'create_task',
-    description: 'Create a single task. Prefer create_tasks for 2+ tasks.',
-    category: 'manage',
-    parameters: [
-      { name: 'title', type: 'string', description: 'Task title', required: true, schema: NON_EMPTY_STRING_SCHEMA },
-      { name: 'description', type: 'string', description: 'Task description', required: true },
-      { name: 'priority', type: 'string', description: 'Task priority level', required: true, enum: ['major', 'medium', 'minor'] },
-      { name: 'parent_id', type: 'string', description: 'Parent task ID', required: false, schema: NON_EMPTY_STRING_SCHEMA },
-      { name: 'dependencies', type: 'array', description: 'Task IDs this task depends on (must be completed first)', required: false, schema: { type: 'array', items: { type: 'string' } } },
-      { name: 'order', type: 'number', description: 'Execution order within siblings (lower = earlier)', required: false },
-      { name: 'metadata', type: 'object', description: 'Optional metadata: estimatedDuration, relatedFiles, relatedIssue', required: false, schema: { type: 'object', properties: { estimatedDuration: { type: ['number', 'null'] }, relatedFiles: { anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }] }, relatedIssue: { type: ['string', 'null'] } }, required: ['estimatedDuration', 'relatedFiles', 'relatedIssue'], additionalProperties: false } },
-    ],
-    isReadOnly: false,
-    isDestructive: false,
-    isConcurrencySafe: false,
-    requiredMode: ['vibe', 'plan'],
-  },
-  {
     name: 'create_tasks',
     description: 'Create multiple tasks in one call. Tasks are created in array order; use ref to cross-reference within the same call.',
     category: 'manage',
@@ -826,6 +830,11 @@ export function getToolsForMode(mode: AgentMode, options?: { disabledTools?: str
   })
 }
 
+/** Fixed request schemas; the full mode-filtered catalog remains available for discovery and authorization. */
+export function getResidentToolsForMode(mode: AgentMode, options?: { disabledTools?: string[] }): EnhancedToolDef[] {
+  return getToolsForMode(mode, options).filter(tool => tool.access.exposure === 'resident')
+}
+
 export function getToolByName(name: string): EnhancedToolDef | undefined {
   return tools.find(t => t.name === name)
 }
@@ -862,8 +871,24 @@ export function validateToolArgs(toolName: string, args: Record<string, unknown>
     }
   }
 
+  if (toolName === 'tool_search' && !(args.query as string).trim()) return { valid: false, error: 'query must not be blank' }
+  if (toolName === 'call_tool') {
+    try { decodeDeferredToolCall({ id: 'validation', name: toolName, arguments: args }) }
+    catch (error) { return { valid: false, error: error instanceof Error ? error.message : String(error) } }
+  }
+
   if ((toolName === 'search_files' || toolName === 'search_content') && args.cursor != null && args.offset != null) {
     return { valid: false, error: 'cursor and offset are mutually exclusive; omit offset when continuing' }
+  }
+  if (toolName === 'recall') {
+    const depth = args.depth
+    if (typeof depth !== 'string' || !['recent', 'topic', 'deep', 'exact'].includes(depth)) return { valid: false, error: 'depth must be recent, topic, deep or exact' }
+    if (args.date != null && depth !== 'recent' && depth !== 'deep') return { valid: false, error: 'date is only valid with recent or deep depth' }
+    if (args.entity != null && depth !== 'topic') return { valid: false, error: 'entity is only valid with topic depth' }
+    if ((depth === 'topic' || depth === 'exact') && args.query == null && (depth !== 'topic' || args.entity == null)) return { valid: false, error: 'topic/exact recall requires a query (or entity for topic)' }
+    if (depth === 'deep' && args.query == null && args.date == null) return { valid: false, error: 'deep recall requires a query or a date' }
+    if (args.query != null && typeof args.query !== 'string') return { valid: false, error: 'query must be a string' }
+    if (args.date != null && !/^\d{4}-\d{2}-\d{2}$/.test(String(args.date))) return { valid: false, error: 'date must be YYYY-MM-DD' }
   }
   if (toolName === 'code_navigation') {
     if (args.operation !== 'diagnostics' && (args.line == null || args.column == null)) return { valid: false, error: 'Definition/references require line and column' }

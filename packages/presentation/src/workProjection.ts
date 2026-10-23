@@ -1,6 +1,7 @@
 import { toolInvocationKey, toolResultCallStatus } from '@fluxos/contracts/toolResultData'
 import type { ToolCall, ToolResult } from '@fluxos/contracts/agentTypes'
 import type { AnyConversationEvent, ConversationRunOutcome, ConversationStepOutcome } from '@fluxos/contracts/conversationEvent'
+import { ToolProjectionIndex, newToolProjectionKey } from './toolProjectionIdentity'
 
 export type WorkNodeKind = 'input' | 'reasoning' | 'answer' | 'tool' | 'runtime' | 'approval' | 'phase'
 export type WorkNodeStatus = 'waiting' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'interrupted'
@@ -45,7 +46,6 @@ interface ToolPlacement {
   responseId?: string
   runId?: string
   turnId?: string
-  ordinal: number
 }
 
 function terminal(status: WorkNodeStatus): boolean {
@@ -59,6 +59,7 @@ function outcomeStatus(outcome: ConversationRunOutcome | ConversationStepOutcome
 
 export class WorkProjectionEngine {
   private nodes: Record<string, WorkNode> = {}
+  private readonly toolIndex = new ToolProjectionIndex<WorkNode>()
   private order: string[] = []
   private revision = 0
   private lastSeq = 0
@@ -195,13 +196,22 @@ export class WorkProjectionEngine {
         for (const kind of ['reasoning', 'answer'] as const) {
           changed = this.updateNode(`${responseId}:${kind}`, event, { status, turnId: turn.id, settled: true }) || changed
         }
-        for (const [index, toolCall] of (turn.toolCalls || []).entries()) {
+        for (const toolCall of turn.toolCalls || []) {
+          const response = event.stepId ? `step:${event.stepId}` : responseId
+          const streamed = this.toolIndex.matching(toolCall.id, toolCall.operationIdentity, runId, response)
+          if (streamed && toolCall.operationIdentity) {
+            changed = this.updateNode(streamed[0], event, {
+              turnId: turn.id, invocationId: toolInvocationKey(toolCall.id, toolCall.operationIdentity), toolCall,
+            }) || changed
+          }
           this.toolPlacements.set(toolInvocationKey(toolCall.id, toolCall.operationIdentity), {
             responseId,
             runId,
             turnId: turn.id,
-            ordinal: this.nextOrdinal + index + 1,
           })
+          // A complete model turn already declares every call. Create missing
+          // slots now; later dispatch order must not reshuffle visible calls.
+          changed = this.applyToolCall(event, toolCall) || changed
         }
         this.currentResponseId = undefined
         this.currentResponseRunId = undefined
@@ -213,14 +223,14 @@ export class WorkProjectionEngine {
         return false
       case 'step.completed': {
         let changed = this.settleResponse(event, outcomeStatus(event.payload.outcome), event.stepId)
-        for (const [callId, stepId] of this.streamingToolSteps) {
+        for (const [key, stepId] of this.streamingToolSteps) {
           if (stepId !== event.stepId) continue
           if (event.payload.outcome !== 'completed') {
-            changed = this.updateNode(`tool:${callId}`, event, {
+            changed = this.updateNode(key, event, {
               status: outcomeStatus(event.payload.outcome), settled: true,
             }) || changed
           }
-          this.streamingToolSteps.delete(callId)
+          this.streamingToolSteps.delete(key)
         }
         return changed
       }
@@ -242,20 +252,28 @@ export class WorkProjectionEngine {
           event,
           { status: event.payload.interrupted ? 'interrupted' : 'completed', settled: true },
         )
-      case 'tool.delta':
-        this.streamingToolSteps.set(event.payload.toolCallId, event.stepId)
+      case 'tool.delta': {
+        const callId = event.payload.toolCallId
+        const runId = event.runId || this.activeRunId
+        const responseId = event.stepId ? `step:${event.stepId}` : undefined
+        const previous = this.toolIndex.matching(callId, undefined, runId, responseId)
+        if (previous?.[1].settled || !previous && this.toolIndex.hasBound(callId, runId, responseId)) return false
+        const key = previous?.[0] || newToolProjectionKey(this.nodes, callId, undefined, runId, responseId, event.seq)
+        this.streamingToolSteps.set(key, event.stepId)
         return this.upsert(event, {
-          key: `tool:${event.payload.toolCallId}`,
+          key,
           kind: 'tool',
           status: 'running',
-          runId: event.runId,
-          responseId: event.stepId ? `step:${event.stepId}` : undefined,
-          callId: event.payload.toolCallId,
+          runId,
+          responseId,
+          callId,
+          invocationId: callId,
           toolName: event.payload.toolName,
           content: event.payload.toolName,
           detail: event.payload.partialJson,
           settled: false,
         })
+      }
       case 'tool.proposed':
         return this.applyToolCall(event, event.payload.toolCall)
       case 'tool.completed':
@@ -372,46 +390,47 @@ export class WorkProjectionEngine {
   }
 
   private applyToolCall(envelope: AnyConversationEvent, toolCall: ToolCall): boolean {
-    this.streamingToolSteps.delete(toolCall.id)
     const invocation = toolInvocationKey(toolCall.id, toolCall.operationIdentity)
-    const key = `tool:${invocation}`
     const placement = this.toolPlacements.get(invocation)
-    const streamingKey = `tool:${toolCall.id}`
-    const streaming = this.nodes[streamingKey]
-    if (key !== streamingKey && streaming && !streaming.settled) {
-      // Retire the provisional streaming entry once the host binds the turn.
-      delete this.nodes[streamingKey]
-      this.openNodeKeys.delete(streamingKey)
-      this.order = this.order.filter(value => value !== streamingKey)
-    }
+    const runId = placement?.runId || envelope.runId || this.activeRunId
+    const responseId = placement?.responseId || (envelope.stepId ? `step:${envelope.stepId}` : undefined)
+    const matched = this.toolIndex.matching(toolCall.id, toolCall.operationIdentity, runId, responseId)
+    const key = matched?.[0] || newToolProjectionKey(this.nodes, toolCall.id, toolCall.operationIdentity, runId, responseId, envelope.seq)
+    const previous = matched?.[1]
+    this.streamingToolSteps.delete(key)
     const changed = this.upsert(envelope, {
       key,
       kind: 'tool',
-      status: 'running',
-      runId: placement?.runId || this.activeRunId,
-      turnId: placement?.turnId || envelope.turnId,
-      responseId: placement?.responseId,
+      status: previous?.settled ? previous.status : 'running',
+      runId: previous?.runId || runId,
+      turnId: toolCall.operationIdentity?.turnId || previous?.turnId || placement?.turnId || envelope.turnId,
+      responseId: previous?.responseId || responseId,
       callId: toolCall.id,
       invocationId: invocation,
       toolName: toolCall.name,
       toolCall,
       content: toolCall.name,
-      detail: JSON.stringify(toolCall.arguments),
-      settled: false,
-    }, placement?.ordinal ?? streaming?.ordinal)
+      detail: previous?.toolResult ? previous.detail : JSON.stringify(toolCall.arguments),
+      settled: previous?.settled ?? false,
+    })
     this.toolPlacements.delete(invocation)
     return changed
   }
 
   private applyToolResult(envelope: AnyConversationEvent, result: ToolResult): boolean {
-    const key = `tool:${toolInvocationKey(result.toolCallId, result.operationIdentity)}`
+    const runId = envelope.runId || this.activeRunId
+    const responseId = envelope.stepId ? `step:${envelope.stepId}` : undefined
+    const matched = this.toolIndex.matching(result.toolCallId, result.operationIdentity, runId, responseId)
+    const key = matched?.[0] || newToolProjectionKey(this.nodes, result.toolCallId, result.operationIdentity, runId, responseId, envelope.seq)
     const status: WorkNodeStatus = result.interruption?.kind === 'pause' ? 'interrupted' : toolResultCallStatus(result)
     if (!this.nodes[key]) {
       return this.upsert(envelope, {
         key,
         kind: 'tool',
         status,
-        runId: this.activeRunId,
+        runId,
+        responseId,
+        turnId: result.operationIdentity?.turnId || envelope.turnId,
         callId: result.toolCallId,
         invocationId: toolInvocationKey(result.toolCallId, result.operationIdentity),
         toolName: result.name,
@@ -421,7 +440,10 @@ export class WorkProjectionEngine {
         settled: true,
       })
     }
-    return this.updateNode(key, envelope, { status, detail: result.output, toolResult: result, settled: true })
+    this.streamingToolSteps.delete(key)
+    return this.updateNode(key, envelope, { status, detail: result.output, toolResult: result,
+      turnId: result.operationIdentity?.turnId || envelope.turnId || matched?.[1].turnId,
+      invocationId: toolInvocationKey(result.toolCallId, result.operationIdentity), settled: true })
   }
 
   private ensureResponse(runId?: string, stepId?: string, turnId?: string): string {
@@ -448,7 +470,6 @@ export class WorkProjectionEngine {
   private upsert(
     envelope: AnyConversationEvent,
     input: Omit<WorkNode, 'anchorSeq' | 'lastSeq' | 'ordinal' | 'startedAt' | 'updatedAt' | 'completedAt'>,
-    preferredOrdinal?: number,
   ): boolean {
     if (input.status === 'running' && this.pausedRuns.has(input.runId || '')) {
       input = { ...input, status: 'paused' }
@@ -460,13 +481,13 @@ export class WorkProjectionEngine {
         ...input,
         lastSeq: envelope.seq,
         updatedAt: envelope.at,
-        completedAt: input.settled ? envelope.at : existing.completedAt,
+        completedAt: input.settled ? existing.completedAt ?? envelope.at : existing.completedAt,
       }
+      this.toolIndex.upsert(input.key, this.nodes[input.key]!)
       this.trackNodeSettlement(input.key, input.settled)
       return true
     }
-    const ordinal = preferredOrdinal ?? ++this.nextOrdinal
-    this.nextOrdinal = Math.max(this.nextOrdinal, ordinal)
+    const ordinal = ++this.nextOrdinal
     const node: WorkNode = {
       ...input,
       anchorSeq: envelope.seq,
@@ -477,27 +498,10 @@ export class WorkProjectionEngine {
       completedAt: input.settled ? envelope.at : undefined,
     }
     this.nodes[input.key] = node
+    this.toolIndex.upsert(input.key, node)
     this.trackNodeSettlement(input.key, input.settled)
-    const lastKey = this.order.at(-1)
-    if (!lastKey || this.compareNodeKeys(lastKey, input.key) <= 0) {
-      this.order.push(input.key)
-      return true
-    }
-    let low = 0
-    let high = this.order.length
-    while (low < high) {
-      const middle = (low + high) >>> 1
-      if (this.compareNodeKeys(this.order[middle]!, input.key) <= 0) low = middle + 1
-      else high = middle
-    }
-    this.order.splice(low, 0, input.key)
+    this.order.push(input.key)
     return true
-  }
-
-  private compareNodeKeys(left: string, right: string): number {
-    const leftNode = this.nodes[left]!
-    const rightNode = this.nodes[right]!
-    return leftNode.ordinal - rightNode.ordinal || leftNode.anchorSeq - rightNode.anchorSeq || left.localeCompare(right)
   }
 
   private updateNode(key: string, envelope: AnyConversationEvent, patch: Partial<WorkNode>): boolean {
@@ -509,8 +513,9 @@ export class WorkProjectionEngine {
       ...patch,
       lastSeq: envelope.seq,
       updatedAt: envelope.at,
-      completedAt: settled ? envelope.at : existing.completedAt,
+      completedAt: settled ? existing.completedAt ?? envelope.at : existing.completedAt,
     }
+    this.toolIndex.upsert(key, this.nodes[key]!)
     this.trackNodeSettlement(key, settled)
     return true
   }
@@ -528,6 +533,7 @@ export class WorkProjectionEngine {
         updatedAt: envelope.at,
         completedAt: envelope.at,
       }
+      this.toolIndex.upsert(key, this.nodes[key]!)
       this.openNodeKeys.delete(key)
       changed = true
     }
@@ -551,8 +557,8 @@ export class WorkProjectionEngine {
 
   private releaseRun(runId: string): void {
     this.pausedRuns.delete(runId)
-    for (const callId of this.streamingToolSteps.keys()) {
-      if (this.nodes[`tool:${callId}`]?.runId === runId) this.streamingToolSteps.delete(callId)
+    for (const key of this.streamingToolSteps.keys()) {
+      if (this.nodes[key]?.runId === runId) this.streamingToolSteps.delete(key)
     }
     this.responseSequenceByRun.delete(runId)
     for (const [callId, placement] of this.toolPlacements) {
@@ -568,6 +574,7 @@ export class WorkProjectionEngine {
     this.sessionId = sessionId
     this.threadId = threadId
     this.nodes = {}
+    this.toolIndex.clear()
     this.order = []
     this.revision = 0
     this.lastSeq = 0

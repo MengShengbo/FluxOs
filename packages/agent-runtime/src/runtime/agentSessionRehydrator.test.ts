@@ -5,6 +5,21 @@ import { TaskManager } from '../taskManager'
 import { AgentSessionRehydrator } from './agentSessionRehydrator'
 
 describe('AgentSessionRehydrator', () => {
+  it('retains the original model invocation when messages restore executable calls', () => {
+    const rehydrator = new AgentSessionRehydrator()
+    const argumentsJson = ' {\n  "path" : "file.txt"\n}\t '
+    const toolCall = { id: 'gateway-call', name: 'read_file', arguments: { path: 'file.txt' },
+      modelInvocation: { name: 'call_tool', arguments: { name: 'read_file', arguments_json: argumentsJson } } }
+    const messages = rehydrator.messagesFromTurns([{ id: 'assistant', role: 'assistant', content: '', timestamp: 1,
+      toolCalls: [toolCall] }])
+    expect(messages[0]!.metadata!.toolCalls![0]!.modelInvocation).toEqual(toolCall.modelInvocation)
+    const restored = rehydrator.rehydrateMessages(JSON.parse(JSON.stringify(messages)), {
+      systemTurns: [], taskManager: new TaskManager(),
+    })
+    expect(restored[0]!.toolCalls![0]).toEqual(toolCall)
+    expect(restored[0]!.toolCalls![0]!.modelInvocation!.arguments.arguments_json).toBe(argumentsJson)
+  })
+
   it('rejects a settled result without explicit status instead of parsing text or dropping it', () => {
     const rehydrator = new AgentSessionRehydrator()
     expect(() => rehydrator.rehydrateMessages([{ role: 'assistant', content: '', metadata: { toolCalls: [
@@ -155,15 +170,15 @@ describe('AgentSessionRehydrator', () => {
         workRunId: 'run-1',
         toolCalls: [
           {
-            name: 'create_task',
-            arguments: { title: 'Keep me', priority: 'major' },
+            name: 'create_tasks',
+            arguments: { tasks: [{ title: 'Keep me', description: 'fixture', priority: 'major' }] },
             isError: false, data: { kind: 'tasks', status: 'completed', failures: [], tasks: [{ id: 'task-1', title: 'Keep me', description: 'fixture', priority: 'major', status: 'completed', progress: 100, parentId: null, children: [], dependencies: [], order: 0, createdAt: 20, updatedAt: 20 }] },
-            result: JSON.stringify({ id: 'task-1', status: 'completed' }),
+            result: JSON.stringify({ created: [{ id: 'task-1', status: 'completed' }] }),
             status: 'completed',
           },
           {
-            name: 'create_task',
-            arguments: { title: 'Drop me' },
+            name: 'create_tasks',
+            arguments: { tasks: [{ title: 'Drop me' }] },
             result: 'failed', isError: true, errorKind: 'validation',
             status: 'error',
           },

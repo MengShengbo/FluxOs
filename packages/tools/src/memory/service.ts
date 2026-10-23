@@ -24,6 +24,7 @@ import type {
 import { FLUXAGENT_RULE_FILES, loadAllMemoryGroups } from './loaders'
 import { MemoryWriter } from './writer'
 import { LongTermMemory } from './longTerm'
+import { ContinuumStore, ContinuumMaintenance } from './continuum'
 import type { MemoryHistorySource, MemoryPolicy } from '@fluxos/contracts/memoryTypes'
 
 function approxTokens(text: string): number {
@@ -210,11 +211,27 @@ export class MemoryService {
   private readonly globalWriter?: MemoryWriter
 
   readonly longTerm?: LongTermMemory
+  readonly continuum?: ContinuumStore
+  private readonly continuumMaintenance?: ContinuumMaintenance
 
-  constructor(private readonly privateMemoryRoot?: string, private readonly globalMemoryRoot?: string, history?: MemoryHistorySource, workspaceId?: string) {
-    if (history && workspaceId && privateMemoryRoot) this.longTerm = new LongTermMemory(globalMemoryRoot ?? privateMemoryRoot, privateMemoryRoot, workspaceId, history)
+  constructor(private readonly privateMemoryRoot?: string, private readonly globalMemoryRoot?: string, private readonly historySource?: MemoryHistorySource, workspaceId?: string) {
+    if (historySource && workspaceId && privateMemoryRoot) this.longTerm = new LongTermMemory(globalMemoryRoot ?? privateMemoryRoot, privateMemoryRoot, workspaceId, historySource)
     this.writer = new MemoryWriter(privateMemoryRoot)
     if (globalMemoryRoot) this.globalWriter = new MemoryWriter(globalMemoryRoot)
+    if (this.longTerm && historySource) {
+      this.continuum = new ContinuumStore(globalMemoryRoot ?? privateMemoryRoot!)
+      this.continuumMaintenance = new ContinuumMaintenance(this.continuum, historySource,
+        () => this.longTerm!.policy(), () => this.longTerm!.status().summaries, () => this.longTerm!.suppressedKeys())
+    }
+  }
+
+  /** One Continuum maintenance cycle; model work flows through `generate`. */
+  async maintainContinuum(generate: (prompt: string, maxTokens: number, signal: AbortSignal) => Promise<string>, signal: AbortSignal): Promise<boolean> {
+    if (!this.continuumMaintenance || signal.aborted) return false
+    const policy = this.longTerm!.policy()
+    if (!policy.continuumEnabled || !policy.referenceHistory) return false
+    const outcome = await this.continuumMaintenance.run(generate, signal)
+    return outcome.dailyAppended > 0 || outcome.entitiesTouched > 0 || outcome.entityCalls > 0
   }
 
   async getSnapshot(workspacePath: string, options?: { force?: boolean; includeInactive?: boolean }): Promise<MemorySnapshot> {
@@ -337,7 +354,9 @@ export class MemoryService {
       ? this.longTerm.status().summaries.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 2) : []
     const continuityText = summaries.length ? '\n<continuity_hints>Recent project summaries are clues. Verify the intended task and original sources before acting.\n'
       + summaries.map(summary => JSON.stringify({ ...summary, text: summary.text.slice(0, 900), evidence: summary.evidence.slice(-3) }).replace(/</g, '\\u003c')).join('\n') + '\n</continuity_hints>' : ''
-    const text = rendered.text + historyText + continuityText
+    const today = this.continuum?.readDaily(new Date().toISOString().slice(0, 10))
+    const rollupText = today && today.entries.length ? `\n<today_rollup>\nA Continuum daily rollup for ${today.date} exists (${today.entries.length} conversations${today.corrections.length ? `, ${today.corrections.length} corrections` : ''}). Use the recall tool with depth="recent" for the navigable view, or depth="deep" with a query to trace original messages.\n</today_rollup>` : ''
+    const text = rendered.text + historyText + continuityText + rollupText
     const includedCount = rendered.includedCount
     return {
       text,

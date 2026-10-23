@@ -81,9 +81,6 @@ exports[`provider wire parity frozen before adapter extraction > anthropic_messa
           "name": "read_file",
         },
         {
-          "cache_control": {
-            "type": "ephemeral",
-          },
           "description": "Apply a structured patch with add, update, move, or delete file operations. Hunks follow original source order. Use @@ <exact source line> to advance past a literal anchor, and *** End of File to require the final source suffix. Ambiguous matches fail; add exact context. All hunks are preflighted and file contents checked before writes. Multi-file writes are not atomic. Results report committed, pending and unknown effects with the failure stage. After partial/unknown outcomes, inspect current files and apply only the remaining changes; never blindly retry or roll back the full patch.",
           "input_schema": {
             "additionalProperties": false,
@@ -100,6 +97,58 @@ exports[`provider wire parity frozen before adapter extraction > anthropic_messa
             "type": "object",
           },
           "name": "apply_patch",
+        },
+        {
+          "description": "Find permitted built-in and connected MCP tools by capability, name, description or schema fields. Returns matching tool schemas in the result; invoke a discovered tool through call_tool using its exact name and JSON arguments. Verify required arguments and refine weak matches. Discovery does not authorize execution.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "default": 5,
+                "description": "Maximum matching tools to describe (default 5, range 1 to 8).",
+                "maximum": 8,
+                "minimum": 1,
+                "type": "integer",
+              },
+              "query": {
+                "description": "Intent or capability to search for, such as "issue tracker comments" or "browser screenshot".",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "query",
+            ],
+            "type": "object",
+          },
+          "name": "tool_search",
+        },
+        {
+          "cache_control": {
+            "type": "ephemeral",
+          },
+          "description": "Invoke a tool discovered by tool_search. Set name to its exact tool name and arguments_json to a JSON object encoded as a string, following the returned schema. The host validates the target, arguments and current permissions before execution. Do not call call_tool or tool_search through this tool.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments_json": {
+                "description": "JSON-encoded object containing the target tool arguments, for example {"path":"src/main.ts"}.",
+                "minLength": 1,
+                "type": "string",
+              },
+              "name": {
+                "description": "Exact discovered tool name.",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "name",
+              "arguments_json",
+            ],
+            "type": "object",
+          },
+          "name": "call_tool",
         },
       ],
     },
@@ -218,9 +267,6 @@ exports[`provider wire parity frozen before adapter extraction > anthropic_messa
           "name": "read_file",
         },
         {
-          "cache_control": {
-            "type": "ephemeral",
-          },
           "description": "Apply a structured patch with add, update, move, or delete file operations. Hunks follow original source order. Use @@ <exact source line> to advance past a literal anchor, and *** End of File to require the final source suffix. Ambiguous matches fail; add exact context. All hunks are preflighted and file contents checked before writes. Multi-file writes are not atomic. Results report committed, pending and unknown effects with the failure stage. After partial/unknown outcomes, inspect current files and apply only the remaining changes; never blindly retry or roll back the full patch.",
           "input_schema": {
             "additionalProperties": false,
@@ -237,6 +283,58 @@ exports[`provider wire parity frozen before adapter extraction > anthropic_messa
             "type": "object",
           },
           "name": "apply_patch",
+        },
+        {
+          "description": "Find permitted built-in and connected MCP tools by capability, name, description or schema fields. Returns matching tool schemas in the result; invoke a discovered tool through call_tool using its exact name and JSON arguments. Verify required arguments and refine weak matches. Discovery does not authorize execution.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "default": 5,
+                "description": "Maximum matching tools to describe (default 5, range 1 to 8).",
+                "maximum": 8,
+                "minimum": 1,
+                "type": "integer",
+              },
+              "query": {
+                "description": "Intent or capability to search for, such as "issue tracker comments" or "browser screenshot".",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "query",
+            ],
+            "type": "object",
+          },
+          "name": "tool_search",
+        },
+        {
+          "cache_control": {
+            "type": "ephemeral",
+          },
+          "description": "Invoke a tool discovered by tool_search. Set name to its exact tool name and arguments_json to a JSON object encoded as a string, following the returned schema. The host validates the target, arguments and current permissions before execution. Do not call call_tool or tool_search through this tool.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments_json": {
+                "description": "JSON-encoded object containing the target tool arguments, for example {"path":"src/main.ts"}.",
+                "minLength": 1,
+                "type": "string",
+              },
+              "name": {
+                "description": "Exact discovered tool name.",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "name",
+              "arguments_json",
+            ],
+            "type": "object",
+          },
+          "name": "call_tool",
         },
       ],
     },
@@ -364,6 +462,61 @@ exports[`provider wire parity frozen before adapter extraction > openai_chat / d
           },
           "type": "function",
         },
+        {
+          "function": {
+            "description": "Find permitted built-in and connected MCP tools by capability, name, description or schema fields. Returns matching tool schemas in the result; invoke a discovered tool through call_tool using its exact name and JSON arguments. Verify required arguments and refine weak matches. Discovery does not authorize execution.",
+            "name": "tool_search",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "limit": {
+                  "default": 5,
+                  "description": "Maximum matching tools to describe (default 5, range 1 to 8).",
+                  "maximum": 8,
+                  "minimum": 1,
+                  "type": "integer",
+                },
+                "query": {
+                  "description": "Intent or capability to search for, such as "issue tracker comments" or "browser screenshot".",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "query",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
+        {
+          "function": {
+            "description": "Invoke a tool discovered by tool_search. Set name to its exact tool name and arguments_json to a JSON object encoded as a string, following the returned schema. The host validates the target, arguments and current permissions before execution. Do not call call_tool or tool_search through this tool.",
+            "name": "call_tool",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "arguments_json": {
+                  "description": "JSON-encoded object containing the target tool arguments, for example {"path":"src/main.ts"}.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "name": {
+                  "description": "Exact discovered tool name.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "name",
+                "arguments_json",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
       ],
     },
     "headers": {
@@ -412,7 +565,7 @@ exports[`provider wire parity frozen before adapter extraction > openai_chat / k
       ],
       "model": "kimi-k2.5",
       "parallel_tool_calls": true,
-      "prompt_cache_key": "tf:kimi-k2.5:vibe:7c3b7h:17tf42q",
+      "prompt_cache_key": "tf:kimi-k2.5:vibe:7c3b7h:17cnr69",
       "stream": true,
       "stream_options": {
         "include_usage": true,
@@ -489,6 +642,61 @@ exports[`provider wire parity frozen before adapter extraction > openai_chat / k
           },
           "type": "function",
         },
+        {
+          "function": {
+            "description": "Find permitted built-in and connected MCP tools by capability, name, description or schema fields. Returns matching tool schemas in the result; invoke a discovered tool through call_tool using its exact name and JSON arguments. Verify required arguments and refine weak matches. Discovery does not authorize execution.",
+            "name": "tool_search",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "limit": {
+                  "default": 5,
+                  "description": "Maximum matching tools to describe (default 5, range 1 to 8).",
+                  "maximum": 8,
+                  "minimum": 1,
+                  "type": "integer",
+                },
+                "query": {
+                  "description": "Intent or capability to search for, such as "issue tracker comments" or "browser screenshot".",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "query",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
+        {
+          "function": {
+            "description": "Invoke a tool discovered by tool_search. Set name to its exact tool name and arguments_json to a JSON object encoded as a string, following the returned schema. The host validates the target, arguments and current permissions before execution. Do not call call_tool or tool_search through this tool.",
+            "name": "call_tool",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "arguments_json": {
+                  "description": "JSON-encoded object containing the target tool arguments, for example {"path":"src/main.ts"}.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "name": {
+                  "description": "Exact discovered tool name.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "name",
+                "arguments_json",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
       ],
     },
     "headers": {
@@ -537,7 +745,7 @@ exports[`provider wire parity frozen before adapter extraction > openai_chat / o
       ],
       "model": "gpt-5.6",
       "parallel_tool_calls": true,
-      "prompt_cache_key": "tf:gpt-5.6:vibe:7c3b7h:1h3gm4m",
+      "prompt_cache_key": "tf:gpt-5.6:vibe:7c3b7h:1kar3o8",
       "prompt_cache_options": {
         "ttl": "30m",
       },
@@ -650,6 +858,71 @@ exports[`provider wire parity frozen before adapter extraction > openai_chat / o
               },
               "required": [
                 "patch",
+              ],
+              "type": "object",
+            },
+            "strict": true,
+          },
+          "type": "function",
+        },
+        {
+          "function": {
+            "description": "Find permitted built-in and connected MCP tools by capability, name, description or schema fields. Returns matching tool schemas in the result; invoke a discovered tool through call_tool using its exact name and JSON arguments. Verify required arguments and refine weak matches. Discovery does not authorize execution.",
+            "name": "tool_search",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "limit": {
+                  "anyOf": [
+                    {
+                      "default": 5,
+                      "maximum": 8,
+                      "minimum": 1,
+                      "type": "integer",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                  "description": "Maximum matching tools to describe (default 5, range 1 to 8).",
+                },
+                "query": {
+                  "description": "Intent or capability to search for, such as "issue tracker comments" or "browser screenshot".",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "query",
+                "limit",
+              ],
+              "type": "object",
+            },
+            "strict": true,
+          },
+          "type": "function",
+        },
+        {
+          "function": {
+            "description": "Invoke a tool discovered by tool_search. Set name to its exact tool name and arguments_json to a JSON object encoded as a string, following the returned schema. The host validates the target, arguments and current permissions before execution. Do not call call_tool or tool_search through this tool.",
+            "name": "call_tool",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "arguments_json": {
+                  "description": "JSON-encoded object containing the target tool arguments, for example {"path":"src/main.ts"}.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "name": {
+                  "description": "Exact discovered tool name.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "name",
+                "arguments_json",
               ],
               "type": "object",
             },
@@ -795,6 +1068,61 @@ exports[`provider wire parity frozen before adapter extraction > openai_chat / o
           },
           "type": "function",
         },
+        {
+          "function": {
+            "description": "Find permitted built-in and connected MCP tools by capability, name, description or schema fields. Returns matching tool schemas in the result; invoke a discovered tool through call_tool using its exact name and JSON arguments. Verify required arguments and refine weak matches. Discovery does not authorize execution.",
+            "name": "tool_search",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "limit": {
+                  "default": 5,
+                  "description": "Maximum matching tools to describe (default 5, range 1 to 8).",
+                  "maximum": 8,
+                  "minimum": 1,
+                  "type": "integer",
+                },
+                "query": {
+                  "description": "Intent or capability to search for, such as "issue tracker comments" or "browser screenshot".",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "query",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
+        {
+          "function": {
+            "description": "Invoke a tool discovered by tool_search. Set name to its exact tool name and arguments_json to a JSON object encoded as a string, following the returned schema. The host validates the target, arguments and current permissions before execution. Do not call call_tool or tool_search through this tool.",
+            "name": "call_tool",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "arguments_json": {
+                  "description": "JSON-encoded object containing the target tool arguments, for example {"path":"src/main.ts"}.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "name": {
+                  "description": "Exact discovered tool name.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "name",
+                "arguments_json",
+              ],
+              "type": "object",
+            },
+          },
+          "type": "function",
+        },
       ],
     },
     "headers": {
@@ -842,7 +1170,7 @@ exports[`provider wire parity frozen before adapter extraction > openai_response
       "max_output_tokens": 4096,
       "model": "gpt-5.6",
       "parallel_tool_calls": true,
-      "prompt_cache_key": "tf:gpt-5.6:vibe:7c3b7h:14sosby",
+      "prompt_cache_key": "tf:gpt-5.6:vibe:7c3b7h:lhno2w",
       "prompt_cache_options": {
         "ttl": "30m",
       },
@@ -962,6 +1290,67 @@ exports[`provider wire parity frozen before adapter extraction > openai_response
           "strict": true,
           "type": "function",
         },
+        {
+          "description": "Find permitted built-in and connected MCP tools by capability, name, description or schema fields. Returns matching tool schemas in the result; invoke a discovered tool through call_tool using its exact name and JSON arguments. Verify required arguments and refine weak matches. Discovery does not authorize execution.",
+          "name": "tool_search",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "anyOf": [
+                  {
+                    "default": 5,
+                    "maximum": 8,
+                    "minimum": 1,
+                    "type": "integer",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Maximum matching tools to describe (default 5, range 1 to 8).",
+              },
+              "query": {
+                "description": "Intent or capability to search for, such as "issue tracker comments" or "browser screenshot".",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "query",
+              "limit",
+            ],
+            "type": "object",
+          },
+          "strict": true,
+          "type": "function",
+        },
+        {
+          "description": "Invoke a tool discovered by tool_search. Set name to its exact tool name and arguments_json to a JSON object encoded as a string, following the returned schema. The host validates the target, arguments and current permissions before execution. Do not call call_tool or tool_search through this tool.",
+          "name": "call_tool",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments_json": {
+                "description": "JSON-encoded object containing the target tool arguments, for example {"path":"src/main.ts"}.",
+                "minLength": 1,
+                "type": "string",
+              },
+              "name": {
+                "description": "Exact discovered tool name.",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "name",
+              "arguments_json",
+            ],
+            "type": "object",
+          },
+          "strict": true,
+          "type": "function",
+        },
       ],
     },
     "headers": {
@@ -1007,7 +1396,7 @@ exports[`provider wire parity frozen before adapter extraction > openai_response
       "max_output_tokens": 4096,
       "model": "gpt-5.6",
       "parallel_tool_calls": false,
-      "prompt_cache_key": "tf:gpt-5.6:vibe:7c3b7h:1jnwgpp",
+      "prompt_cache_key": "tf:gpt-5.6:vibe:7c3b7h:13alz9z",
       "prompt_cache_options": {
         "ttl": "30m",
       },
@@ -1115,6 +1504,67 @@ Pass the literal patch text. Do not wrap it in JSON or a code fence.",
           },
           "name": "apply_patch",
           "type": "custom",
+        },
+        {
+          "description": "Find permitted built-in and connected MCP tools by capability, name, description or schema fields. Returns matching tool schemas in the result; invoke a discovered tool through call_tool using its exact name and JSON arguments. Verify required arguments and refine weak matches. Discovery does not authorize execution.",
+          "name": "tool_search",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "anyOf": [
+                  {
+                    "default": 5,
+                    "maximum": 8,
+                    "minimum": 1,
+                    "type": "integer",
+                  },
+                  {
+                    "type": "null",
+                  },
+                ],
+                "description": "Maximum matching tools to describe (default 5, range 1 to 8).",
+              },
+              "query": {
+                "description": "Intent or capability to search for, such as "issue tracker comments" or "browser screenshot".",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "query",
+              "limit",
+            ],
+            "type": "object",
+          },
+          "strict": true,
+          "type": "function",
+        },
+        {
+          "description": "Invoke a tool discovered by tool_search. Set name to its exact tool name and arguments_json to a JSON object encoded as a string, following the returned schema. The host validates the target, arguments and current permissions before execution. Do not call call_tool or tool_search through this tool.",
+          "name": "call_tool",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments_json": {
+                "description": "JSON-encoded object containing the target tool arguments, for example {"path":"src/main.ts"}.",
+                "minLength": 1,
+                "type": "string",
+              },
+              "name": {
+                "description": "Exact discovered tool name.",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "name",
+              "arguments_json",
+            ],
+            "type": "object",
+          },
+          "strict": true,
+          "type": "function",
         },
       ],
     },

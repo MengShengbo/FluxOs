@@ -7,7 +7,7 @@ export class TranscriptIndex {
   readonly turns = new Map<string, AgentTurn>()
   readonly calls = new Map<string, ToolCall>()
   readonly results = new Map<string, ToolResult>()
-  private readonly versions = new Map<string, { content: string; revision: number }>()
+  private readonly versions = new Map<string, { value: unknown; revision: number }>()
   private revision = 0
 
   setTurn(turn: AgentTurn): void {
@@ -52,8 +52,38 @@ export class TranscriptIndex {
   }
 
   private record(key: string, value: unknown): void {
-    const content = JSON.stringify(value)
-    if (this.versions.get(key)?.content === content) return
-    this.versions.set(key, { content, revision: ++this.revision })
+    const previous = this.versions.get(key)
+    const snapshot = captureValue(value, previous?.value)
+    if (previous && snapshot === previous.value) return
+    this.versions.set(key, { value: snapshot, revision: ++this.revision })
   }
+}
+
+/** Capture mutable event payloads without duplicating their potentially multi-MB
+ * strings into serialized version keys. Equal subtrees reuse their prior value;
+ * comparing a new IPC object and detecting an in-place correction both work.
+ */
+function captureValue(value: unknown, previous: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) {
+    const before = Array.isArray(previous) ? previous : undefined
+    let equal = before?.length === value.length
+    const copy = value.map((item, index) => {
+      const captured = captureValue(item, before?.[index])
+      if (!Object.is(captured, before?.[index])) equal = false
+      return captured
+    })
+    return equal ? before : copy
+  }
+  const current = value as Record<string, unknown>
+  const before = previous && typeof previous === 'object' && !Array.isArray(previous)
+    ? previous as Record<string, unknown> : undefined
+  const keys = Object.keys(current)
+  let equal = Boolean(before && Object.keys(before).length === keys.length)
+  const copy: Record<string, unknown> = Object.create(null)
+  for (const key of keys) {
+    copy[key] = captureValue(current[key], before?.[key])
+    if (!before || !Object.hasOwn(before, key) || !Object.is(copy[key], before[key])) equal = false
+  }
+  return equal ? before : copy
 }

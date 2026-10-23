@@ -218,23 +218,27 @@ export function turnToModelMessages(
         content.push({ type: 'text', text: turn.content })
       }
       for (const tc of turn.toolCalls) {
+        const invocation = tc.modelInvocation ?? tc
         content.push({
           type: 'tool_use',
           id: tc.id,
-          name: tc.name,
-          input: tc.arguments,
+          name: invocation.name,
+          input: invocation.arguments,
         })
       }
       messages.push({ role: 'assistant', content })
     } else {
-      const openaiToolCalls = turn.toolCalls.map(tc => ({
-        id: tc.id,
-        type: 'function',
-        function: {
-          name: tc.name,
-          arguments: JSON.stringify(tc.arguments),
-        },
-      }))
+      const openaiToolCalls = turn.toolCalls.map(tc => {
+        const invocation = tc.modelInvocation ?? tc
+        return {
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: invocation.name,
+            arguments: JSON.stringify(invocation.arguments),
+          },
+        }
+      })
 
       const openaiMsg: Record<string, unknown> = {
         role: 'assistant',

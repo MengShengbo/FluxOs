@@ -35,9 +35,21 @@
       "types": "./dist/gitService.d.ts",
       "import": "./dist/gitService.js"
     },
+    "./memory/continuum": {
+      "types": "./dist/memory/continuum.d.ts",
+      "import": "./dist/memory/continuum.js"
+    },
+    "./memory/continuumRecall": {
+      "types": "./dist/memory/continuumRecall.d.ts",
+      "import": "./dist/memory/continuumRecall.js"
+    },
     "./memory/loaders": {
       "types": "./dist/memory/loaders.d.ts",
       "import": "./dist/memory/loaders.js"
+    },
+    "./memory/longTerm": {
+      "types": "./dist/memory/longTerm.d.ts",
+      "import": "./dist/memory/longTerm.js"
     },
     "./memory/sanitizer": {
       "types": "./dist/memory/sanitizer.d.ts",
@@ -78,6 +90,10 @@
     "./toolRegistry": {
       "types": "./dist/toolRegistry.d.ts",
       "import": "./dist/toolRegistry.js"
+    },
+    "./toolDiscovery": {
+      "types": "./dist/toolDiscovery.d.ts",
+      "import": "./dist/toolDiscovery.js"
     },
     "./webResearchService": {
       "types": "./dist/webResearchService.d.ts",

@@ -40,6 +40,7 @@ export interface PersistedAgentMessage {
 
 export interface PersistedToolCall extends Pick<ToolResult, 'data' | 'errorKind' | 'recovery' | 'retrieval' | 'attachments' | 'outputSource' | 'operation'> {
   operationIdentity?: ToolCall['operationIdentity']
+  modelInvocation?: ToolCall['modelInvocation']
   id?: string
   name: string
   arguments: Record<string, unknown>
@@ -84,6 +85,7 @@ export class AgentSessionRehydrator {
           id: toolCall.id,
           name: toolCall.name,
           arguments: toolCall.arguments,
+          ...(toolCall.modelInvocation ? { modelInvocation: structuredClone(toolCall.modelInvocation) } : {}),
           ...(toolCall.operationIdentity ? { operationIdentity: structuredClone(toolCall.operationIdentity) } : {}),
           result: result?.output,
           isError: result?.isError,
@@ -145,6 +147,7 @@ export class AgentSessionRehydrator {
         id: restoredIds[index]!,
         name: toolCall.name,
         arguments: toolCall.arguments,
+        ...(toolCall.modelInvocation ? { modelInvocation: structuredClone(toolCall.modelInvocation) } : {}),
         ...(toolCall.operationIdentity ? { operationIdentity: structuredClone(toolCall.operationIdentity) } : {}),
       }))
       const toolResults = this.restoreToolResults(metadata?.toolCalls, restoredIds)

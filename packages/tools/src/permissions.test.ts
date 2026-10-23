@@ -288,7 +288,7 @@ describe('PermissionPipeline', () => {
     it('does not interrupt internal task workflow bookkeeping', () => {
       const pipeline = new PermissionPipeline('ask')
 
-      expect(pipeline.check('create_task', { title: 'Implement UI' }).verdict).toBe('allow')
+      expect(pipeline.check('create_tasks', { tasks: [{ title: 'Implement UI', description: 'Implement UI', priority: 'major' }] }).verdict).toBe('allow')
       expect(pipeline.check('update_task', { task_id: 'task-1', status: 'completed' }).verdict).toBe('allow')
     })
 

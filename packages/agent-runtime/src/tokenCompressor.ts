@@ -66,7 +66,6 @@ export function compressToolResult(
 
   switch (toolName) {
     case 'read_file':
-    case 'read_file_full':
     case 'read_file_range':
       return spanFoldCompress(output, options)
     case 'search_content':
