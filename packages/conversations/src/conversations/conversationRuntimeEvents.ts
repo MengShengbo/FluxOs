@@ -371,7 +371,7 @@ export function planConversationRuntimeEvents(
       at: turn.timestamp,
       payload: { completedAt: turn.timestamp, interrupted: turn.metadata?.interrupted,
         ...(turn.metadata ? { metadata: Object.fromEntries(Object.entries(turn.metadata)
-          .filter(([key]) => ['tokens', 'model', 'duration', 'modelRequestId', 'modelAttemptId', 'internal', 'internalKind'].includes(key))) } : {}),
+          .filter(([key]) => ['tokens', 'model', 'duration', 'modelRequestId', 'modelAttemptId', 'internal', 'internalKind', 'rawReasoningPayload', 'reasoningEnabled', 'reasoningEffort'].includes(key))) } : {}),
       },
     })
   }

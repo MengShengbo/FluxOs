@@ -91,6 +91,17 @@ function optionalPortablePaths(value: unknown): boolean {
   return value === undefined || (Array.isArray(value) && value.every(portablePath))
 }
 
+function validRawReasoning(value: unknown): boolean {
+  const payload = objectRecord(value)
+  return Boolean(payload && ['anthropic', 'openai-compatible'].includes(String(payload.provider))
+    && optionalString(payload.reasoningContent) && Array.isArray(payload.blocks)
+    && payload.blocks.every(value => {
+      const block = objectRecord(value)
+      return block && ['thinking', 'redacted_thinking'].includes(String(block.type))
+        && optionalString(block.thinking) && optionalString(block.signature) && optionalString(block.data)
+    }))
+}
+
 function validItemPayload(kind: string, value: unknown): boolean {
   const payload = objectRecord(value)
   if (!payload) return false
@@ -175,8 +186,11 @@ function assertEventPayload(event: Partial<AnyConversationEventV2>): void {
       const metadata = payload.metadata === undefined ? undefined : objectRecord(payload.metadata)
       valid = number('completedAt') && (payload.interrupted === undefined || typeof payload.interrupted === 'boolean')
         && (payload.metadata === undefined || Boolean(metadata
-          && Object.keys(metadata).every(key => ['tokens', 'model', 'duration', 'modelRequestId', 'modelAttemptId', 'internal', 'internalKind'].includes(key))
+          && Object.keys(metadata).every(key => ['tokens', 'model', 'duration', 'modelRequestId', 'modelAttemptId', 'internal', 'internalKind', 'rawReasoningPayload', 'reasoningEnabled', 'reasoningEffort'].includes(key))
           && (metadata.tokens === undefined || isTokenUsage(metadata.tokens))
+          && (metadata.rawReasoningPayload === undefined || validRawReasoning(metadata.rawReasoningPayload))
+          && (metadata.reasoningEnabled === undefined || typeof metadata.reasoningEnabled === 'boolean')
+          && optionalString(metadata.reasoningEffort)
           && optionalString(metadata.model) && optionalString(metadata.modelRequestId) && optionalString(metadata.modelAttemptId)
           && optionalString(metadata.internalKind) && optionalNumber(metadata.duration)
           && (metadata.internal === undefined || typeof metadata.internal === 'boolean')))

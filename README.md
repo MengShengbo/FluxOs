@@ -26,9 +26,9 @@ See [package architecture](docs/architecture/packages.md) for package ownership,
 | Open-source FluxOs | Private FluxAgent product |
 | --- | --- |
 | contracts, platform, models, tools, extensions, agent-runtime | Electron application and native browser/computer/terminal adapters |
-| conversations, profiles, automations, presentation | workbench assembly, DOM renderer, remote protocol, desktop UI and product services |
+| conversations, profiles, presentation | workbench assembly, DOM renderer, remote protocol, desktop UI and product services |
 
-All ten core packages are MIT licensed, publishable, independently built and tested. The workspace root is private to npm so consumers use the domain package APIs. FluxAgent is maintained in a separate private repository and depends on these packages; this repository does not depend on FluxAgent.
+All nine core packages are MIT licensed, publishable, independently built and tested. The workspace root is private to npm so consumers use the domain package APIs. FluxAgent is maintained in a separate private repository and depends on these packages; this repository does not depend on FluxAgent.
 
 ## Compatibility
 

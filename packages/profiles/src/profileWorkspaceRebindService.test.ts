@@ -34,7 +34,7 @@ function fixture() {
   mkdirSync(join(layout.workspaceOverlaysRoot, workspaceId, 'artifacts'), { recursive: true })
   writeFileSync(artifactPath, 'result')
   writeFileSync(layout.artifactsPath, JSON.stringify({ schemaVersion: 1, artifacts: [{ id: 'artifact-1', path: artifactPath, workspacePath: marker, available: false }] }))
-  writeFileSync(layout.automationsPath, JSON.stringify({ schemaVersion: 2, automations: [{ id: 'automation-1', workspacePath: marker, enabled: true, status: 'active', activeRunId: 'run-1', nextRunAt: 30 }], approvals: [] }))
+
   return { root, layout, workspaceId }
 }
 
@@ -49,29 +49,8 @@ describe('ProfileWorkspaceRebindService', () => {
     mkdirSync(localPath)
     const result = new ProfileWorkspaceRebindService(layout).rebind({ workspaceId, localPath })
     expect(result.requiresMismatchConfirmation).toBe(true)
-    expect(result.updated).toEqual({ conversations: 0, projects: 0, artifacts: 0, automations: 0 })
+    expect(result.updated).toEqual({ conversations: 0, projects: 0, artifacts: 0 })
     expect(new ConversationStore(layout.conversationsRoot).load('conversation-1')?.workspacePath).toBe(`fluxagent-unbound:${workspaceId}`)
-  })
-
-  it('rebinds imported references while keeping automations disabled and is idempotent', () => {
-    const { root, layout, workspaceId } = fixture()
-    const localPath = join(root, 'expected-workspace')
-    mkdirSync(localPath)
-    const service = new ProfileWorkspaceRebindService(layout, () => 20)
-    const first = service.rebind({ workspaceId, localPath })
-    expect(first.workspace).toMatchObject({ state: 'bound', localPath })
-    expect(first.updated).toEqual({ conversations: 1, projects: 1, artifacts: 1, automations: 1 })
-    expect(new ConversationStore(layout.conversationsRoot).load('conversation-1')?.workspacePath).toBe(localPath)
-    expect(JSON.parse(readFileSync(layout.projectsPath, 'utf8')).projects[0]).toMatchObject({ path: localPath, available: true })
-    expect(JSON.parse(readFileSync(layout.artifactsPath, 'utf8')).artifacts[0]).toMatchObject({ workspacePath: localPath, available: true })
-    const automation = JSON.parse(readFileSync(layout.automationsPath, 'utf8')).automations[0]
-    expect(automation).toMatchObject({ workspacePath: localPath, enabled: false, status: 'paused' })
-    expect(automation).not.toHaveProperty('activeRunId')
-    expect(automation).not.toHaveProperty('nextRunAt')
-    expect(existsSync(localPath)).toBe(true)
-
-    const second = service.rebind({ workspaceId, localPath })
-    expect(second.updated).toEqual({ conversations: 0, projects: 0, artifacts: 0, automations: 0 })
   })
 
   it('records a V2 workspace binding event without writing a machine path into conversation data', () => {

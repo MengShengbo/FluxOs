@@ -39,6 +39,21 @@ function append(log: ConversationEventLog, events: ReturnType<ConversationEventN
 }
 
 describe('ConversationEventNormalizer', () => {
+  it('binds live tool proposals and results to their owning assistant turn after stream completion', () => {
+    const normalizer = new ConversationEventNormalizer('conversation-1')
+    normalizer.startRun({ runId: 'run-1' })
+    const identity = { sessionId: 'conversation-1', turnId: 'assistant-1', callId: 'tool-1' }
+    normalizer.normalizeAgent({ type: 'turn:complete', turn: assistantTurn })
+    const proposed = normalizer.normalizeAgent({ type: 'tool:call', toolCall: {
+      id: 'tool-1', name: 'read_file', arguments: { path: 'notes.md' }, operationIdentity: identity,
+    } })
+    const completed = normalizer.normalizeAgent({ type: 'tool:result', toolResult: {
+      toolCallId: 'tool-1', name: 'read_file', output: 'retained result', isError: false, operationIdentity: identity,
+    } })
+    expect(proposed[0]).toMatchObject({ type: 'tool.proposed', turnId: 'assistant-1' })
+    expect(completed[0]).toMatchObject({ type: 'tool.completed', turnId: 'assistant-1' })
+  })
+
   it('does not duplicate the full task tree and tool history in canonical runtime events', () => {
     const normalizer = new ConversationEventNormalizer('conversation-1')
     normalizer.startRun({runId: 'run-1'})

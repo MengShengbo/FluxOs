@@ -6,7 +6,6 @@ import { constants as osConstants, setPriority } from 'node:os'
 import { StringDecoder } from 'node:string_decoder'
 import { assertTextFile, decodeText, decodeTextStream } from './textFile'
 
-
 import type {
   ToolExecutor,
   PatchPathIdentity,
@@ -28,7 +27,7 @@ import type {
   WebSearchResponse,
 } from '@fluxos/contracts/toolExecutor'
 import type { TreeNode } from '@fluxos/contracts/types'
-import type { Memory, MemoryConfidence, MemoryKind, MemoryScope, MemorySnapshot } from '@fluxos/contracts/memoryTypes'
+import type { Memory, MemoryConfidence, MemoryKind, MemoryScope, MemorySnapshot, MemoryHistorySource, MemoryPolicy } from '@fluxos/contracts/memoryTypes'
 import type { TerminalOutputChunk, TerminalSessionInfo, TerminalStartCommandResult } from '@fluxos/contracts/terminalTypes'
 import type { CapabilityProfile } from '@fluxos/contracts/agentTypes'
 import type { RuntimeTaskPresentation } from '@fluxos/contracts/runtimeTaskTypes'
@@ -63,6 +62,9 @@ export interface NodeToolExecutorOptions {
   ownerSessionId?: string
   capabilityProfile?: CapabilityProfile
   memoryRoot?: string
+  globalMemoryRoot?: string
+  memoryHistory?: MemoryHistorySource
+  memoryWorkspaceId?: string
   runtimeLogsRoot?: string
 }
 
@@ -124,7 +126,7 @@ export class NodeToolExecutor implements ToolExecutor {
 
   constructor(private workspacePath: string, options: NodeToolExecutorOptions = {}) {
     this.webResearchService = new WebResearchService({ sourceDirectory: join(options.runtimeLogsRoot || join(workspacePath, '.fluxagent'), 'web-sources', options.ownerSessionId ? createHash('sha256').update(options.ownerSessionId).digest('hex').slice(0, 32) : 'workspace') })
-    this.memoryService = new MemoryService(options.memoryRoot)
+    this.memoryService = new MemoryService(options.memoryRoot, options.globalMemoryRoot, options.memoryHistory, options.memoryWorkspaceId)
     this.runtimeLogsRoot = options.runtimeLogsRoot ? resolveNativePath(options.runtimeLogsRoot) : undefined
     this.capabilityBoundary = new CapabilityBoundary(workspacePath, options.capabilityProfile)
     this.workspaceRoot = this.capabilityBoundary.workspaceRoot
@@ -296,7 +298,6 @@ export class NodeToolExecutor implements ToolExecutor {
     }
   }
 
-
   async listTree(path: string, options: ListTreeOptions = {}): Promise<Result<TreeNode>> {
     try {
       const maxDepth = Math.max(0, Math.min(5, Math.floor(options.maxDepth ?? 3)))
@@ -359,8 +360,24 @@ export class NodeToolExecutor implements ToolExecutor {
     return this.webResearchService.fetchPages(query as any)
   }
 
+  memoryMaintenanceStatus() { return this.memoryService.longTerm?.status() }
+  memorySetPolicy(policy: MemoryPolicy) {
+    if (!this.memoryService.longTerm) throw new Error('Conversation memory is unavailable for this workspace')
+    this.memoryService.longTerm.setPolicy(policy)
+  }
+  async memoryConsolidate(generate: (prompt: string, maxTokens: number, signal: AbortSignal) => Promise<string>, signal: AbortSignal) {
+    try { return await this.memoryService.longTerm?.consolidate(generate, signal) ?? false }
+    catch (error) { this.memoryService.longTerm?.reportError(error); return false }
+  }
+  async memorySearchHistory(query: { query: string; limit?: number; from?: number; to?: number }) {
+    return { success: true, data: { items: this.memoryService.longTerm?.search(query.query, query.limit, query.from, query.to) ?? [] } }
+  }
+  async memoryReadHistory(query: { conversationId: string; messageId: string; offset?: number }) {
+    const item = this.memoryService.longTerm?.read(query.conversationId, query.messageId, query.offset)
+    return item ? { success: true, data: { item } } : { success: false, error: 'Source unavailable, excluded or outside the permitted project history' }
+  }
 
-  async memoryQuery(query: { query?: string; workspacePath: string; kind?: MemoryKind; scope?: MemoryScope; limit?: number }): Promise<Result<{ items: Array<{ id: string; text: string; content: string; kind: string; confidence: string; source: string; tags: string[]; score: number }> }>> {
+  async memoryQuery(query: { query?: string; workspacePath: string; kind?: MemoryKind; scope?: MemoryScope; limit?: number }): Promise<Result<{ items: Array<{ id: string; text: string; content: string; kind: string; confidence: string; source: string; tags: string[]; evidence: Memory['evidence']; score: number }> }>> {
     try {
       const safeWorkspacePath = this.resolvePath(query.workspacePath)
       const memories = await this.memoryService.query({
@@ -378,6 +395,7 @@ export class NodeToolExecutor implements ToolExecutor {
         confidence: m.confidence,
         source: m.source,
         tags: m.tags,
+        evidence: m.evidence,
         score: 1,
       }))
       return { success: true, data: { items } }
@@ -1631,7 +1649,6 @@ export class NodeToolExecutor implements ToolExecutor {
 
     return node
   }
-
 
   private shouldSkipEntry(name: string): boolean {
     if (CODE_SEARCH_SKIPPED_DIRS.has(name.toLowerCase())) return true

@@ -17,7 +17,7 @@ declare('web_search web_fetch', { kind: 'network', access: 'read', scope: 'exter
 declare('read_web_source', { kind: 'memory', access: 'read', scope: 'run', argument: 'source_id' })
 declare('read_tool_result', { kind: 'memory', access: 'read', scope: 'run', argument: 'source_id' })
 declare('tool_search use_skill', { kind: 'session', access: 'write', scope: 'run' })
-declare('list_memories', { kind: 'memory', access: 'read', scope: 'profile' })
+declare('list_memories search_history read_history', { kind: 'memory', access: 'read', scope: 'profile' })
 declare('remember forget', { kind: 'memory', access: 'write', scope: 'profile' })
 declare('git_status git_diff git_log git_show', { kind: 'repository', access: 'read', scope: 'workspace' })
 declare('git_stage git_commit git_restore git_revert git_create_branch git_switch_branch git_stash', { kind: 'repository', access: 'write', scope: 'workspace' })

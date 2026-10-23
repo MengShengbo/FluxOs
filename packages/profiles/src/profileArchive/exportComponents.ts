@@ -34,8 +34,8 @@ export const ARCHIVE_COMPONENT_DEFINITIONS: ArchiveComponentDefinition[] = [
   { id: 'model.configurations', defaultSelected: true, sensitivity: 'private', description: '模型、服务地址与推理偏好，不含密钥', requiresEncryption: false },
   { id: 'credentials', defaultSelected: false, sensitivity: 'secret', description: '保存在 FluxAgent 中的模型密钥', requiresEncryption: true },
   { id: 'projects', defaultSelected: true, sensitivity: 'private', description: '项目索引与工作区身份，不含本机路径', requiresEncryption: false },
-  { id: 'automations', defaultSelected: false, sensitivity: 'executable', description: '自动化定义；导入后保持禁用', requiresEncryption: false },
-  { id: 'memories', defaultSelected: true, sensitivity: 'private', description: '各工作区的用户私有记忆', requiresEncryption: false },
+
+  { id: 'memories', defaultSelected: true, sensitivity: 'private', description: '当前资料的全局记忆与各工作区私有记忆', requiresEncryption: false },
   { id: 'attachments', defaultSelected: false, sensitivity: 'private', description: '会话附件 Blob，可能较大', requiresEncryption: false },
   { id: 'artifacts.index', defaultSelected: true, sensitivity: 'private', description: '成果名称、类型与关联索引', requiresEncryption: false },
   { id: 'artifacts.blobs', defaultSelected: false, sensitivity: 'private', description: '成果文件 Blob，可能较大', requiresEncryption: false },
@@ -277,54 +277,22 @@ async function snapshotProjects(context: ExportComponentContext, definition: Arc
   return { descriptor: descriptor(definition, entries, projects.length), entries, warnings: [] }
 }
 
-function inactiveAutomation(value: unknown, policy: ExportRedactionPolicy): unknown {
-  const stripRuntime = (candidate: unknown): unknown => {
-    if (Array.isArray(candidate)) return candidate.map(stripRuntime)
-    if (!candidate || typeof candidate !== 'object') return candidate
-    const result: Record<string, unknown> = {}
-    for (const [key, child] of Object.entries(candidate as Record<string, unknown>)) {
-      if (/^(?:activeRun|activeRunId|activeRuns|pendingApproval|pendingApprovals|pendingRunAt|nextRunAt|lease|processId|pid|retryAt|retryTimer|runQueue)$/u.test(key)) continue
-      result[key] = stripRuntime(child)
-    }
-    return result
-  }
-  const automation = redactExportValue(stripRuntime(value), policy) as Record<string, unknown>
-  automation.enabled = false
-  if ('status' in automation) automation.status = 'paused'
-  if (Array.isArray(automation.history)) {
-    automation.history = automation.history.slice(0, 20).map(item => {
-      const history = item as Record<string, unknown>
-      return { id: history.id, status: history.status, startedAt: history.startedAt, completedAt: history.completedAt, summary: history.summary }
-    })
-  }
-  return automation
-}
-
-async function snapshotAutomations(context: ExportComponentContext, definition: ArchiveComponentDefinition): Promise<ComponentSnapshot> {
-  const raw = await readJson(context.layout.automationsPath, { schemaVersion: 1, automations: [] }) as Record<string, unknown>
-  const automations = (Array.isArray(raw.automations) ? raw.automations : []).map(item => {
-    const source = item as Record<string, unknown>
-    const workspace = workspaceForPath(typeof source.workspacePath === 'string' ? source.workspacePath : undefined, context.workspaces)
-    const automation = inactiveAutomation(item, context.redaction) as Record<string, unknown>
-    if (workspace) automation.workspaceId = workspace.id
-    delete automation.workspacePath
-    delete automation.workspaceRef
-    return automation
-  })
-  const entries = [jsonEntry('components/automations/automations.json', { schemaVersion: 1, automations, importedEnabled: false })]
-  return { descriptor: descriptor(definition, entries, automations.length), entries, warnings: automations.length ? ['所有自动化在导入后保持禁用，且不携带活动租约。'] : [] }
-}
-
 async function snapshotMemories(context: ExportComponentContext, definition: ArchiveComponentDefinition): Promise<ComponentSnapshot> {
-  const items: Array<{ workspaceId: string; relativePath: string; content: string }> = []
-  for (const workspace of context.workspaces) {
-    const memoryRoot = join(context.layout.workspaceOverlaysRoot, workspace.id, 'memory')
-    for (const file of await walkFiles(memoryRoot, { files: 10_000, bytes: 512 * 1024 * 1024 })) {
-      const content = await readFile(file.path, 'utf8').catch(() => '')
-      items.push({ workspaceId: workspace.id, relativePath: file.relativePath, content: redactExportText(content, context.redaction) })
+  const items: Array<{ scope: 'global' | 'workspace'; workspaceId?: string; relativePath: string; content: string }> = []
+  const sources = [
+    { scope: 'global' as const, workspaceId: undefined, root: context.layout.globalMemoryRoot },
+    ...context.workspaces.map(workspace => ({ scope: 'workspace' as const, workspaceId: workspace.id,
+      root: join(context.layout.workspaceOverlaysRoot, workspace.id, 'memory') })),
+  ]
+  for (const source of sources) {
+    for (const file of await walkFiles(source.root, { files: 10_000, bytes: 512 * 1024 * 1024 })) {
+      if (file.relativePath.startsWith('recall-index/') || file.relativePath.endsWith('.lock')) continue
+      let content = await readFile(file.path, 'utf8').catch(() => '')
+      if (file.relativePath === 'synthesis.json') { const state = JSON.parse(content); delete state.lease; content = JSON.stringify(state) }
+      items.push({ scope: source.scope, workspaceId: source.workspaceId, relativePath: file.relativePath, content: redactExportText(content, context.redaction) })
     }
   }
-  const entries = [jsonEntry('components/memories/index.json', { schemaVersion: 1, items })]
+  const entries = [jsonEntry('components/memories/index.json', { schemaVersion: 2, items })]
   return { descriptor: descriptor(definition, entries, items.length), entries, warnings: [] }
 }
 
@@ -409,7 +377,7 @@ export async function snapshotArchiveComponent(
     case 'model.configurations': return snapshotModelConfigurations(context, definition)
     case 'credentials': return snapshotCredentials(context, definition)
     case 'projects': return snapshotProjects(context, definition)
-    case 'automations': return snapshotAutomations(context, definition)
+
     case 'memories': return snapshotMemories(context, definition)
     case 'attachments': return snapshotOverlayBlobs(context, definition, ['attachments'])
     case 'artifacts.index': return snapshotArtifactsIndex(context, definition, selectedComponents.has('artifacts.blobs'))

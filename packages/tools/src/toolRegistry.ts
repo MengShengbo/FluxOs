@@ -251,6 +251,29 @@ const definitions: Omit<EnhancedToolDef, 'access'>[] = [
     requiredMode: ['vibe', 'plan'],
   },
   {
+    name: 'search_history',
+    description: 'Find original conversation excerpts, decisions, constraints and tool outcomes. Defaults to this project; the user controls cross-project access in memory settings. Results carry conversation/message IDs and offsets. Never claim complete recall when nothing matches; refine keywords or dates.',
+    category: 'read',
+    parameters: [
+      { name: 'query', type: 'string', description: 'Specific names, identifiers or keywords; try alternate wording for weak matches.', required: true, schema: NON_EMPTY_STRING_SCHEMA },
+      { name: 'limit', type: 'number', description: 'Maximum excerpts, up to 100.', required: false, default: 10 },
+      { name: 'from', type: 'number', description: 'Inclusive start time, Unix milliseconds.', required: false },
+      { name: 'to', type: 'number', description: 'Inclusive end time, Unix milliseconds.', required: false },
+    ],
+    isReadOnly: true, isDestructive: false, isConcurrencySafe: true,
+  },
+  {
+    name: 'read_history',
+    description: 'Verify the current original text at a history search result. Deleted, redacted, forgotten or excluded sources are unavailable. Increase offset by 1400 to read the next excerpt of a long message.',
+    category: 'read',
+    parameters: [
+      { name: 'conversation_id', type: 'string', description: 'Conversation ID from search_history.', required: true, schema: NON_EMPTY_STRING_SCHEMA },
+      { name: 'message_id', type: 'string', description: 'Message ID from search_history.', required: true, schema: NON_EMPTY_STRING_SCHEMA },
+      { name: 'offset', type: 'number', description: 'Character offset from search_history; default 0.', required: false, default: 0 },
+    ],
+    isReadOnly: true, isDestructive: false, isConcurrencySafe: true,
+  },
+  {
     name: 'list_memories',
     description: 'List workspace long-term memories (rules, strategies, pitfalls).',
     category: 'read',

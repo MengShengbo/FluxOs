@@ -10,7 +10,6 @@ export type ArchiveComponentId =
   | 'model.configurations'
   | 'credentials'
   | 'projects'
-  | 'automations'
   | 'memories'
   | 'attachments'
   | 'artifacts.index'
@@ -44,7 +43,6 @@ export interface ArchiveWorkspaceDescriptor {
     projectFingerprint?: string
   }
 }
-
 
 export interface ArchiveConversationDataDescriptorV2 {
   schemaVersion: 2
@@ -205,7 +203,7 @@ export interface ProfileImportPlan {
   itemCount: number
   logicalBytes: number
   requiredDiskBytes: number
-  disabled: { automations: number; skills: number; plugins: number; mcpServers: number }
+  disabled: {  skills: number; plugins: number; mcpServers: number }
   unboundWorkspaceCount: number
   warnings: ArchiveWarning[]
   blockers: Array<{ code: string; message: string; action: string }>

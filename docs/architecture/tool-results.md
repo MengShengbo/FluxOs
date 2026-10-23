@@ -48,4 +48,4 @@ create_task、create_tasks、update_task 和依赖变更返回 `data.kind=tasks`
 - 内核：`toolResultContract.test.ts`、`taskToolDispatcher.test.ts`、`runtime/toolCallLifecycle.test.ts`、`runtime/agentSessionRehydrator.test.ts`、命令/patch/隐私回归。
 - 产品：`scripts/integration/toolResultContractReplay.test.ts` 从真实 Engine 生产者执行，经 canonical append/reopen、展示和 Engine 恢复，捕获三个协议的实际序列化请求。仅使用临时文件、固定本地进程和 MCP fixture，不访问模型服务。
 - 产品 DOM：`scripts/tool-result-contract-dom-smoke.mjs` 在真实 Electron DOM 加载源码 bundle，检查错误文本、图片、部分提交、取消和恢复说明。这不是安装包或前台交互验收。
-- 任务证据：产品仓 `docs/plans/2026-10-06-agent-hardening/evidence/T021-*`。实际结果以日志和最终结果文件为准，不以本文存在作为验收通过。
+- 以上测试的实际结果以运行日志为准，不以本文存在作为验收通过。

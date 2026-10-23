@@ -8,7 +8,7 @@ import {
 } from './types'
 
 const COMPONENT_IDS = new Set<ArchiveComponentId>([
-  'profile.preferences', 'conversations', 'model.configurations', 'credentials', 'projects', 'automations',
+  'profile.preferences', 'conversations', 'model.configurations', 'credentials', 'projects',
   'memories', 'attachments', 'artifacts.index', 'artifacts.blobs', 'skills.user', 'plugins.packages',
   'plugins.storage', 'mcp.configurations', 'runtime.transcripts', 'captures',
 ])

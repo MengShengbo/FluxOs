@@ -286,36 +286,14 @@ async function applyProjects(scan: ScannedProfileArchive, incomingRoot: string, 
   await writeProfileFile(layout, payloadRoot, layout.projectsPath, { schemaVersion: 1, projects })
 }
 
-function stripAutomationExecutionState(candidate: unknown): unknown {
-  if (Array.isArray(candidate)) return candidate.map(stripAutomationExecutionState)
-  if (!candidate || typeof candidate !== 'object') return candidate
-  const result: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(candidate as Record<string, unknown>)) {
-    if (/^(?:activeRun|activeRunId|activeRuns|pendingApproval|pendingApprovals|pendingRunAt|nextRunAt|lease|processId|pid|retryAt|retryTimer|runQueue)$/u.test(key)) continue
-    result[key] = stripAutomationExecutionState(value)
-  }
-  return result
-}
-
-async function applyAutomations(scan: ScannedProfileArchive, incomingRoot: string, layout: ProfileStorageLayout, payloadRoot: string): Promise<number> {
-  const document = await selectedDocument(scan, incomingRoot, 'components/automations/automations.json')
-  const fallbackWorkspaceId = unassociatedWorkspaceId(scan)
-  const automations = (Array.isArray(document.automations) ? document.automations : []).map(value => {
-    const automation = stripAutomationExecutionState(value) as Record<string, unknown>
-    const workspaceId = importedWorkspaceId(automation.workspaceId || (automation.workspaceRef as Record<string, unknown> | undefined)?.id, fallbackWorkspaceId)
-    return { ...automation, enabled: false, status: automation.status === 'archived' ? 'archived' : 'paused', workspacePath: unboundWorkspacePath(workspaceId), pendingApprovals: [], activeRuns: [] }
-  })
-  await writeProfileFile(layout, payloadRoot, layout.automationsPath, { schemaVersion: 2, automations, approvals: [] })
-  return automations.length
-}
-
 async function applyMemories(scan: ScannedProfileArchive, incomingRoot: string, layout: ProfileStorageLayout, payloadRoot: string): Promise<void> {
   const document = await selectedDocument(scan, incomingRoot, 'components/memories/index.json')
   for (const value of Array.isArray(document.items) ? document.items : []) {
     const memory = value as Record<string, unknown>
     const workspaceId = String(memory.workspaceId)
     const relativePath = normalizeArchivePath(String(memory.relativePath))
-    const finalPath = join(layout.workspaceOverlaysRoot, workspaceId, 'memory', ...relativePath.split('/'))
+    const memoryRoot = memory.scope === 'global' ? layout.globalMemoryRoot : join(layout.workspaceOverlaysRoot, workspaceId, 'memory')
+    const finalPath = join(memoryRoot, ...relativePath.split('/'))
     const targetPath = stagePath(layout, payloadRoot, finalPath)
     await mkdir(dirname(targetPath), { recursive: true, mode: 0o700 })
     await writeFile(targetPath, String(memory.content), { mode: 0o600, flag: 'wx' })
@@ -431,7 +409,7 @@ export class ProfileArchiveImporter {
       logicalBytes,
       requiredDiskBytes: Math.ceil(logicalBytes * 1.2 + 32 * 1024 * 1024),
       disabled: {
-        automations: count('automations'),
+
         skills: count('skills.user'),
         plugins: count('plugins.packages'),
         mcpServers: count('mcp.configurations'),
@@ -511,7 +489,7 @@ export class ProfileArchiveImporter {
       if (Object.keys(config).length) writeModelConfiguration(stagePath(finalLayout, profilePayloadRoot, finalLayout.configRoot), config)
       if (selected.has('conversations')) await applyConversations(scan, incomingRoot, finalLayout, profilePayloadRoot)
       if (selected.has('projects')) await applyProjects(scan, incomingRoot, finalLayout, profilePayloadRoot)
-      const disabledAutomations = selected.has('automations') ? await applyAutomations(scan, incomingRoot, finalLayout, profilePayloadRoot) : 0
+
       if (selected.has('memories')) await applyMemories(scan, incomingRoot, finalLayout, profilePayloadRoot)
       if (selected.has('attachments')) await applyBlobIndex({ scan, incomingRoot, layout: finalLayout, payloadRoot: profilePayloadRoot, componentId: 'attachments', baseRoot: 'attachments' })
       if (selected.has('runtime.transcripts')) await applyBlobIndex({ scan, incomingRoot, layout: finalLayout, payloadRoot: profilePayloadRoot, componentId: 'runtime.transcripts', baseRoot: '' })
@@ -556,7 +534,7 @@ export class ProfileArchiveImporter {
           eventSegments: structuredClone(scan.manifest.conversationData.eventSegments),
           projectionsRebuilt: selected.has('conversations'),
         } : undefined,
-        disabled: { automations: disabledAutomations, skills: quarantinedSkills, plugins: disabledPlugins, mcpServers: disabledMcp },
+        disabled: {  skills: quarantinedSkills, plugins: disabledPlugins, mcpServers: disabledMcp },
         unboundWorkspaces: scan.preview.workspaces.length,
         warnings: input.plan.warnings.map(warning => ({ code: warning.code, message: warning.message })),
       }

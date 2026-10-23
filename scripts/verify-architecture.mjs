@@ -15,8 +15,8 @@ export const packageDependencies = {
   'agent-runtime': ['contracts', 'platform', 'models', 'tools', 'extensions', 'presentation'],
   conversations: ['contracts', 'platform', 'models', 'agent-runtime', 'presentation'],
   profiles: ['platform', 'conversations'],
-  automations: ['contracts', 'platform'],
-  workbench: ['contracts', 'platform', 'models', 'tools', 'extensions', 'presentation', 'agent-runtime', 'conversations', 'profiles', 'automations'],
+
+  workbench: ['contracts', 'platform', 'models', 'tools', 'extensions', 'presentation', 'agent-runtime', 'conversations', 'profiles'],
   'remote-protocol': [],
 }
 const browserPackages = new Set(['contracts', 'presentation', 'renderer'])

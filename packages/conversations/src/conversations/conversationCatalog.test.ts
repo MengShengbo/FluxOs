@@ -61,28 +61,6 @@ describe('ConversationCatalog', () => {
     expect(catalog.listAll()).toEqual([expect.objectContaining({ id: 'draft', title: 'Drafted task' })])
   })
 
-  it('repairs cached generated titles that expose automation prompt markup', async () => {
-    const source = conversation('automation-title', {
-      title: '<automation_objective> Goal: Review release evidence Success criteria: - Record it </automation_objective>',
-    })
-    const sourcePath = join(directory, 'automation-title.jsonl')
-    writeFileSync(sourcePath, `${JSON.stringify({ version: 1, type: 'snapshot', timestamp: 200, conversation: source })}\n`)
-    const sourceInfo = statSync(sourcePath)
-    writeFileSync(join(directory, '.conversation-catalog-v1.json'), `${JSON.stringify({
-      version: 1,
-      entries: [{
-        meta: { ...source, turns: undefined },
-        visible: true,
-        fingerprint: `${sourcePath}:${sourceInfo.size}:${sourceInfo.mtimeMs}`,
-      }],
-    })}\n`)
-
-    const catalog = new ConversationCatalog(directory)
-    await catalog.initialize()
-
-    expect(catalog.get('automation-title')?.title).toBe('Review release evidence')
-  })
-
   it('keeps distinct canonical events emitted in the same millisecond', async () => {
     const meta = conversation('same-millisecond', { title: 'Untitled', turnCount: 0, turns: [] })
     const envelope = {

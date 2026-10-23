@@ -50,8 +50,7 @@ export interface ConversationEventPayloadMap {
     attachments?: AgentAttachment[]
     capabilities?: AgentCapabilitySelection
     approvalPolicy?: ApprovalPolicy
-    automationId?: string
-    automationRunId?: string
+
   }
   'usage.updated': { usage: TokenUsage; requestId?: string; attemptId?: string }
   'model.request_updated': { request: ModelRequestRecord }

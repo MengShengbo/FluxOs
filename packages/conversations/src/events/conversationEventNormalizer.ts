@@ -45,8 +45,7 @@ export interface RecordConversationInputState {
   attachments?: AgentAttachment[]
   capabilities?: AgentCapabilitySelection
   approvalPolicy?: ApprovalPolicy
-  automationId?: string
-  automationRunId?: string
+
   runId?: string
   turnId?: string
   at?: number
@@ -158,8 +157,7 @@ export class ConversationEventNormalizer {
       attachments: input.attachments,
       capabilities: input.capabilities,
       approvalPolicy: input.approvalPolicy,
-      automationId: input.automationId,
-      automationRunId: input.automationRunId,
+
     }, {
       at: input.at,
       source: 'workbench',
@@ -267,6 +265,7 @@ export class ConversationEventNormalizer {
           provenance,
           runId: this.runId,
           stepId: this.currentStepId,
+          turnId: event.toolCall.operationIdentity?.turnId,
           itemId: event.toolCall.id,
           eventId: this.eventId('tool', event.toolCall.id, 'proposed'),
         })]
@@ -277,6 +276,7 @@ export class ConversationEventNormalizer {
           provenance,
           runId: this.runId,
           stepId: this.currentStepId,
+          turnId: event.toolResult.operationIdentity?.turnId,
           itemId: event.toolResult.toolCallId,
           eventId: this.eventId('tool', event.toolResult.toolCallId, 'completed'),
         })]

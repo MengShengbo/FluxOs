@@ -109,6 +109,6 @@ export * from './runtime/sessionRegistry'
 export * from './runtime/systems/index'
 
 export { AgentOrchestrator } from './agentOrchestrator'
-export type { AgentOrchestratorHost, AutomationSubAgentPolicy } from './agentOrchestrator'
+export type { AgentOrchestratorHost } from './agentOrchestrator'
 
 export { toolsToOpenAIFormat, toolsToAnthropicFormat } from '@fluxos/models/toolSchemas'

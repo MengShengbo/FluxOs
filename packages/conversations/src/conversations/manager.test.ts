@@ -102,33 +102,6 @@ describe.sequential('ConversationManager journal integration', () => {
     expect(loadConversation(manager.getCurrentId())).toMatchObject({ title: 'first real prompt', turnCount: 1 })
   })
 
-  it('uses the automation goal instead of exposing the internal execution envelope', () => {
-    const turns: AgentTurn[] = []
-    const engine = {
-      getSession: () => ({ id: 'session-1', mode: 'vibe', turns, createdAt: 100 }),
-      getFullConversationTurns: () => turns,
-      getContextSegments: () => [],
-      getContextReservoir: () => [],
-    } as unknown as AgentEngine
-    const manager = new ConversationManager(
-      engine,
-      { model: 'test-model', provider: 'custom' } as FluxAgentConfig,
-      process.cwd(),
-    )
-    const userTurn: AgentTurn = {
-      id: 'automation-1',
-      role: 'user',
-      content: '<automation_objective>\nGoal: Review the release evidence\nSuccess criteria:\n- Record the result\n</automation_objective>',
-      timestamp: 101,
-    }
-    turns.push(userTurn)
-
-    manager.recordEvent({ type: 'turn:start', turn: userTurn })
-    manager.flushJournal()
-
-    expect(loadConversation(manager.getCurrentId())?.title).toBe('Review the release evidence')
-  })
-
   it('does not manufacture recent activity when listing conversation history', async () => {
     const turns: AgentTurn[] = [{ id: 'user-1', role: 'user', content: 'older task', timestamp: 190 }]
     const session = { id: 'session-1', mode: 'vibe' as const, turns, createdAt: 100, updatedAt: 200 }

@@ -35,6 +35,8 @@ export interface MemoryEvidence {
   quote?: string
   conversationId?: string
   messageId?: string
+  digest?: string
+  offset?: number
 }
 
 export interface Memory {
@@ -139,4 +141,51 @@ export interface MemoryUpdateRequest {
 export interface MemoryUpdateResponse {
   success: boolean
   error?: string
+}
+
+export interface MemoryPolicy {
+  referenceHistory: boolean
+  crossProjectHistory: boolean
+  backgroundConsolidation: boolean
+  maxCallsPerDay: number
+  maxInputCharacters: number
+  maxOutputTokens: number
+}
+
+export interface MemoryHistoryHit {
+  id: string
+  conversationId: string
+  messageId: string
+  workspaceId: string | null
+  title: string
+  kind: 'user' | 'assistant' | 'tool'
+  text: string
+  offset: number
+  digest: string
+  updatedAt: number
+  score: number
+}
+
+/** The host binds this source to one profile and one workspace. Callers cannot select another profile. */
+export interface MemoryHistorySource {
+  validate?(evidence: MemoryEvidence[]): boolean[]
+  search(request: { query: string; acrossProjects: boolean; limit: number; from?: number; to?: number }): MemoryHistoryHit[]
+  read(request: { conversationId: string; messageId: string; offset: number; acrossProjects: boolean }): MemoryHistoryHit | undefined
+  pending(checkpoints: Record<string, string>, maxCharacters: number, excludedMessages?: string[]): MemoryHistoryHit[]
+}
+
+export interface MemoryContinuitySummary {
+  conversationId: string
+  title: string
+  text: string
+  updatedAt: number
+  evidence: MemoryEvidence[]
+}
+
+export interface MemoryMaintenanceStatus {
+  policy: MemoryPolicy
+  summaries: MemoryContinuitySummary[]
+  callsToday: number
+  lastCompletedAt?: number
+  lastError?: string
 }

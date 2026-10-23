@@ -21,9 +21,9 @@ export interface ProfileWorkspaceRebindResult {
     conversations: number
     projects: number
     artifacts: number
-    automations: number
+
   }
-  automationsRemainDisabled: true
+
 }
 
 function unboundWorkspacePath(workspaceId: string): string {
@@ -104,8 +104,8 @@ export class ProfileWorkspaceRebindService {
       return {
         workspace,
         requiresMismatchConfirmation: workspace.state === 'mismatch',
-        updated: { conversations: 0, projects: 0, artifacts: 0, automations: 0 },
-        automationsRemainDisabled: true,
+        updated: { conversations: 0, projects: 0, artifacts: 0 },
+
       }
     }
 
@@ -135,25 +135,12 @@ export class ProfileWorkspaceRebindService {
       artifact.available = typeof artifact.path === 'string' && existsSync(artifact.path)
       return true
     })
-    const automations = rewriteCollection(this.layout.automationsPath, 'automations', automation => {
-      const matches = automation.workspacePath === marker
-      if (matches) automation.workspacePath = localPath
-      const wasUnsafe = automation.enabled !== false
-        || (automation.status !== 'paused' && automation.status !== 'archived')
-        || automation.activeRunId !== undefined
-        || automation.nextRunAt !== undefined
-      automation.enabled = false
-      automation.status = automation.status === 'archived' ? 'archived' : 'paused'
-      delete automation.activeRunId
-      delete automation.nextRunAt
-      return matches || wasUnsafe
-    })
 
     return {
       workspace: this.bindings.get(input.workspaceId) ?? workspace,
       requiresMismatchConfirmation: false,
-      updated: { conversations: updatedConversations, projects, artifacts, automations },
-      automationsRemainDisabled: true,
+      updated: { conversations: updatedConversations, projects, artifacts },
+
     }
   }
 }

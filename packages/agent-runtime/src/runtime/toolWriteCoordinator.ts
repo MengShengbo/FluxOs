@@ -6,6 +6,7 @@ export interface ToolWriteScope {
   workspacePath?: string
   sessionId?: string
   memoryRoot?: string
+  globalMemoryRoot?: string
 }
 
 type Resource = { kind: 'host' } | { kind: 'path'; path: string } | { kind: 'session'; id: string }
@@ -58,7 +59,7 @@ function resources(call: ToolCall, tool: AgentTool, scope: ToolWriteScope): Reso
   const writes = tool.access.resources.filter(resource => resource.access !== 'read')
   // Only trusted host declarations are used; never infer shell effects from text.
   if (!writes.length) return [{ kind: 'host' }]
-  return writes.map(resource => {
+  const declared = writes.map<Resource>(resource => {
     if ((resource.kind === 'session' || resource.kind === 'memory') && resource.scope === 'run' && scope.sessionId) {
       return { kind: 'session', id: scope.sessionId }
     }
@@ -76,6 +77,10 @@ function resources(call: ToolCall, tool: AgentTool, scope: ToolWriteScope): Reso
     // touch several paths, including external paths in full-access mode.
     return { kind: 'host' }
   })
+  if (scope.globalMemoryRoot && writes.some(resource => resource.kind === 'memory' && resource.scope === 'profile')) {
+    declared.push({ kind: 'path', path: canonicalPath(scope.globalMemoryRoot) })
+  }
+  return declared
 }
 
 export function needsWriteCoordination(tool: AgentTool): boolean {

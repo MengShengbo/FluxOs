@@ -7,6 +7,7 @@ import {
 } from '@fluxos/contracts/agentTypes'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
+import type { MemoryHistorySource } from '@fluxos/contracts/memoryTypes'
 import { AgentEngine } from '../agentEngine'
 import { McpClient } from '@fluxos/extensions/mcp/client'
 import { loadMcpSettings } from '@fluxos/extensions/mcp/settings'
@@ -30,6 +31,9 @@ export interface CreateAgentRuntimeOptions {
   runtimeStoragePath?: string
   userSkillsRoot?: string
   memoryRoot?: string
+  globalMemoryRoot?: string
+  memoryHistory?: MemoryHistorySource
+  memoryWorkspaceId?: string
   runtimeLogsRoot?: string
   conversationId?: string
   conversationPrefix?: string
@@ -164,6 +168,9 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
     ownerSessionId: conversationId,
     capabilityProfile: engineConfig.capabilityProfile,
     memoryRoot: options.memoryRoot,
+    memoryHistory: options.memoryHistory,
+    memoryWorkspaceId: options.memoryWorkspaceId,
+    globalMemoryRoot: options.globalMemoryRoot,
     runtimeLogsRoot: options.runtimeLogsRoot,
   })
   let currentRuntimeConfig = options.config
@@ -176,7 +183,7 @@ export function createAgentRuntime(options: CreateAgentRuntimeOptions): AgentRun
     toolExecutor,
     stateProvider,
     subAgentTaskManager,
-    { store: new ToolOperationStore(join(runtimeStorageRoot, 'tool-operations')), memoryRoot: options.memoryRoot },
+    { store: new ToolOperationStore(join(runtimeStorageRoot, 'tool-operations')), memoryRoot: options.memoryRoot, globalMemoryRoot: options.globalMemoryRoot },
   )
   if (options.subAgentBudget) engine.setSubAgentBudget(options.subAgentBudget)
   const unsubscribeRuntimeTasks = runtimeTaskManager.subscribe(event => {

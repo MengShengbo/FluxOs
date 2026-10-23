@@ -102,6 +102,10 @@
     "./conversations/conversationRuntimeEvents": {
       "types": "./dist/conversations/conversationRuntimeEvents.d.ts",
       "import": "./dist/conversations/conversationRuntimeEvents.js"
+    },
+    "./conversations/conversationMemoryIndex": {
+      "types": "./dist/conversations/conversationMemoryIndex.d.ts",
+      "import": "./dist/conversations/conversationMemoryIndex.js"
     }
   },
   "scripts": {

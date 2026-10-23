@@ -853,7 +853,7 @@ export class ConversationRuntimeRepositoryV2 {
           inputs.push({ ...common, eventId: canonicalEventId(event, 'message'), turnId, itemId: item.id, type: 'item.created', payload: { item } })
         }
         const metadata = turn.metadata ? Object.fromEntries(Object.entries(turn.metadata)
-          .filter(([key]) => ['tokens', 'model', 'duration', 'modelRequestId', 'modelAttemptId', 'internal', 'internalKind'].includes(key))) : undefined
+          .filter(([key]) => ['tokens', 'model', 'duration', 'modelRequestId', 'modelAttemptId', 'internal', 'internalKind', 'rawReasoningPayload', 'reasoningEnabled', 'reasoningEffort'].includes(key))) : undefined
         inputs.push({ ...common, eventId: canonicalEventId(event), turnId, type: 'turn.completed', payload: {
           completedAt: event.at, interrupted: turn.metadata?.interrupted, ...(metadata ? { metadata } : {}),
         } })
@@ -884,6 +884,8 @@ export class ConversationRuntimeRepositoryV2 {
         const item: ConversationItemV2 = { schemaVersion: 1, id, conversationId: conversation.id, runId: common.runId, turnId: common.turnId, kind: 'tool_result', status: toolResultCallStatus(result), createdAt: event.at, updatedAt: event.at, payload: { toolCallId, toolName: result.name, output: result.output, isError: result.isError, pathRefs: portablePathRefsForToolValue(this.workspacePath, this.workspaceId, result), ...copyToolResultDetails(result) } }
         inputs.push({ ...common, eventId: canonicalEventId(event), itemId: id, type: 'item.created', payload: { item } })
         const call = projection.items.find(candidate => candidate.kind === 'tool_call' && candidate.payload.toolCallId === toolCallId)
+        if (call) inputs.push({ ...common, eventId: canonicalEventId(event, 'call-completed'), itemId: call.id,
+          type: 'item.completed', payload: { status: toolResultCallStatus(result), completedAt: event.at } })
         const args = call?.kind === 'tool_call' ? call.payload.arguments : {}
         const semantic = semanticToolItem(conversation.id, common.runId, common.turnId, toolCallId, result.name, args, toolResultCallStatus(result), event.at, scopedId, result.output, result)
         if (semantic) upsertItem(semantic, 'semantic-tool')

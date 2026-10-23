@@ -38,7 +38,7 @@ export type FlowEventPayload =
   | { type: 'tool.draft_changed'; name: string; partialJson: string }
   | { type: 'tool.draft_cleared' }
   | { type: 'input.draft_changed'; text: string; attachmentIds: string[] }
-  | { type: 'input.submitted'; intent: FlowInputIntent; text: string; attachmentIds: string[]; attachments?: AgentAttachment[]; capabilities?: AgentCapabilitySelection; approvalPolicy?: ApprovalPolicy; automationId?: string; automationRunId?: string }
+  | { type: 'input.submitted'; intent: FlowInputIntent; text: string; attachmentIds: string[]; attachments?: AgentAttachment[]; capabilities?: AgentCapabilitySelection; approvalPolicy?: ApprovalPolicy;   }
   | { type: 'input.durable' }
   | { type: 'input.accepted' }
   | { type: 'input.rejected'; reason: string }

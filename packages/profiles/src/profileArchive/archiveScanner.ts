@@ -227,17 +227,6 @@ function validateComponentDocuments(manifest: ProfileArchiveManifestV1, document
     }
   }
 
-  if (componentIds.has('automations')) {
-    const document = objectValue(documents.get('components/automations/automations.json'), '自动化')
-    for (const value of arrayValue(document.automations, '自动化')) {
-      const automation = objectValue(value, '自动化')
-      assertNoUnsafeExecutableState(automation, '自动化')
-      if (automation.enabled === true || (typeof automation.status === 'string' && !['paused', 'archived', 'disabled'].includes(automation.status))) {
-        throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', '自动化未处于安全禁用状态。', '请从新版 FluxAgent 重新导出，或取消自动化组件。')
-      }
-    }
-  }
-
   if (componentIds.has('mcp.configurations')) {
     const document = objectValue(documents.get('components/mcp.configurations/configurations.json'), 'MCP')
     assertNoUnsafeExecutableState(document, 'MCP')
@@ -261,9 +250,12 @@ function validateComponentDocuments(manifest: ProfileArchiveManifestV1, document
 
   if (componentIds.has('memories')) {
     const document = objectValue(documents.get('components/memories/index.json'), '记忆')
+    if (document.schemaVersion !== 2) throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', '记忆组件格式无效。', '请重新导出资料包。')
     for (const value of arrayValue(document.items, '记忆')) {
       const memory = objectValue(value, '记忆')
-      if (!workspaceIds.has(String(memory.workspaceId)) || typeof memory.relativePath !== 'string' || typeof memory.content !== 'string') {
+      const validScope = memory.scope === 'global' ? memory.workspaceId === undefined
+        : memory.scope === 'workspace' && workspaceIds.has(String(memory.workspaceId))
+      if (!validScope || typeof memory.relativePath !== 'string' || typeof memory.content !== 'string') {
         throw new ProfileArchiveError('ARCHIVE_COMPONENT_INVALID', '记忆组件包含无效引用。', '请重新导出资料包。')
       }
     }
@@ -284,7 +276,7 @@ function validateComponentDocuments(manifest: ProfileArchiveManifestV1, document
 }
 
 function componentWarnings(componentId: ArchiveComponentId): ArchiveWarning[] {
-  if (componentId === 'automations') return [{ code: 'IMPORTED_DISABLED', severity: 'warning', message: '自动化导入后保持禁用，且不会恢复活动任务。' }]
+
   if (componentId === 'plugins.packages' || componentId === 'skills.user') return [{ code: 'IMPORTED_CODE_REVIEW', severity: 'danger', message: '可执行内容导入后等待人工检查。' }]
   if (componentId === 'mcp.configurations') return [{ code: 'IMPORTED_DISCONNECTED', severity: 'danger', message: 'MCP 导入后保持断开，并需要重新授权。' }]
   return []
@@ -297,10 +289,7 @@ function hasMissingWorkspaceReferences(manifest: ProfileArchiveManifestV1, docum
     const document = documents.get('components/projects/projects.json') as { projects?: Array<{ workspaceId?: unknown }> } | undefined
     if ((document?.projects ?? []).some(project => project.workspaceId === undefined)) return true
   }
-  if (components.has('automations')) {
-    const document = documents.get('components/automations/automations.json') as { automations?: Array<{ workspaceId?: unknown; workspaceRef?: { id?: unknown } }> } | undefined
-    if ((document?.automations ?? []).some(automation => automation.workspaceId === undefined && automation.workspaceRef?.id === undefined)) return true
-  }
+
   if (components.has('artifacts.index')) {
     const document = documents.get('components/artifacts.index/index.json') as { artifacts?: Array<{ workspaceId?: unknown }> } | undefined
     if ((document?.artifacts ?? []).some(artifact => artifact.workspaceId === undefined)) return true

@@ -80,7 +80,7 @@ export interface ConversationTurnV2 {
   status: 'started' | 'completed' | 'interrupted'
   createdAt: number
   completedAt?: number
-  metadata?: Pick<NonNullable<AgentTurn['metadata']>, 'tokens' | 'model' | 'duration' | 'modelRequestId' | 'modelAttemptId' | 'internal' | 'internalKind'>
+  metadata?: Pick<NonNullable<AgentTurn['metadata']>, 'tokens' | 'model' | 'duration' | 'modelRequestId' | 'modelAttemptId' | 'internal' | 'internalKind' | 'rawReasoningPayload' | 'reasoningEnabled' | 'reasoningEffort'>
 }
 
 export type PortablePathRef =

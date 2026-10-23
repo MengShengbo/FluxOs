@@ -1,3 +1,5 @@
+import { posix, win32 } from 'node:path'
+
 /**
  * Path resolution and normalization utilities for the agent engine.
  *
@@ -10,20 +12,13 @@
  * Normalize a path: forward slashes, collapse `.` and `..` segments.
  */
 export function normalizePath(p: string): string {
-  const normalized = p.replace(/\\/g, '/').replace(/\/+/g, '/')
-  const segments = normalized.split('/')
-  const resolved: string[] = []
-  for (const seg of segments) {
-    if (seg === '..') {
-      if (resolved.length > 0) {
-        resolved.pop()
-      }
-    } else if (seg !== '.' && seg !== '') {
-      resolved.push(seg)
-    }
-  }
-  const result = resolved.join('/')
-  return normalized.startsWith('/') ? '/' + result : result
+  if (!p) return ''
+  const slashes = p.replace(/\\/g, '/')
+  const windows = /^[A-Za-z]:/.test(slashes) || /^\/\/[^/]/.test(slashes)
+  const implementation = windows ? win32 : posix
+  const normalized = implementation.normalize(slashes).replace(/\\/g, '/')
+  const root = implementation.parse(normalized).root.replace(/\\/g, '/')
+  return normalized === root ? normalized : normalized.replace(/\/+$/, '')
 }
 
 /**
@@ -46,7 +41,7 @@ export function resolvePath(basePath: string, relativePath: string): string {
   // EXCEPTION: On Windows, a bare `/src/...` (no drive letter) is almost
   // certainly a relative path the AI model prefixed with `/` by mistake
   // (common for models trained on Unix). Treat it as relative.
-  const isWindowsEnv = /^[A-Za-z]:/.test(normalizedBase)
+  const isWindowsEnv = /^[A-Za-z]:/.test(normalizedBase) || normalizedBase.startsWith('//')
   const startsWithSlash = relativePath.startsWith('/')
   const hasDriveLetter = /^[A-Za-z]:[\\/]/.test(relativePath)
   const isUNC = /^\\\\/.test(relativePath) || /^\/\//.test(relativePath)
@@ -73,12 +68,13 @@ export function resolvePath(basePath: string, relativePath: string): string {
 export function toWorkspaceRelative(basePath: string, filePath: string): string {
   const normalizedBase = normalizePath(basePath.replace(/\\/g, '/'))
   const normalizedFile = normalizePath(filePath.replace(/\\/g, '/'))
-  const isWindows = /^[A-Za-z]:/.test(normalizedBase)
+  const isWindows = /^[A-Za-z]:/.test(normalizedBase) || normalizedBase.startsWith('//')
   const a = isWindows ? normalizedFile.toLowerCase() : normalizedFile
   const b = isWindows ? normalizedBase.toLowerCase() : normalizedBase
   if (a === b) return '.'
-  if (a.startsWith(b + '/')) {
-    return normalizedFile.slice(normalizedBase.length + 1)
+  const prefix = b.endsWith('/') ? b : b + '/'
+  if (a.startsWith(prefix)) {
+    return normalizedFile.slice(prefix.length)
   }
   return normalizedFile
 }

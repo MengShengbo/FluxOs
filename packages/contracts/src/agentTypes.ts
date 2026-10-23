@@ -6,7 +6,6 @@ export type ApprovalPolicy = 'ask' | 'agent' | 'full'
 
 export type CapabilityProfile = 'read-only' | 'workspace-write' | 'danger-full-access'
 
-
 export const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 
 export type ReasoningEffort = typeof REASONING_EFFORTS[number]
@@ -169,7 +168,7 @@ export interface ModelRequestRecord {
   model?: string
   provider?: string
   protocol?: 'openai_responses' | 'openai_chat' | 'anthropic_messages'
-  purpose: 'turn' | 'compaction'
+  purpose: 'turn' | 'compaction' | 'memory'
   status: 'running' | 'completed' | 'failed' | 'interrupted'
   startedAt: number
   updatedAt: number

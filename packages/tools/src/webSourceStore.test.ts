@@ -5,6 +5,34 @@ import { describe, expect, it } from 'vitest'
 import { WebSourceStore, formatWebSources } from './webSourceStore'
 
 describe('model-visible source coverage', () => {
+  it('includes the located phrase even when the requested excerpt is shorter than leading context', () => {
+    const store = new WebSourceStore()
+    const saved = store.save({ url: 'https://example.test', title: 'Page', retrievedAt: '2026-10-21', text: 'x'.repeat(800) + 'needle' + 'z'.repeat(800), truncated: false })
+    const excerpt = store.read(saved.id, 0, 200, 'needle')
+    expect(excerpt.matchFound).toBe(true)
+    expect(excerpt.text).toContain('needle')
+    expect(excerpt.text.length).toBeLessThanOrEqual(200)
+  })
+
+  it('reports offsets in the original source when Unicode lowercasing changes string length', () => {
+    const store = new WebSourceStore()
+    const saved = store.save({ url: 'https://example.test', title: 'Page', retrievedAt: '2026-10-21', text: 'İ'.repeat(800) + 'NEEDLE' + 'z'.repeat(800), truncated: false })
+    const excerpt = store.read(saved.id, 0, 200, 'needle')
+    expect(excerpt.text).toContain('NEEDLE')
+    expect(saved.text.slice(excerpt.offset, excerpt.endOffset)).toBe(excerpt.text)
+  })
+
+  it('keeps literal search syntax and does not split surrogate pairs between pages', () => {
+    const store = new WebSourceStore()
+    const saved = store.save({ url: 'https://example.test', title: 'Page', retrievedAt: '2026-10-21', text: 'x'.repeat(199) + '🙂' + 'literal [a]+(b)?' + 'z'.repeat(400), truncated: false })
+    const first = store.read(saved.id, 0, 200)
+    expect(first.endOffset).toBe(199)
+    expect(first.text).toBe('x'.repeat(199))
+    const second = store.read(saved.id, first.nextOffset, 200)
+    expect(second.text.startsWith('🙂')).toBe(true)
+    expect(store.read(saved.id, 0, 200, '[a]+(b)?').text).toContain('[a]+(b)?')
+  })
+
   it.each(['url', 'text', 'id'] as const)('rejects a persisted source with corrupted %s instead of presenting it as fetched evidence', field => {
     const folder = mkdtempSync(join(tmpdir(), 'tf-web-sources-'))
     try {

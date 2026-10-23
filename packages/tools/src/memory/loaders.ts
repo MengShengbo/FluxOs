@@ -35,6 +35,8 @@ const MEMORIES_PER_GROUP_MAX = 32
 const FILE_BYTES_MAX = 64 * 1024
 const FACTS_JSONL_BYTES_MAX = 4 * 1024 * 1024
 
+export const FLUXAGENT_RULE_FILES = ['FLUXAGENT.md', 'fluxagent.md', '.fluxagent/FLUXAGENT.md']
+
 function memoryId(absPath: string, index: number): string {
   let hash = 5381
   for (let i = 0; i < absPath.length; i += 1) {
@@ -240,6 +242,7 @@ function loadFluxAgentFactsJsonl(
   ctx: LoaderContext,
   includeInactive = false,
   sourceOverride?: string,
+  scopeOverride?: Memory['scope'],
 ): MemoryGroup | null {
   const raw = readTextFileSafe(absPath, ctx, FACTS_JSONL_BYTES_MAX)
   if (raw == null) return null
@@ -272,7 +275,7 @@ function loadFluxAgentFactsJsonl(
     const id = parsed.id || memoryId(absPath, i)
     byId.set(id, {
       id,
-      scope: (parsed.scope as Memory['scope']) || (sourceOverride ? 'workspace_private' : 'workspace_shared'),
+      scope: scopeOverride ?? (parsed.scope as Memory['scope']) ?? (sourceOverride ? 'workspace_private' : 'workspace_shared'),
       kind: (parsed.kind as Memory['kind']) || 'fact',
       text: sanitized,
       source: typeof parsed.source === 'string' ? parsed.source : relSource,
@@ -292,7 +295,6 @@ function loadFluxAgentFactsJsonl(
 
   const items = Array.from(byId.values())
     .filter(m => includeInactive || m.status === 'active')
-    .slice(0, MEMORIES_PER_GROUP_MAX)
 
   if (items.length === 0) return null
   return {
@@ -306,7 +308,7 @@ function loadFluxAgentFactsJsonl(
 
 export function loadAllMemoryGroups(
   workspacePath: string,
-  options: { includeInactive?: boolean; privateMemoryRoot?: string } = {},
+  options: { includeInactive?: boolean; privateMemoryRoot?: string; globalMemoryRoot?: string } = {},
 ): {
   groups: MemoryGroup[]
   warnings: string[]
@@ -317,7 +319,7 @@ export function loadAllMemoryGroups(
   const loadersAttempted: string[] = []
 
   loadersAttempted.push('fluxagent_md')
-  for (const candidate of ['FLUXAGENT.md', 'fluxagent.md', '.fluxagent/FLUXAGENT.md']) {
+  for (const candidate of FLUXAGENT_RULE_FILES) {
     const group = loadMarkdownRuleFile(
       path.join(workspacePath, candidate),
       'Project Instructions',
@@ -352,6 +354,20 @@ export function loadAllMemoryGroups(
     options.privateMemoryRoot ? 'profile-memory/facts.jsonl' : undefined,
   )
   if (fluxagentFacts) groups.push(fluxagentFacts)
+
+  if (options.globalMemoryRoot) {
+    loadersAttempted.push('profile_global_memory')
+    const globalRules = loadMarkdownRuleFile(
+      path.join(options.globalMemoryRoot, 'rules.md'), 'Profile Global Rules', 'profile_global_rules',
+      [], ctx, 'profile-global-memory/rules.md', 'global',
+    )
+    if (globalRules) groups.push(globalRules)
+    const globalFacts = loadFluxAgentFactsJsonl(
+      path.join(options.globalMemoryRoot, 'facts.jsonl'), ctx, options.includeInactive === true,
+      'profile-global-memory/facts.jsonl', 'global',
+    )
+    if (globalFacts) groups.push({ ...globalFacts, label: 'Profile Global Facts', loader: 'profile_global_facts' })
+  }
 
   loadersAttempted.push('claude_md')
   for (const candidate of ['CLAUDE.md', 'claude.md', '.claude/CLAUDE.md', '.claude/claude.md']) {

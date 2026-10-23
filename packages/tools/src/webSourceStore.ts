@@ -26,13 +26,22 @@ export class WebSourceStore {
       throw new Error('Invalid stored web source; fetch the page again')
     }
     const count = Math.max(200, Math.min(12000, Math.floor(limit) || 6000))
-    const match = query?.trim() ? record.text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase(), Math.max(0, offset)) : -1
-    const start = Math.max(0, Math.min(record.text.length, match >= 0 ? match - 500 : Math.floor(offset) || 0))
-    const end = Math.min(record.text.length, start + count)
+    const searchedFrom = Math.min(record.text.length, Math.max(0, Math.floor(offset) || 0))
+    // Unicode case conversion can change UTF-16 length. Literal regexp matching
+    // keeps indices in the original source and escapes all caller syntax.
+    const found = query?.trim() ? new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu').exec(record.text.slice(searchedFrom)) : null
+    const match = found ? searchedFrom + found.index : -1
+    const leadingContext = Math.min(500, Math.floor(Math.max(0, count - (found?.[0].length ?? 0)) / 2))
+    let start = Math.max(0, match >= 0 ? match - leadingContext : searchedFrom)
+    const splitsCharacter = (index: number) => index > 0 && index < record.text.length
+      && /[\uD800-\uDBFF]/.test(record.text[index - 1]) && /[\uDC00-\uDFFF]/.test(record.text[index])
+    if (splitsCharacter(start)) start--
+    let end = Math.min(record.text.length, start + count)
+    if (splitsCharacter(end)) end--
     return { sourceId: id, url: record.url, title: record.title, retrievedAt: record.retrievedAt,
       totalChars: record.text.length, offset: start, endOffset: end, text: record.text.slice(start, end),
       nextOffset: end < record.text.length ? end : undefined, sourceTruncated: record.truncated,
-      ...(query ? { query, matchFound: match >= 0, searchedFrom: Math.max(0, offset) } : {}),
+      ...(query ? { query, matchFound: match >= 0, searchedFrom } : {}),
       warning: 'A missing match in an incomplete source is not evidence of nonexistence.' }
   }
 }

@@ -34,6 +34,19 @@ export function prepareSummary(protocol: ModelProtocol, input: ModelSummaryInput
 }
 
 export function readSummary(protocol: ModelProtocol, raw: string): ModelSummaryResponse {
+  if (/^(?:data:|event:)/m.test(raw)) {
+    const response: ModelSummaryResponse = { text: '', structured: true, usage: [] }
+    const callbacks = { extractReasoningDelta: () => '', onUsage: (usage: ModelSummaryResponse['usage'][number]) => { response.usage.push(usage) },
+      onResponseId: (id: string) => { response.responseId = id } }
+    const parser = protocol === 'anthropic_messages' ? new AnthropicStreamParser(callbacks)
+      : protocol === 'openai_responses' ? new OpenAIResponsesStreamParser(callbacks) : new OpenAIChatStreamParser(callbacks)
+    for (const line of raw.split(/\r?\n/)) parser.handleLine(line)
+    const state = parser.snapshot()
+    if (!state.sawTerminalEvent || ('interrupted' in state && state.interrupted)
+      || ('streamFailure' in state && state.streamFailure) || !state.text.trim()) throw new Error('Summary stream was incomplete or failed')
+    response.text = state.text
+    return response
+  }
   const response: ModelSummaryResponse = { text: extractModelResponseText(protocol, raw), structured: false, usage: [] }
   try {
     const payload = JSON.parse(raw)

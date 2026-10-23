@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -13,6 +13,45 @@ function workspace() { const root = mkdtempSync(join(tmpdir(), 'fluxagent-memory
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 
 describe('memory writer shared state', () => {
+  it.each(['complete record', 'interrupted record'])('preserves a new append after an unterminated %s', async tail => {
+    const workspacePath = workspace(), root = join(workspacePath, '.fluxagent', 'memory')
+    mkdirSync(root, { recursive: true })
+    const writer = new MemoryWriter()
+    const first = await writer.remember({ workspacePath, text: 'Existing durable decision' })
+    const path = join(root, 'facts.jsonl')
+    const complete = readFileSync(path, 'utf8').trimEnd()
+    writeFileSync(path, tail === 'complete record' ? complete : `${complete}\n{"id":"partial`)
+    const next = await writer.remember({ workspacePath, text: 'Next durable decision' })
+    expect(next.success).toBe(true)
+    const service = new MemoryService()
+    const memories = await service.query({ workspacePath, query: 'durable' })
+    expect(memories.map(memory => memory.id).sort()).toEqual([first.id, next.id].sort())
+    expect(await new MemoryWriter().update({ workspacePath, id: next.id!, pinned: true })).toEqual({ success: true })
+  })
+
+  it('does not merge opposite instructions, reordered meanings, different kinds or scopes', async () => {
+    const workspacePath = workspace(), writer = new MemoryWriter()
+    const texts = ['Always run build before deploying production changes', 'Never run build before deploying production changes',
+      'Alice approved Bob', 'Bob approved Alice', '部署需要审批', '部署不需要审批']
+    const results = []
+    for (const text of texts) results.push(await writer.remember({ workspacePath, text }))
+    results.push(await writer.remember({ workspacePath, text: texts[0], kind: 'rule' }))
+    results.push(await writer.remember({ workspacePath, text: texts[0], scope: 'workspace_shared' }))
+    expect(results.every(result => result.success && !result.deduplicated)).toBe(true)
+    expect(new Set(results.map(result => result.id)).size).toBe(results.length)
+  })
+
+  it('can merge an exact repeat at capacity but refuses a new memory', async () => {
+    const workspacePath = workspace(), root = join(workspacePath, '.fluxagent', 'memory')
+    mkdirSync(root, { recursive: true })
+    writeFileSync(join(root, 'facts.jsonl'), Array.from({ length: 500 }, (_, i) => JSON.stringify({
+      id: `item-${i}`, text: `Entry ${i}`, kind: 'fact', scope: 'workspace_private', status: 'active', tags: [],
+    })).join('\n') + '\n')
+    const writer = new MemoryWriter()
+    expect(await writer.remember({ workspacePath, text: 'Entry 499', tags: ['repeated'] })).toMatchObject({ success: true, id: 'item-499', deduplicated: true })
+    expect(await writer.remember({ workspacePath, text: 'New entry' })).toMatchObject({ success: false })
+  })
+
   it('modifies memories discovered through another service and preserves the latest fields and status', async () => {
     const workspacePath = workspace()
     const a = new MemoryService(), b = new MemoryService()

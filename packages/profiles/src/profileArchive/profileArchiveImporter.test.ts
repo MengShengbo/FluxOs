@@ -33,7 +33,7 @@ async function sourceArchive(root: string, encrypted = false, includeExecutable 
   const binding = new WorkspaceBindingService(layout, () => 10, () => 'workspace-12345678').ensureBound(workspacePath, 'Source Workspace')
   writeModelConfiguration(layout.configRoot, { provider: 'custom', model: 'model-a', baseUrl: 'https://example.test/v1', approvalPolicy: 'ask', capabilityProfile: 'workspace-write', gitEnabled: true, apiConfigs: [] })
   writeFileSync(layout.projectsPath, JSON.stringify({ schemaVersion: 1, projects: [{ id: 'project-1', name: 'Source', path: workspacePath, pinned: true, tags: ['demo'], createdAt: 1, updatedAt: 2, lastOpenedAt: 2, available: true }] }))
-  writeFileSync(layout.automationsPath, JSON.stringify({ schemaVersion: 2, automations: [{ id: 'automation-1', name: 'Never auto-run', enabled: true, status: 'active', workspacePath, activeRunId: 'run-1', pendingRunAt: 28, nextRunAt: 30, activeRuns: ['run-1'], history: [] }], approvals: [{ id: 'approval-1' }] }))
+
   if (includeExecutable) {
     mkdirSync(join(layout.userSkillsRoot, 'imported-skill'), { recursive: true })
     writeFileSync(join(layout.userSkillsRoot, 'imported-skill', 'SKILL.md'), '---\nname: imported-skill\ndescription: Must be reviewed\n---\n\nNever load before review.')
@@ -49,6 +49,7 @@ async function sourceArchive(root: string, encrypted = false, includeExecutable 
   const memoryRoot = join(workspaceOverlayRoot(layout, 'workspace-12345678'), 'memory')
   mkdirSync(memoryRoot, { recursive: true })
   writeFileSync(join(memoryRoot, 'facts.jsonl'), '{"text":"remember me"}\n')
+  writeFileSync(join(layout.globalMemoryRoot, 'facts.jsonl'), '{"id":"global-preference","scope":"global","text":"Use Chinese"}\n')
   const conversation: PersistedConversation = {
     id: 'conversation-import', title: 'Imported conversation', workspacePath, createdAt: 11, updatedAt: 29,
     mode: 'vibe', model: 'model-a', provider: 'custom', turnCount: 2,
@@ -67,7 +68,7 @@ async function sourceArchive(root: string, encrypted = false, includeExecutable 
     'model.configurations',
     'conversations',
     'projects',
-    'automations',
+
     'memories',
     ...(encrypted ? ['credentials'] as const : []),
     ...(includeExecutable ? ['skills.user', 'plugins.packages', 'mcp.configurations'] as const : []),
@@ -332,6 +333,8 @@ describe('profile archive transactional importer', () => {
     expect(result.profile).toMatchObject({ displayName: 'Imported Copy', state: 'ready', importedFrom: { archiveId: preview.archiveId } })
     const layout = registry.context(result.profile.id).storage
     const importedWorkspace = new WorkspaceBindingService(layout).list().workspaces[0]
+    expect(readFileSync(join(layout.globalMemoryRoot, 'facts.jsonl'), 'utf8')).toContain('global-preference')
+    expect(readFileSync(join(workspaceOverlayRoot(layout, importedWorkspace.id), 'memory', 'facts.jsonl'), 'utf8')).toContain('remember me')
     expect(importedWorkspace).toMatchObject({ id: 'workspace-12345678', state: 'unbound' })
     expect(importedWorkspace).not.toHaveProperty('localPath')
     expect(persistedConversationFromProjectionV2(new ConversationRepositoryV2(layout.conversationsV2Root).projection('conversation-import'), 'fluxagent-unbound:workspace-12345678')).toMatchObject({
@@ -344,12 +347,7 @@ describe('profile archive transactional importer', () => {
         { id: normalizeConversationV2Id('turn', 'turn-2'), content: 'in the same order', timestamp: 17 },
       ],
     })
-    const automations = JSON.parse(readFileSync(layout.automationsPath, 'utf8')) as { automations: Array<{ enabled: boolean; status: string }>; approvals: unknown[] }
-    expect(automations.automations[0]).toMatchObject({ enabled: false, status: 'paused' })
-    expect(automations.automations[0]).not.toHaveProperty('activeRunId')
-    expect(automations.automations[0]).not.toHaveProperty('pendingRunAt')
-    expect(automations.automations[0]).not.toHaveProperty('nextRunAt')
-    expect(automations.approvals).toEqual([])
+
     const receipt = JSON.parse(readFileSync(join(layout.profileRoot, 'import-receipt.json'), 'utf8')) as Record<string, unknown>
     expect(receipt).toMatchObject({ archiveId: preview.archiveId, profileId: result.profile.id, unboundWorkspaces: 1 })
     expect(JSON.stringify(receipt)).not.toContain('source-secret')
@@ -444,7 +442,7 @@ describe('profile archive transactional importer', () => {
     const registry = targetRegistry(root)
     const importer = new ProfileArchiveImporter({ registry, createId: ids('plan-reexport', 'transaction-reexport', 'imported-reexport'), now: () => 2_000 })
     const preview = await importer.inspect(archive.path)
-    const selectedComponents = ['conversations', 'projects', 'automations'] as const
+    const selectedComponents = ['conversations', 'projects'] as const
     const plan = importer.plan(archive.path, preview, {
       archiveId: preview.archiveId,
       displayName: 'Re-exported Copy',
@@ -465,14 +463,12 @@ describe('profile archive transactional importer', () => {
     const events = documents.get('components/conversations/events/conversation-import.json')?.events as Array<{ type: string; payload: { record?: Record<string, unknown> } }>
     const conversation = events.find(event => event.type === 'conversation.created')!.payload.record!
     const projects = documents.get('components/projects/projects.json')?.projects as Array<Record<string, unknown>>
-    const automations = documents.get('components/automations/automations.json')?.automations as Array<Record<string, unknown>>
 
     expect(conversation.workspaceId).toBe('workspace-12345678')
     expect(conversation).not.toHaveProperty('workspacePath')
     expect(projects[0]).toMatchObject({ workspaceId: 'workspace-12345678' })
     expect(projects[0]).not.toHaveProperty('path')
-    expect(automations[0]).toMatchObject({ workspaceId: 'workspace-12345678', enabled: false, status: 'paused' })
-    expect(automations[0]).not.toHaveProperty('workspacePath')
+
   })
 
   it('quarantines imported Skills and keeps Plugin and MCP execution disabled', async () => {
@@ -495,7 +491,7 @@ describe('profile archive transactional importer', () => {
 
     expect(existsSync(layout.userSkillsRoot) ? readdirSync(layout.userSkillsRoot) : []).toEqual([])
     expect(readFileSync(join(layout.extensionsRoot, 'skills-review', 'imported-skill', 'SKILL.md'), 'utf8')).toContain('Must be reviewed')
-    expect(receipt.disabled).toMatchObject({ automations: 1, skills: 1, plugins: 1, mcpServers: 1 })
+    expect(receipt.disabled).toMatchObject({  skills: 1, plugins: 1, mcpServers: 1 })
     expect(plugins.plugins).toEqual([expect.objectContaining({ id: 'imported-plugin', enabled: false, approvedPermissions: [] })])
     expect(settings.mcpServers.imported).toMatchObject({ enabled: false, command: 'dangerous-command', env: { API_KEY: '' } })
   })

@@ -58,7 +58,7 @@ export interface ProfileStorageLayout {
   interactionRoot: string
   platformRoot: string
   projectsPath: string
-  automationsPath: string
+
   artifactsPath: string
   managedTaskTitlesPath: string
   extensionsRoot: string
@@ -66,6 +66,7 @@ export interface ProfileStorageLayout {
   pluginsRoot: string
   pluginsIndexPath: string
   pluginStorageRoot: string
+  globalMemoryRoot: string
   workspaceOverlaysRoot: string
   workspaceBindingsPath: string
   deviceBoundRoot: string

@@ -22,31 +22,9 @@ import { sanitizeMemoryText } from './sanitizer'
 import { withFileLockSync } from '@fluxos/platform/fileIO'
 
 const DYNAMIC_STORE_SOFT_CAP = 500
-const DEDUP_THRESHOLD = 0.75
-
-function tokenize(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-      .replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
-      .split(/\s+/)
-      .filter(t => t.length > 1),
-  )
-}
-
-function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 && b.size === 0) return 1
-  let intersection = 0
-  for (const token of a) {
-    if (b.has(token)) intersection += 1
-  }
-  return intersection / (a.size + b.size - intersection)
-}
 
 export class MemoryWriter {
   private readonly workspaceIndex = new Map<string, Map<string, Memory>>()
-  private readonly workspaceTokens = new Map<string, Map<string, Set<string>>>()
 
   constructor(private readonly memoryRoot?: string) {}
 
@@ -67,20 +45,9 @@ export class MemoryWriter {
     return index
   }
 
-  private getTokenIndex(workspacePath: string): Map<string, Set<string>> {
-    let index = this.workspaceTokens.get(workspacePath)
-    if (!index) {
-      index = new Map()
-      this.workspaceTokens.set(workspacePath, index)
-    }
-    return index
-  }
-
   private loadIndex(workspacePath: string): void {
     const index = this.getIndex(workspacePath)
-    const tokenIndex = this.getTokenIndex(workspacePath)
     index.clear()
-    tokenIndex.clear()
     try {
       const content = fs.readFileSync(this.factsPath(workspacePath), 'utf-8')
       for (const line of content.split(/\r?\n/)) {
@@ -90,7 +57,6 @@ export class MemoryWriter {
           const parsed = JSON.parse(trimmed) as Memory
           if (parsed.id && parsed.text) {
             index.set(parsed.id, parsed)
-            tokenIndex.set(parsed.id, tokenize(parsed.text))
           }
         } catch {
           // Skip malformed lines; one bad append should not hide valid memories.
@@ -110,25 +76,36 @@ export class MemoryWriter {
     })
   }
 
-  private findDuplicate(text: string, workspacePath: string): string | null {
-    const tokens = tokenize(text)
+  private findDuplicate(text: string, workspacePath: string, kind: Memory['kind'], scope: Memory['scope']): string | null {
     const index = this.getIndex(workspacePath)
-    const tokenIndex = this.getTokenIndex(workspacePath)
-
-    for (const [id, existingTokens] of tokenIndex) {
-      const existing = index.get(id)
-      if (!existing || existing.status !== 'active') continue
-      if (jaccardSimilarity(tokens, existingTokens) >= DEDUP_THRESHOLD) return id
+    for (const [id, existing] of index) {
+      if (existing.status === 'active' && existing.text === text && existing.kind === kind && existing.scope === scope) return id
     }
     return null
   }
 
   private appendLine(workspacePath: string, memory: Memory): void {
     this.ensureDirForWrite(workspacePath)
-    fs.appendFileSync(this.factsPath(workspacePath), `${JSON.stringify(memory)}\n`, 'utf-8')
+    const factsPath = this.factsPath(workspacePath)
+    let separator = ''
+    let descriptor: number | undefined
+    try {
+      descriptor = fs.openSync(factsPath, 'r')
+      const size = fs.fstatSync(descriptor).size
+      if (size > 0) {
+        const last = Buffer.alloc(1)
+        fs.readSync(descriptor, last, 0, 1, size - 1)
+        if (last[0] !== 10) separator = '\n'
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    } finally {
+      if (descriptor !== undefined) fs.closeSync(descriptor)
+    }
+    // A partial append must stay on its own line so later durable writes survive.
+    fs.appendFileSync(factsPath, `${separator}${JSON.stringify(memory)}\n`, 'utf-8')
 
     this.getIndex(workspacePath).set(memory.id, memory)
-    this.getTokenIndex(workspacePath).set(memory.id, tokenize(memory.text))
   }
 
   async remember(request: MemoryWriteRequest): Promise<MemoryWriteResponse> {
@@ -143,12 +120,7 @@ export class MemoryWriter {
     }
 
     const index = this.getIndex(workspacePath)
-    const activeCount = Array.from(index.values()).filter(m => m.status === 'active').length
-    if (activeCount >= DYNAMIC_STORE_SOFT_CAP) {
-      return { success: false, error: `Memory store has reached ${DYNAMIC_STORE_SOFT_CAP} active entries` }
-    }
-
-    const duplicateId = this.findDuplicate(sanitized, workspacePath)
+    const duplicateId = this.findDuplicate(sanitized, workspacePath, kind ?? 'fact', scope ?? 'workspace_private')
     if (duplicateId) {
       const existing = index.get(duplicateId)!
       const updated: Memory = {
@@ -159,6 +131,11 @@ export class MemoryWriter {
       }
       this.appendLine(workspacePath, updated)
       return { success: true, id: duplicateId, deduplicated: true }
+    }
+
+    const activeCount = Array.from(index.values()).filter(m => m.status === 'active').length
+    if (activeCount >= DYNAMIC_STORE_SOFT_CAP) {
+      return { success: false, error: `Memory store has reached ${DYNAMIC_STORE_SOFT_CAP} active entries` }
     }
 
     const memEvidence: MemoryEvidence[] = evidence ? [...evidence] : []
@@ -237,6 +214,5 @@ export class MemoryWriter {
 
   invalidate(workspacePath: string): void {
     this.workspaceIndex.delete(workspacePath)
-    this.workspaceTokens.delete(workspacePath)
   }
 }

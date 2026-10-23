@@ -18,15 +18,7 @@ import type { ChildAgentController } from './runtime/childAgentController'
 import type { TaskManager } from './taskManager'
 
 export const AGENT_CONTROL_TOOLS = ['spawn_agent', 'followup_agent', 'send_agent_message', 'close_agent', 'wait_agents', 'detach_agent', 'cancel_agent', 'list_agents', 'read_agent'] as const
-export interface AutomationSubAgentPolicy {
-  runId: string
-  allowedTools: string[]
-  deniedTools: string[]
-  allowedAgentTypes: string[]
-  maxSubtasks: number
-  maxParallel: number
-  authorizeSubtask?: () => void
-}
+
 export interface AgentOrchestratorHost {
   getConfig(): AgentConfig
   getRunId(): string | null
@@ -43,7 +35,7 @@ export interface AgentOrchestratorHost {
 export class AgentOrchestrator {
   private childAgents: ChildAgentController | null = null
   private readonly admissions = new Set<string>()
-  private automationSubAgentPolicy: AutomationSubAgentPolicy | null = null
+
   private readonly subAgentBudget = new SubAgentBudget()
   readonly joinCoordinator = new AgentJoinCoordinator()
   constructor(private readonly host: AgentOrchestratorHost) {}
@@ -74,15 +66,6 @@ export class AgentOrchestrator {
 
   getSubAgentBudget(): SubAgentBudgetConfig {
     return this.subAgentBudget.getConfig()
-  }
-
-  setAutomationSubAgentPolicy(policy: AutomationSubAgentPolicy | null): void {
-    this.automationSubAgentPolicy = policy ? {
-      ...policy,
-      allowedTools: [...policy.allowedTools],
-      deniedTools: [...policy.deniedTools],
-      allowedAgentTypes: [...policy.allowedAgentTypes],
-    } : null
   }
 
   currentRunSubAgents(): SubAgentTaskSnapshot[] {
@@ -353,16 +336,6 @@ export class AgentOrchestrator {
     const agentSessionId = childIdentity ? childIdentity.agentId || 'agent-' + randomUUID() : undefined
     const ownerSessionId = this.host.getConfig().conversationId
     const workRunId = this.host.getRunId() || undefined
-    const policy = this.automationSubAgentPolicy
-    if (policy !== null) {
-      if (policy.allowedAgentTypes.includes(definition.id) === false) throw new Error('Subagent type is not authorized for this automation run: ' + definition.id)
-      const policyTasks = this.subAgentTaskManager.listTasks().filter(task => task.ownerSessionId === ownerSessionId && (policy.runId === '' || task.workRunId === policy.runId || task.runtimeTask.metadata?.workRunId === policy.runId))
-      if (policyTasks.length >= policy.maxSubtasks) throw new Error('Automation run reached its ' + policy.maxSubtasks + '-subtask limit')
-      const active = policyTasks.filter(task => ['starting', 'running', 'stopping'].includes(task.runtimeTask.status)).length
-      if (active >= policy.maxParallel) throw new Error('Automation run reached its ' + policy.maxParallel + '-subagent concurrency limit')
-
-    }
-
     const budgetTasks = (): SubAgentBudgetTaskView[] => this.subAgentTaskManager.listTasks().map(task => {
       const stats = task.stats
       return {
@@ -390,15 +363,9 @@ export class AgentOrchestrator {
       allowedTools: definition.allowedTools && parent.allowedTools
         ? definition.allowedTools.filter(tool => parent.allowedTools!.includes(tool))
         : definition.allowedTools || parent.allowedTools,
-      disabledTools: [...(parent.disabledTools || []), ...(policy?.deniedTools || [])],
+      disabledTools: [...(parent.disabledTools || [])],
       enabledSkills: parent.enabledSkills?.map(skill => ({ ...skill })),
     }
-    if (policy?.allowedTools.length) {
-      parentChildConfig.allowedTools = parentChildConfig.allowedTools
-        ? parentChildConfig.allowedTools.filter(tool => policy.allowedTools.includes(tool))
-        : [...policy.allowedTools]
-    }
-    policy?.authorizeSubtask?.()
     const startedAt = Date.now()
     if (admissionKey) this.admissions.add(admissionKey)
     let started: { task: RuntimeTask; promise: Promise<SubAgentResult> }

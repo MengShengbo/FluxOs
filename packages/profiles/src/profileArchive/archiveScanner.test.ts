@@ -133,22 +133,6 @@ describe('profile archive security scanner', () => {
   })
 
   it.each([
-    ['active automation', [{ id: 'automation-1', enabled: true, status: 'active' }]],
-    ['automation approval', [{ id: 'automation-1', enabled: false, status: 'paused', pendingApprovals: ['approval-1'] }]],
-    ['automation secret', [{ id: 'automation-1', enabled: false, status: 'paused', apiToken: 'secret-token' }]],
-  ])('rejects %s state', async (_label, automations) => {
-    const fixture = await createArchive({
-      components: [{
-        id: 'automations',
-        path: 'components/automations/automations.json',
-        value: { schemaVersion: 1, automations, importedEnabled: false },
-        sensitivity: 'executable',
-      }],
-    })
-    await expect(scanProfileArchive(fixture)).rejects.toMatchObject({ code: 'ARCHIVE_COMPONENT_INVALID' })
-  })
-
-  it.each([
     ['enabled MCP', { enabled: true, command: 'node' }],
     ['MCP inline secret', { enabled: false, command: 'node', env: { API_TOKEN: 'secret-token' } }],
   ])('rejects %s configuration', async (_label, server) => {

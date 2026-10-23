@@ -3,7 +3,7 @@ import { readWorkspaces, repositoryRoot } from './workspace-packages.mjs'
 // An explicit allowlist: new packages are private until deliberately reviewed.
 export const corePackageIds = Object.freeze([
   'contracts', 'platform', 'models', 'tools', 'extensions', 'agent-runtime',
-  'conversations', 'profiles', 'automations', 'presentation',
+  'conversations', 'profiles', 'presentation',
 ])
 export const productPackageIds = Object.freeze(['workbench', 'renderer', 'remote-protocol'])
 export const productIntegrationTests = new Set([

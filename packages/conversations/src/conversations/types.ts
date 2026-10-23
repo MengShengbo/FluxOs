@@ -43,8 +43,7 @@ export interface ConversationQueuedInput {
   attachments?: AgentAttachment[]
   capabilities?: AgentCapabilitySelection
   approvalPolicy?: ApprovalPolicy
-  automationId?: string
-  automationRunId?: string
+
 }
 
 export interface ConversationPendingPaste {

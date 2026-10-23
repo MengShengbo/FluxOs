@@ -196,50 +196,6 @@ describe('AgentEngine background subagent tools', () => {
     }
   })
 
-  it('enforces the frozen automation strategy for child agents', async () => {
-    const workspacePath = mkdtempSync(path.join(tmpdir(), 'fluxagent-agent-engine-policy-'))
-    registerTestAgent('automation_allowed_agent')
-    registerTestAgent('automation_denied_agent')
-    const runtime = createAgentRuntime({
-      workspacePath,
-      workspaceName: 'automation-agent-policy-test',
-      conversationId: 'conversation-policy',
-      approvalPolicy: 'full',
-      connectMcp: false,
-      config: { provider: 'custom', apiKey: 'test', baseUrl: 'http://example.test', model: 'test-model', contextWindow: 100_000, maxTokens: 4096 },
-    })
-    const dispatchToolRaw = (runtime.engine as unknown as {
-      dispatchTool: (name: string, args: Record<string, unknown>) => Promise<string>
-    }).dispatchTool.bind(runtime.engine)
-    let childOrdinal = 0
-    const dispatchTool = (name: string, args: Record<string, unknown>) => dispatchToolRaw(name, name === 'spawn_agent' ? { name: 'Test child ' + ++childOrdinal, ...args } : args)
-    globalThis.fetch = vi.fn((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
-      init?.signal?.addEventListener('abort', () => reject(Object.assign(new Error('Aborted'), { name: 'AbortError' })), { once: true })
-    })) as unknown as typeof fetch
-
-    try {
-      const authorizeSubtask = vi.fn()
-      runtime.engine.setAutomationSubAgentPolicy({
-        runId: '',
-        allowedTools: ['read_file'],
-        deniedTools: ['write_file'],
-        allowedAgentTypes: ['automation_allowed_agent'],
-        maxSubtasks: 1,
-        maxParallel: 1,
-        authorizeSubtask,
-      })
-      await expect(dispatchTool('spawn_agent', { agent_type: 'automation_denied_agent', objective: 'Write outside scope' }))
-        .rejects.toThrow('not authorized')
-      const started = await dispatchTool('spawn_agent', { agent_type: 'automation_allowed_agent', objective: 'Read within scope' })
-      expect(started).toContain('started in the background')
-      expect(authorizeSubtask).toHaveBeenCalledTimes(1)
-      await expect(dispatchTool('spawn_agent', { agent_type: 'automation_allowed_agent', objective: 'Start another task' }))
-        .rejects.toThrow('subtask limit')
-    } finally {
-      await runtime.destroy()
-      rmSync(workspacePath, { recursive: true, force: true })
-    }
-  })
   it('waits for a running subagent with a timeout snapshot and supports detach', async () => {
     const workspacePath = mkdtempSync(path.join(tmpdir(), 'fluxagent-agent-engine-wait-'))
     registerTestAgent('wait_test_agent')

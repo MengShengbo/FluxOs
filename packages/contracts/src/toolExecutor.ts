@@ -259,6 +259,9 @@ export interface ToolExecutor {
   webFetch?(query: Record<string, any>): Promise<Result<WebFetchResponse>>
 
   // Memory operations
+  memorySearchHistory?(query: { query: string; limit?: number; from?: number; to?: number }): Promise<Result<any>>
+  memoryReadHistory?(query: { conversationId: string; messageId: string; offset?: number }): Promise<Result<any>>
+  memoryConsolidate?(generate: (prompt: string, maxTokens: number, signal: AbortSignal) => Promise<string>, signal: AbortSignal): Promise<boolean>
   memoryQuery(query: Record<string, any>): Promise<Result<any>>
   memoryRemember(data: Record<string, any>): Promise<Result<any>>
   memoryForget(data: Record<string, any>): Promise<Result<void>>

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -11,6 +11,28 @@ afterEach(() => {
 })
 
 describe('AtomicJsonStore', () => {
+  it('preserves a store path when reading it fails instead of treating an I/O error as corrupt JSON', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-store-read-error-'))
+    directories.push(directory)
+    const path = join(directory, 'state.json')
+    mkdirSync(path)
+    writeFileSync(join(path, 'keep.txt'), 'original')
+    const store = new AtomicJsonStore(path, () => ({ value: '' }), (value): value is { value: string } => Boolean(value && typeof value === 'object'))
+    expect(() => store.load()).toThrow()
+    expect(readFileSync(join(path, 'keep.txt'), 'utf8')).toBe('original')
+    expect(readdirSync(directory)).toEqual(['state.json'])
+  })
+
+  it('cleans up temporary files after an atomic replace fails', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fluxagent-store-write-error-'))
+    directories.push(directory)
+    const path = join(directory, 'state.json')
+    mkdirSync(path)
+    const store = new AtomicJsonStore(path, () => ({ value: '' }), (value): value is { value: string } => Boolean(value && typeof value === 'object'))
+    expect(() => store.save({ value: 'new' })).toThrow()
+    expect(readdirSync(directory)).toEqual(['state.json'])
+  })
+
   it('persists values with an atomic replace and reloads them', () => {
     const directory = mkdtempSync(join(tmpdir(), 'fluxagent-store-'))
     directories.push(directory)

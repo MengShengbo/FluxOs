@@ -1,6 +1,6 @@
 # FluxOs package architecture
 
-FluxOs is the independent MIT kernel. Its ten public packages use `@fluxos/*` declared exports. The sibling private FluxAgent product owns workbench assembly, DOM rendering, remote control, Electron and native adapters; no core package depends on a private product package. The assistant's public name is FluxAgent.
+FluxOs is the independent MIT kernel. Its nine public packages use `@fluxos/*` declared exports. The sibling private FluxAgent product owns workbench assembly, DOM rendering, remote control, Electron and native adapters; no core package depends on a private product package. The assistant's public name is FluxAgent.
 
 ## Ownership
 
@@ -14,7 +14,6 @@ FluxOs is the independent MIT kernel. Its ten public packages use `@fluxos/*` de
 | `agent-runtime` | AgentEngine, turn execution, context, child sessions, tool scheduling and run state |
 | `conversations` | Canonical event normalization, durable journals, replay and conversation repositories |
 | `profiles` | Profile isolation, workspace bindings and archive/import transactions |
-| `automations` | Definitions, schedule/claim/lease, checkpoints, recovery and delivery facts |
 | `presentation` | Deterministic projections of current events and snapshots, without DOM ownership |
 
 `contracts` and `presentation` are browser-safe; Node and native implementations stay behind the appropriate runtime interfaces. Cross-package imports, including type-only imports, use declared exports. Sibling `src`/`dist` deep imports and dependency cycles are rejected by `npm run verify`.
@@ -30,7 +29,6 @@ The following table reflects package manifests. It excludes external npm depende
 | `@fluxos/models` | `@fluxos/contracts`, `@fluxos/platform` |
 | `@fluxos/tools` | `@fluxos/contracts`, `@fluxos/platform` |
 | `@fluxos/extensions` | `@fluxos/contracts`, `@fluxos/platform` |
-| `@fluxos/automations` | `@fluxos/contracts`, `@fluxos/platform` |
 | `@fluxos/presentation` | `@fluxos/contracts` |
 | `@fluxos/agent-runtime` | `@fluxos/contracts`, `@fluxos/extensions`, `@fluxos/models`, `@fluxos/platform`, `@fluxos/presentation`, `@fluxos/tools` |
 | `@fluxos/conversations` | `@fluxos/agent-runtime`, `@fluxos/contracts`, `@fluxos/models`, `@fluxos/platform`, `@fluxos/presentation` |
@@ -44,7 +42,7 @@ The conversation layer normalizes and durably commits canonical facts before adv
 
 ## Versions and validation
 
-The root and ten public manifests currently use `1.0.1`; package versions describe APIs, while a consumer's pinned Git revision describes its source baseline. A dirty working tree can build different code at the same HEAD and version. Record HEAD, dirty state and source/build digests with validation; package metadata alone is not release provenance.
+The root and nine public manifests currently use `1.0.1`; package versions describe APIs, while a consumer's pinned Git revision describes its source baseline. A dirty working tree can build different code at the same HEAD and version. Record HEAD, dirty state and source/build digests with validation; package metadata alone is not release provenance.
 
 Run `npm ci`, `npm run verify`, `npm run build`, `npm run type-check`, `npm test` from the core repository. Build cleans package output, so do not run it concurrently with tests that consume `dist`. `npm run pack:core` verifies dry-run packaging. Kernel tests and compiled API checks do not certify a private desktop installation or real external services.
 

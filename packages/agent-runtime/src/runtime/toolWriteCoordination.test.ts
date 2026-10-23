@@ -30,6 +30,23 @@ function lifecycle(execute: (tc: ToolCall) => Promise<ToolResult>) {
 }
 
 describe('cross-lifecycle write ownership', () => {
+  it('coordinates global memory mutations across different workspace overlays of one profile', () => {
+    const root = workspace(), tool = getToolByName('remember')!
+    const firstScope = { memoryRoot: join(root, 'a', 'memory'), globalMemoryRoot: join(root, 'profile-a', 'memory') }
+    const secondScope = { memoryRoot: join(root, 'b', 'memory'), globalMemoryRoot: firstScope.globalMemoryRoot }
+    const memoryCall: ToolCall = { id: 'memory', name: 'remember', arguments: { text: 'preference' } }
+    const release = acquireToolWrite(memoryCall, tool, firstScope)!
+    try {
+      expect(acquireToolWrite(memoryCall, tool, secondScope)).toBeUndefined()
+      const independent = acquireToolWrite(memoryCall, tool, { memoryRoot: join(root, 'c', 'memory'), globalMemoryRoot: join(root, 'profile-b', 'memory') })
+      expect(independent).toBeTypeOf('function')
+      independent?.()
+    } finally { release() }
+    const after = acquireToolWrite(memoryCall, tool, secondScope)
+    expect(after).toBeTypeOf('function')
+    after?.()
+  })
+
   it('admits authorized cancellation without depending on mutation journal health', async () => {
     const store = new ToolOperationStore(join(workspace(), 'unavailable'))
     const begin = vi.spyOn(store, 'begin').mockImplementation(() => { throw new Error('fixture disk full') })
